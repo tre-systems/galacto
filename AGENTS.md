@@ -74,5 +74,5 @@ cargo check --target wasm32-unknown-unknown
 ## Docs
 
 - Docs describe the current state in the present tense. Keep history in git, not in docs.
-- Diagrams: Graphviz `.dot` rendered to a committed PNG (`npm run diagrams`). See [docs/diagrams/README.md](docs/diagrams/README.md).
+- Diagrams: Graphviz `.dot` rendered to a committed PNG (`npm run diagrams`) for standalone architecture and flow diagrams; Mermaid inline in Markdown for small ones. See [docs/diagrams/README.md](docs/diagrams/README.md).
 - Add a BACKLOG item for useful intent that should not be built immediately.
