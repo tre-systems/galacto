@@ -37,6 +37,51 @@ pkg/                     # wasm-pack output + copied static assets — the deplo
 scripts/                 # render-diagrams.mjs, check-diagrams.mjs
 ```
 
+## Patterns
+
+galacto is small, but nearly every file is an instance of one of a handful of recurring patterns. Naming them once makes the rest of the code predictable; the detailed sections below are each an elaboration of one of these.
+
+**GPU-resident state, no readback.** After the initial upload, particle positions and velocities live only in a GPU storage buffer. The compute pass is the sole writer and the render pass the sole reader; the CPU never reads particle data back. The CPU's only per-frame writes are two small uniforms (params, camera).
+
+**Compute-then-render over one buffer — no ping-pong.** The same particle buffer is bound `storage, read_write` to the compute pass and `storage, read` to the render pass within a single command encoder. WebGPU inserts a barrier between the passes, so the render reads exactly what the compute just wrote. Double-buffering (ping-pong) is deliberately absent: nothing reads the buffer *while* it is being written, so a second copy would buy nothing. It would only be needed if a frame both read an old generation and wrote a new one concurrently.
+
+**Owning composition root (`AppState`).** One struct (`src/lib.rs`) owns the four subsystems — `Graphics`, `Simulation`, `Camera`, `InputHandler` — and is the only orchestrator. Each frame it calls `update()` then `render()`. Subsystems never reach for each other; they are wired together only through `AppState`.
+
+**Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer.
+
+**POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. A `_padding: u32` keeps `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
+
+**Upload-once vs upload-per-frame.** Large data that is static after init (the particle buffer) is uploaded once at creation. Small, frequently-changing data (the params and camera uniforms) is pushed every frame with `queue.write_buffer` into `UNIFORM | COPY_DST` buffers.
+
+**Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
+
+**Derived visuals in-shader (single source of truth).** Color, brightness, and glow are pure functions of a particle's velocity, computed in the shaders and never stored. Position + velocity is the only state; appearance is recomputed from it each frame, so it can never drift out of sync with the simulation.
+
+**Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating, is-dragging) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
+
+**Retained closures keep listeners alive.** Each `add_event_listener` closure is pushed into the handler's `_closures` vector so it is not dropped at the end of setup — dropping it would silently unregister the listener.
+
+**Compile-time-embedded shaders.** WGSL is brought in with `include_str!`, so shaders are compiled into the WASM; there is no runtime fetch or separate asset to deploy.
+
+**Deterministic seeded initialization.** All initial particle state is generated from a fixed RNG seed (`StdRng::seed_from_u64(42)`), so every page load produces an identical starting configuration.
+
+**Single attractor, not N-body.** Particles are attracted only to a fixed mass at the origin — `O(N)` per step — never to each other (`O(N²)`). There is no particle–particle interaction; the disk is an emergent property of many bodies sharing one central field.
+
+**Integrator guard-rails.** The explicit Euler step is kept stable by three guards: a softening epsilon (`r² + 1e-6`) at the singularity, a velocity clamp (max speed), and a `dt` cap. Each one stops a specific way open-form integration can blow up.
+
+**Fallible boundary returns `Result<_, JsValue>`.** Setup that can fail at the JS/GPU boundary (`Graphics::new`, `Simulation::new`) returns `Result<_, JsValue>` and converts errors with `map_err`; the per-frame hot path is infallible. *(Applied unevenly today — see gaps below.)*
+
+### Known consistency gaps
+
+A few places don't yet follow the pattern they belong to; each is tracked in [BACKLOG.md](../BACKLOG.md):
+
+- **Boundary error handling is uneven.** `Graphics::new` propagates most failures as `Result`, but `panic!`s when no GPU adapter is found and `unwrap()`s `window()`/`document()`. Because the panic hook isn't enabled in release, those abort with no message. The pattern wants a uniform `Result<_, JsValue>`.
+- **The resize pattern is unwired.** `AppState::resize`, `Graphics::resize`, and `Camera::set_aspect_ratio` implement canvas resize, but nothing calls them — there is no `resize` listener, the canvas is fixed at 1024×768, and the camera aspect stays 1.0 while CSS stretches the canvas to the viewport (so the image is distorted off 4:3 and upscaled on large displays). Either wire a `resize` handler or remove the capability.
+- **Not all tunables live in `SimulationParams`.** `dt` and `gm` are in the params uniform, but `max_velocity`, the world `boundary`, the restitution, and the color/brightness constants are hardcoded in the shaders, so the "tunables live in `SimulationParams`" rule holds only partially.
+- **Two logging paths.** `start()` initializes the `log` facade (`console_log::init_with_level`), but all logging uses the custom `console_log!` macro that bypasses `log`, leaving the facade as dead weight.
+
+Patterns galacto would benefit from but does not yet use — **fixed-timestep integration**, an **FFI-free core**, and a **non-`unsafe` global** — are described in [BACKLOG.md](../BACKLOG.md).
+
 ## How a Frame Is Produced
 
 ![Frame loop: update then render](diagrams/frame-loop.png)
