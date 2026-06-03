@@ -105,11 +105,16 @@ impl AppState {
     }
 
     pub fn render(&mut self) -> Result<(), wasm_bindgen::JsValue> {
-        let frame = self
-            .graphics
-            .surface
-            .get_current_texture()
-            .map_err(|e| JsValue::from_str(&format!("Failed to get surface texture: {e:?}")))?;
+        let frame = match self.graphics.surface.get_current_texture() {
+            Ok(frame) => frame,
+            // The surface goes stale on resize or tab switches; reconfigure and
+            // skip this frame rather than erroring.
+            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                self.graphics.reconfigure();
+                return Ok(());
+            }
+            Err(e) => return Err(JsValue::from_str(&format!("surface error: {e:?}"))),
+        };
 
         let view = frame
             .texture
@@ -146,14 +151,7 @@ impl AppState {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.graphics.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
