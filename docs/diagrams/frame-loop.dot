@@ -1,0 +1,74 @@
+digraph FrameLoop {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.5",
+    ranksep="0.7",
+    splines=polyline,
+    outputorder=edgesfirst,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>Frame Loop</B></FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">One requestAnimationFrame: update, then render.</FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.22,0.13",
+    width=3.2,
+    height=0.7,
+    fontname="Avenir",
+    fontsize=17,
+    penwidth=2.4,
+    fontcolor="#14213d",
+    color="#2264c7",
+    fillcolor="#eaf3ff:#ffffff",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=13,
+    fontcolor="#3d4a5c",
+    penwidth=2.2,
+    arrowsize=0.8
+  ];
+
+  START [label=<<B>animation_frame(time)</B><BR/><FONT POINT-SIZE="14">browser invokes the rAF callback</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+
+  // update phase (green)
+  U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply rotate · pan · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  U2 [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", width=2.0, height=1.0, label=<<B>Space<BR/>pressed?</B>>];
+  U3 [label=<<B>Simulation.update(dt)</B><BR/><FONT POINT-SIZE="14">write params buffer · dt capped at 0.033</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+
+  // render phase
+  DEC [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", width=2.0, height=1.0, label=<<B>paused?</B>>];
+  CP [label=<<B>Compute pass</B><BR/><FONT POINT-SIZE="14">dispatch update_particles · 2048 workgroups<BR/>gravity → Euler → clamp → bounce</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  RP [label=<<B>Render pass</B><BR/><FONT POINT-SIZE="14">camera uniform · draw 131,072 points<BR/>vs: project + color · fs: glow · depth test</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+
+  CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="14">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+
+  START -> U1 [label="update(time)"];
+  U1 -> U2;
+  U2 -> U3 [label="toggle pause, then continue"];
+  U3 -> DEC [label="render()"];
+
+  DEC -> CP [label="no — step physics"];
+  DEC -> RP [label="yes — skip compute", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  CP -> RP [label="updated buffer"];
+  RP -> PRES;
+  PRES -> CANVAS [label="draw"];
+
+  PRES -> START [label="schedule next frame", color="#6b7280", fontcolor="#6b7280", style=dashed, constraint=false];
+}
