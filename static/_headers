@@ -1,9 +1,4 @@
-# Always revalidate the WASM module and its JS glue so a redeploy can never pair
-# a cached old galacto.js with a new galacto_bg.wasm (or vice versa) — the two
-# are one versioned unit. index.html names the import, so it revalidates too.
-/index.html
-  Cache-Control: no-cache
-/galacto.js
-  Cache-Control: no-cache
-/galacto_bg.wasm
+# Revalidate every asset on each load so a redeploy can't pair a cached old
+# galacto.js with a fresh galacto_bg.wasm (they are one versioned unit).
+/*
   Cache-Control: no-cache
