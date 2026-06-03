@@ -2,8 +2,8 @@
 // All passes draw a single fullscreen triangle. The scene is rendered to an HDR
 // (rgba16float) target; bloom is computed at reduced resolution and added back.
 
-const THRESHOLD: f32 = 0.5;   // brightness above which a pixel blooms
-const BLOOM_STRENGTH: f32 = 1.2;
+const THRESHOLD: f32 = 0.8;   // brightness above which a pixel blooms
+const BLOOM_STRENGTH: f32 = 0.35;
 const EXPOSURE: f32 = 1.3;
 
 struct VsOut {
