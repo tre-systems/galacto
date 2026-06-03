@@ -53,7 +53,8 @@ digraph FrameLoop {
 
   // render phase
   CP [label=<<B>Compute pass × N</B><BR/><FONT POINT-SIZE="14">per step: update_particles · 2048 workgroups<BR/>gravity → Euler → clamp → bounce</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  RP [label=<<B>Render pass</B><BR/><FONT POINT-SIZE="14">draw 131,072 billboard quads (additive)<BR/>vs: billboard + color · fs: radial glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">131,072 billboard quads (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
 
   CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="14">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
@@ -63,7 +64,8 @@ digraph FrameLoop {
   U2 -> U3 [label="toggle pause, then continue"];
   U3 -> CP [label="render(): run N steps"];
   CP -> RP [label="updated buffer"];
-  RP -> PRES;
+  RP -> BLOOM [label="HDR scene"];
+  BLOOM -> PRES;
   PRES -> CANVAS [label="draw"];
 
   PRES -> START [label="schedule next frame", color="#6b7280", fontcolor="#6b7280", style=dashed, constraint=false];
