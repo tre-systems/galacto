@@ -1,12 +1,5 @@
-# Revalidate assets on each load so a redeploy can't pair a cached old
-# galacto.js with a fresh galacto_bg.wasm (they are one versioned unit).
-# Explicit per-path rules: Cloudflare Pages applies a default max-age to .js
-# that a /* rule does not override, but an exact-path rule does.
-/galacto.js
-  Cache-Control: no-cache
-/galacto_bg.wasm
-  Cache-Control: no-cache
-/index.html
-  Cache-Control: no-cache
+# Assets that honor Cache-Control revalidate on each load (html, wasm, css).
+# galacto.js is cache-busted with a ?v= query in index.html instead: Cloudflare
+# Pages forces a max-age on .js that _headers cannot override.
 /*
   Cache-Control: no-cache
