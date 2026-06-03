@@ -15,10 +15,6 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 `wasm-opt` is disabled (`wasm-opt = false` in `Cargo.toml`'s `[package.metadata.wasm-pack.profile.release]`, plus `--no-opt` on the build command), so the shipped `.wasm` is unoptimized for size. Re-enable `wasm-opt` (or run it as a build step) and confirm it does not miscompile the `wgpu` output, which is the usual reason a wgpu project disables it. Measure the before/after download size.
 
-## P3 — Cache-bust the WASM/glue on deploy
-
-`pkg/galacto.js` and `pkg/galacto_bg.wasm` ship under stable filenames with no `Cache-Control` headers, so a browser can hold one of the pair from a previous deploy while fetching the other fresh — a glue/wasm version skew. Observed live during a redeploy: a cached older `galacto.js` against the new wasm threw `LinkError: … __wbg_devicePixelRatio … requires a callable`, clearing only on a full refetch. Fix by content-hashing the output filenames (and updating the `index.html` import), injecting a git-SHA `?v=` query like evo, or adding a `_headers` file with `Cache-Control: no-cache` on `*.js`/`*.wasm` so the pair always revalidates together.
-
 ## P3 — Drop `unsafe` from global state
 
 `src/lib.rs` holds the app in `static mut APP_STATE` and reaches it through `unsafe` (`&raw const APP_STATE`), from both the `requestAnimationFrame` loop and the `resize` handler. It is sound because WASM here is single-threaded, but a `thread_local! { static APP_STATE: RefCell<Option<Rc<RefCell<AppState>>>> }` (or a `OnceCell`) removes the `unsafe` entirely with no behaviour change. This is the "safe-global" pattern.
@@ -26,10 +22,6 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 ## P3 — Dependency freshness
 
 `wgpu` is pinned at 24 and `rand` at 0.8. Bumping `wgpu` (→ 25+) is mechanical churn in `graphics.rs`/`simulation.rs` (instance/adapter/device descriptor changes, surface-texture and render-pass field renames — the same shape evo's backlog scouts for its own bump). `rand` 0.8 → 0.9 touches `gen_range`. Low urgency: the current versions build clean and the toolchain is stable, not pinned. Note: a transitive `block v0.1.6` future-incompat warning comes from `wgpu`'s macOS Metal backend and only affects native builds, not the WASM deploy — it clears when `wgpu` is bumped.
-
-## P3 — Adopt a fixed-timestep integration
-
-Physics advances by the real frame delta (`dt`, capped at 0.033) fed straight into the Euler step, so trajectories depend on refresh rate — a 144 Hz and a 60 Hz display evolve the same seed differently. Adopt a **fixed-timestep accumulator**: accumulate real time and run a whole number of fixed-`dt` compute dispatches per frame, restoring frame-rate-independent, deterministic motion. Because galacto steps on the GPU every frame, it does not need the render-side interpolation a fixed-tick CPU sim (like evo) uses — unless sub-stepping makes motion look visibly discrete.
 
 ## P3 — Adopt an FFI-free core
 

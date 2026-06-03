@@ -49,11 +49,10 @@ digraph FrameLoop {
   // update phase (green)
   U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply rotate · pan · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
   U2 [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", width=2.0, height=1.0, label=<<B>Space<BR/>pressed?</B>>];
-  U3 [label=<<B>Simulation.update(dt)</B><BR/><FONT POINT-SIZE="14">write params buffer · dt capped at 0.033</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase
-  DEC [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", width=2.0, height=1.0, label=<<B>paused?</B>>];
-  CP [label=<<B>Compute pass</B><BR/><FONT POINT-SIZE="14">dispatch update_particles · 2048 workgroups<BR/>gravity → Euler → clamp → bounce</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  CP [label=<<B>Compute pass × N</B><BR/><FONT POINT-SIZE="14">per step: update_particles · 2048 workgroups<BR/>gravity → Euler → clamp → bounce</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
   RP [label=<<B>Render pass</B><BR/><FONT POINT-SIZE="14">camera uniform · draw 131,072 points<BR/>vs: project + color · fs: glow · depth test</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
 
@@ -62,10 +61,7 @@ digraph FrameLoop {
   START -> U1 [label="update(time)"];
   U1 -> U2;
   U2 -> U3 [label="toggle pause, then continue"];
-  U3 -> DEC [label="render()"];
-
-  DEC -> CP [label="no — step physics"];
-  DEC -> RP [label="yes — skip compute", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  U3 -> CP [label="render(): run N steps"];
   CP -> RP [label="updated buffer"];
   RP -> PRES;
   PRES -> CANVAS [label="draw"];

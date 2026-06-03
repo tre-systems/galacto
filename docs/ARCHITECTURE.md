@@ -51,7 +51,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. Two trailing `u32` pads keep `SimulationParams` 16-byte aligned (32 bytes) for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
-**Upload-once vs upload-per-frame.** Large data that is static after init (the particle buffer) is uploaded once at creation. Small, frequently-changing data (the params and camera uniforms) is pushed every frame with `queue.write_buffer` into `UNIFORM | COPY_DST` buffers.
+**Upload-once vs upload-per-frame.** Data that is static after init — the particle buffer and the `SimulationParams` uniform (entirely constants now that `dt` is fixed) — is uploaded once at creation. Only the camera matrix changes per frame, pushed with `queue.write_buffer` into its `UNIFORM | COPY_DST` buffer.
 
 **Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
 
@@ -69,13 +69,15 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Single attractor, not N-body.** Particles are attracted only to a fixed mass at the origin — `O(N)` per step — never to each other (`O(N²)`). There is no particle–particle interaction; the disk is an emergent property of many bodies sharing one central field.
 
-**Integrator guard-rails.** The explicit Euler step is kept stable by three guards: a softening epsilon (`r² + 1e-6`) at the singularity, a velocity clamp (max speed), and a `dt` cap. Each one stops a specific way open-form integration can blow up.
+**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time to an accumulator and runs as many fixed compute dispatches as have accumulated — clamped to `MAX_SUBSTEPS`, with a `MAX_FRAME_DT` clamp on the frame delta so a long stall can't spiral. Step size is independent of frame rate, so the same seed evolves identically on a 60 Hz and a 144 Hz display.
+
+**Integrator guard-rails.** The explicit Euler step is kept stable by a softening epsilon (`r² + 1e-6`) at the singularity, a velocity clamp (`max_velocity`), and the fixed timestep itself (a bounded `dt`, never the raw frame delta). Each one stops a specific way open-form integration can blow up.
 
 **Fallible boundary returns `Result<_, JsValue>`.** Setup that can fail at the JS/GPU boundary (`Graphics::new`, `Simulation::new`, `run`) returns `Result<_, JsValue>` and converts errors with `map_err` / `ok_or_else` — down to the GPU-adapter request and the `window`/`document`/canvas lookups; the per-frame hot path is infallible.
 
 ### Patterns not yet adopted
 
-galacto would also benefit from a few patterns it does not yet use — **fixed-timestep integration** (physics currently advances by the raw frame delta, so motion is frame-rate dependent), an **FFI-free core** (`JsValue` still leaks into `graphics.rs` / `simulation.rs`), and a **non-`unsafe` global** for the app handle (`static mut APP_STATE`). Each is described in [BACKLOG.md](../BACKLOG.md).
+galacto would also benefit from two patterns it does not yet use — an **FFI-free core** (`JsValue` still leaks into `graphics.rs` / `simulation.rs`) and a **non-`unsafe` global** for the app handle (`static mut APP_STATE`). Both are described in [BACKLOG.md](../BACKLOG.md).
 
 ## How a Frame Is Produced
 
@@ -83,9 +85,9 @@ galacto would also benefit from a few patterns it does not yet use — **fixed-t
 
 A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) does two things on the shared `AppState`:
 
-1. **`update(time)`** — compute `dt` from the frame timestamp, let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, and (if not paused) push the current `dt` into the params buffer (`Simulation::update`, which caps `dt` at 0.033 s for stability).
+1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
-   - if not paused, run the **compute pass**: dispatch `update_particles` over `ceil(131072 / 64) = 2048` workgroups, advancing every particle in place;
+   - run the **compute pass** once per scheduled step (each its own pass, so step N+1 reads step N's writes): dispatch `update_particles` over `ceil(131072 / 64) = 2048` workgroups, advancing every particle in place;
    - run the **render pass**: write the camera's view-projection matrix into the camera uniform, then issue one `draw(0..131072)` of point primitives with depth testing against a `Depth32Float` buffer;
    - submit and `present()`.
 

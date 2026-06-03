@@ -20,6 +20,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 
+/// Cap on simulation substeps run in a single frame, so a long stall (e.g. a
+/// backgrounded tab) can't request a huge catch-up burst.
+const MAX_SUBSTEPS: u32 = 8;
+
+/// Clamp for a single frame's elapsed time before it feeds the accumulator.
+const MAX_FRAME_DT: f32 = 0.25;
+
 // Global application state
 pub struct AppState {
     graphics: Graphics,
@@ -28,6 +35,8 @@ pub struct AppState {
     input_handler: InputHandler,
     paused: bool,
     last_time: f32,
+    accumulator: f32,
+    steps_this_frame: u32,
 }
 
 impl AppState {
@@ -48,22 +57,22 @@ impl AppState {
             input_handler,
             paused: false,
             last_time: 0.0,
+            accumulator: 0.0,
+            steps_this_frame: 0,
         })
     }
 
     pub fn update(&mut self, current_time: f32) {
-        // requestAnimationFrame provides time in milliseconds
-        let dt = if self.last_time > 0.0 {
-            (current_time - self.last_time) / 1000.0 // Convert to seconds
+        // requestAnimationFrame provides time in milliseconds.
+        let frame_dt = if self.last_time > 0.0 {
+            (current_time - self.last_time) / 1000.0
         } else {
-            0.016 // Default to ~60fps for first frame
+            simulation::FIXED_DT
         };
         self.last_time = current_time;
 
-        // Update camera based on input
         self.input_handler.update_camera(&mut self.camera);
 
-        // Check for pause toggle first
         if self.input_handler.pause_toggled() {
             self.paused = !self.paused;
             console_log!(
@@ -72,10 +81,23 @@ impl AppState {
             );
         }
 
-        // Update simulation if not paused
-        if !self.paused {
-            self.simulation.update(&self.graphics.queue, dt);
+        // Fixed-timestep accumulator: advance the sim in whole FIXED_DT steps so
+        // physics is independent of the display's frame rate. render() consumes
+        // the step count scheduled here.
+        if self.paused {
+            self.steps_this_frame = 0;
+            self.accumulator = 0.0;
+            return;
         }
+        self.accumulator += frame_dt.clamp(0.0, MAX_FRAME_DT);
+        let mut steps = (self.accumulator / simulation::FIXED_DT) as u32;
+        if steps > MAX_SUBSTEPS {
+            steps = MAX_SUBSTEPS;
+            self.accumulator = 0.0;
+        } else {
+            self.accumulator -= steps as f32 * simulation::FIXED_DT;
+        }
+        self.steps_this_frame = steps;
     }
 
     pub fn render(&mut self) -> Result<(), wasm_bindgen::JsValue> {
@@ -96,8 +118,10 @@ impl AppState {
                     label: Some("Render Encoder"),
                 });
 
-        // Run compute pass if not paused
-        if !self.paused {
+        // Advance the simulation by the fixed substeps scheduled this frame.
+        // Each step is its own compute pass so the GPU orders step N+1's reads
+        // after step N's writes.
+        for _ in 0..self.steps_this_frame {
             self.simulation.compute_pass(&mut encoder);
         }
 
