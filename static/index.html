@@ -60,7 +60,7 @@
 
         try {
           await checkWebGPUSupport();
-          const { default: init } = await import("./galacto.js");
+          const { default: init } = await import("./galacto.js?v=__CACHE_BUST__");
           await init();
           loadingEl.style.display = "none";
         } catch (error) {

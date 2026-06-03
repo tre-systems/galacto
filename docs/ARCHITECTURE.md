@@ -148,7 +148,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 
 ## Build & Deploy
 
-- `npm run build` → `wasm-pack build --target web --release --out-name galacto --no-opt`, then `cp -r static/* pkg/`. Output is `pkg/` (git-ignored, regenerated).
+- `npm run build` → `wasm-pack build --target web --release --out-name galacto --no-opt`, then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs`, which stamps the `galacto.js` import in `index.html` with `?v=<git-sha>` so a new deploy always loads fresh glue. Output is `pkg/` (git-ignored, regenerated).
 - `npm run dev` → build, then `serve pkg -l 8000`. Open in a WebGPU-capable browser.
 - `npm run deploy` → build, then `wrangler pages deploy pkg --project-name=galacto`.
 - CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR and deploys `pkg/` to Cloudflare Pages on push to `main`. The Pages project name lives only in the deploy command; there is no `wrangler.toml`.
@@ -157,6 +157,6 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 
 - **No server or persistence.** Everything runs client-side; there is no backend or save state.
 - **No CPU physics.** All per-particle work is on the GPU; the CPU only sets `dt`, the camera, and pause state. The particle buffer is never read back.
-- **No threads.** The WASM is single-threaded — no `rayon`, no `SharedArrayBuffer`. It therefore needs **no** cross-origin-isolation (COOP/COEP) headers; the site ships without a `_headers` file.
+- **No threads.** The WASM is single-threaded — no `rayon`, no `SharedArrayBuffer`. It therefore needs **no** cross-origin-isolation (COOP/COEP) headers; the `_headers` file only sets `Cache-Control: no-cache` so the wasm and HTML revalidate (the JS glue is cache-busted via `?v=` instead).
 - **No N-body gravity.** Particles are attracted only to one fixed central mass (O(N) per step), not to each other (which would be O(N²)). There is no particle–particle interaction.
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it up front and shows a "WebGPU not supported" message rather than degrading.
