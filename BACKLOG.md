@@ -15,6 +15,10 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 `wasm-opt` is disabled (`wasm-opt = false` in `Cargo.toml`'s `[package.metadata.wasm-pack.profile.release]`, plus `--no-opt` on the build command), so the shipped `.wasm` is unoptimized for size. Re-enable `wasm-opt` (or run it as a build step) and confirm it does not miscompile the `wgpu` output, which is the usual reason a wgpu project disables it. Measure the before/after download size.
 
+## P3 — Cache-bust the WASM/glue on deploy
+
+`pkg/galacto.js` and `pkg/galacto_bg.wasm` ship under stable filenames with no `Cache-Control` headers, so a browser can hold one of the pair from a previous deploy while fetching the other fresh — a glue/wasm version skew. Observed live during a redeploy: a cached older `galacto.js` against the new wasm threw `LinkError: … __wbg_devicePixelRatio … requires a callable`, clearing only on a full refetch. Fix by content-hashing the output filenames (and updating the `index.html` import), injecting a git-SHA `?v=` query like evo, or adding a `_headers` file with `Cache-Control: no-cache` on `*.js`/`*.wasm` so the pair always revalidates together.
+
 ## P3 — Drop `unsafe` from global state
 
 `src/lib.rs` holds the app in `static mut APP_STATE` and reaches it through `unsafe` (`&raw const APP_STATE`), from both the `requestAnimationFrame` loop and the `resize` handler. It is sound because WASM here is single-threaded, but a `thread_local! { static APP_STATE: RefCell<Option<Rc<RefCell<AppState>>>> }` (or a `OnceCell`) removes the `unsafe` entirely with no behaviour change. This is the "safe-global" pattern.
