@@ -67,6 +67,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Additive blending sums these into the framebuffer; keep per-particle
     // brightness modest so dense regions accumulate into a bright core.
-    let rgb = in.color * intensity * 0.6;
+    let rgb = in.color * intensity * 0.3;
     return vec4<f32>(rgb, intensity);
 }
