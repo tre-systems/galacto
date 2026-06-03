@@ -6,9 +6,13 @@ struct Particle {
 
 struct Params {
     dt: f32,
-    gm: f32,        // Gravitational parameter (G * central_mass)
+    gm: f32,            // Gravitational parameter (G * central_mass)
+    max_velocity: f32,  // Speed clamp for integrator stability
+    boundary: f32,      // World half-extent
+    restitution: f32,   // Boundary bounce energy retention
     particle_count: u32,
-    _padding: u32,
+    _pad0: u32,
+    _pad1: u32,
 }
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -38,27 +42,25 @@ fn update_particles(@builtin(global_invocation_id) gid: vec3<u32>) {
     particle.velocity = particle.velocity * drag + acceleration * params.dt;
     
     // Clamp velocity to maximum speed
-    let max_velocity = 140.0;
     let current_speed = length(particle.velocity);
-    if current_speed > max_velocity {
-        particle.velocity = normalize(particle.velocity) * max_velocity;
+    if current_speed > params.max_velocity {
+        particle.velocity = normalize(particle.velocity) * params.max_velocity;
     }
 
     particle.position = particle.position + particle.velocity * params.dt;
     
     // Boundary conditions - bounce off edges in 3D
-    let boundary = 600.0;
-    if abs(particle.position.x) > boundary {
-        particle.position.x = sign(particle.position.x) * boundary;
-        particle.velocity.x = -particle.velocity.x * 0.1;
+    if abs(particle.position.x) > params.boundary {
+        particle.position.x = sign(particle.position.x) * params.boundary;
+        particle.velocity.x = -particle.velocity.x * params.restitution;
     }
-    if abs(particle.position.y) > boundary {
-        particle.position.y = sign(particle.position.y) * boundary;
-        particle.velocity.y = -particle.velocity.y * 0.1;
+    if abs(particle.position.y) > params.boundary {
+        particle.position.y = sign(particle.position.y) * params.boundary;
+        particle.velocity.y = -particle.velocity.y * params.restitution;
     }
-    if abs(particle.position.z) > boundary {
-        particle.position.z = sign(particle.position.z) * boundary;
-        particle.velocity.z = -particle.velocity.z * 0.1;
+    if abs(particle.position.z) > params.boundary {
+        particle.position.z = sign(particle.position.z) * params.boundary;
+        particle.velocity.z = -particle.velocity.z * params.restitution;
     }
 
     particles[index] = particle;
