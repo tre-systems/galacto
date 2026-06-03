@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Robert Gilks <rob.gilks@gmail.com>"]
 description = "A GPU-accelerated black hole accretion disk simulation in Rust with WebGPU"
 license = "MIT"
-repository = "https://github.com/rgilks/galacto"
+repository = "https://github.com/tre-systems/galacto"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

@@ -44,7 +44,7 @@ A GPU-accelerated black-hole accretion-disk simulation: ~131,000 particles orbit
 ### Installation
 
 ```bash
-git clone https://github.com/rgilks/galacto.git
+git clone https://github.com/tre-systems/galacto.git
 cd galacto
 npm run setup   # installs deps and adds the wasm32 target
 npm run dev     # builds, then serves on http://localhost:8000
