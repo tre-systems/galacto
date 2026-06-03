@@ -49,7 +49,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer.
 
-**POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. A `_padding: u32` keeps `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
+**POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. Two trailing `u32` pads keep `SimulationParams` 16-byte aligned (32 bytes) for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
 **Upload-once vs upload-per-frame.** Large data that is static after init (the particle buffer) is uploaded once at creation. Small, frequently-changing data (the params and camera uniforms) is pushed every frame with `queue.write_buffer` into `UNIFORM | COPY_DST` buffers.
 
@@ -61,6 +61,8 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Retained closures keep listeners alive.** Each `add_event_listener` closure is pushed into the handler's `_closures` vector so it is not dropped at the end of setup — dropping it would silently unregister the listener.
 
+**Display-synced canvas sizing.** A `resize` listener keeps the drawing buffer at the displayed size × `devicePixelRatio` and reconfigures the surface, depth texture, and camera aspect together (`AppState::resize`), so the view fills the window without stretching.
+
 **Compile-time-embedded shaders.** WGSL is brought in with `include_str!`, so shaders are compiled into the WASM; there is no runtime fetch or separate asset to deploy.
 
 **Deterministic seeded initialization.** All initial particle state is generated from a fixed RNG seed (`StdRng::seed_from_u64(42)`), so every page load produces an identical starting configuration.
@@ -69,18 +71,11 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Integrator guard-rails.** The explicit Euler step is kept stable by three guards: a softening epsilon (`r² + 1e-6`) at the singularity, a velocity clamp (max speed), and a `dt` cap. Each one stops a specific way open-form integration can blow up.
 
-**Fallible boundary returns `Result<_, JsValue>`.** Setup that can fail at the JS/GPU boundary (`Graphics::new`, `Simulation::new`) returns `Result<_, JsValue>` and converts errors with `map_err`; the per-frame hot path is infallible. *(Applied unevenly today — see gaps below.)*
+**Fallible boundary returns `Result<_, JsValue>`.** Setup that can fail at the JS/GPU boundary (`Graphics::new`, `Simulation::new`, `run`) returns `Result<_, JsValue>` and converts errors with `map_err` / `ok_or_else` — down to the GPU-adapter request and the `window`/`document`/canvas lookups; the per-frame hot path is infallible.
 
-### Known consistency gaps
+### Patterns not yet adopted
 
-A few places don't yet follow the pattern they belong to; each is tracked in [BACKLOG.md](../BACKLOG.md):
-
-- **Boundary error handling is uneven.** `Graphics::new` propagates most failures as `Result`, but `panic!`s when no GPU adapter is found and `unwrap()`s `window()`/`document()`. Because the panic hook isn't enabled in release, those abort with no message. The pattern wants a uniform `Result<_, JsValue>`.
-- **The resize pattern is unwired.** `AppState::resize`, `Graphics::resize`, and `Camera::set_aspect_ratio` implement canvas resize, but nothing calls them — there is no `resize` listener, the canvas is fixed at 1024×768, and the camera aspect stays 1.0 while CSS stretches the canvas to the viewport (so the image is distorted off 4:3 and upscaled on large displays). Either wire a `resize` handler or remove the capability.
-- **Not all tunables live in `SimulationParams`.** `dt` and `gm` are in the params uniform, but `max_velocity`, the world `boundary`, the restitution, and the color/brightness constants are hardcoded in the shaders, so the "tunables live in `SimulationParams`" rule holds only partially.
-- **Two logging paths.** `start()` initializes the `log` facade (`console_log::init_with_level`), but all logging uses the custom `console_log!` macro that bypasses `log`, leaving the facade as dead weight.
-
-Patterns galacto would benefit from but does not yet use — **fixed-timestep integration**, an **FFI-free core**, and a **non-`unsafe` global** — are described in [BACKLOG.md](../BACKLOG.md).
+galacto would also benefit from a few patterns it does not yet use — **fixed-timestep integration** (physics currently advances by the raw frame delta, so motion is frame-rate dependent), an **FFI-free core** (`JsValue` still leaks into `graphics.rs` / `simulation.rs`), and a **non-`unsafe` global** for the app handle (`static mut APP_STATE`). Each is described in [BACKLOG.md](../BACKLOG.md).
 
 ## How a Frame Is Produced
 
@@ -103,7 +98,7 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 | Resource          | Contents                                          | Usage                                  |
 | ----------------- | ------------------------------------------------- | -------------------------------------- |
 | Particle buffer   | `131072 × Particle` (`position[3]`, `velocity[3]` — 24 B each, ~3.1 MB) | `STORAGE \| VERTEX \| COPY_DST` |
-| Params buffer     | `SimulationParams { dt, gm, particle_count, _padding }` | `UNIFORM \| COPY_DST`            |
+| Params buffer     | `SimulationParams { dt, gm, max_velocity, boundary, restitution, particle_count, _pad×2 }` | `UNIFORM \| COPY_DST` |
 | Camera buffer     | 4×4 view-projection matrix (64 B)                 | `UNIFORM \| COPY_DST`                  |
 
 - **Compute bind group** (`@compute` visibility): binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`.
@@ -113,11 +108,11 @@ The particle buffer is bound as both a compute storage target and a vertex-stage
 
 ## Simulation & Physics
 
-All physics is in `src/shaders/update.wgsl`. Per particle, per step:
+All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` uniform (`dt`, `gm`, `max_velocity`, `boundary`, `restitution`). Per particle, per step:
 
 - **Gravity to a fixed center.** `r² = dot(pos, pos) + 1e-6` (epsilon avoids divide-by-zero at the singularity), then acceleration `a = -gm · pos / r³` toward the origin. `gm` (the gravitational parameter `G·M`) is `40000.0`.
-- **Euler integration.** `velocity += a · dt`; speed is clamped to a maximum of `140` to keep fast particles from escaping the integrator; then `position += velocity · dt`.
-- **Inelastic boundary.** At `|x|`, `|y|`, or `|z|` past `600`, the position is clamped to the wall and that velocity component is reflected and damped to `−0.1×` (≈90 % energy loss). This is a *bounce*, not an elastic collision — it bleeds energy so particles settle rather than ricochet forever.
+- **Euler integration.** `velocity += a · dt`; speed is clamped to `max_velocity` (140) to keep fast particles from escaping the integrator; then `position += velocity · dt`.
+- **Inelastic boundary.** At `|x|`, `|y|`, or `|z|` past `boundary` (600), the position is clamped to the wall and that velocity component is reflected and scaled by `restitution` (0.1, ≈90 % energy loss). This is a *bounce*, not an elastic collision — it bleeds energy so particles settle rather than ricochet forever.
 
 Initial conditions (`Simulation::generate_initial_particles`, seeded `StdRng(42)` → reproducible):
 
@@ -136,6 +131,8 @@ The pipeline uses `PointList` topology, `ALPHA_BLENDING`, and depth testing (`De
 ## Camera & Input
 
 `Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 5000). It starts rotated 90° horizontally and zoomed in (`scale = 3.0`); `rotation_x` is clamped to ±1.5 rad and `scale` to 0.3–5.0.
+
+A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface, recreate the depth texture, and update the camera aspect — so the view fills the window at native resolution without stretching.
 
 `InputHandler` (`src/input.rs`) registers DOM listeners and translates them into camera intent, polled once per frame:
 

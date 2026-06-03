@@ -18,9 +18,13 @@ pub struct Particle {
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct SimulationParams {
     pub dt: f32,
-    pub gm: f32, // Gravitational parameter (G * central_mass)
+    pub gm: f32,           // Gravitational parameter (G * central_mass)
+    pub max_velocity: f32, // Speed clamp for integrator stability
+    pub boundary: f32,     // World half-extent; particles bounce here
+    pub restitution: f32,  // Boundary bounce energy retention (inelastic)
     pub particle_count: u32,
-    pub _padding: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
 }
 
 pub struct Simulation {
@@ -57,10 +61,14 @@ impl Simulation {
 
         // Create simulation parameters
         let params = SimulationParams {
-            dt: 0.016,   // ~60fps
-            gm: 40000.0, // Reduced gravitational parameter for more stable orbits
+            dt: 0.016,           // ~60fps
+            gm: 40000.0,         // Gravitational parameter (G * central_mass)
+            max_velocity: 140.0, // Speed clamp for integrator stability
+            boundary: 600.0,     // World half-extent; particles bounce here
+            restitution: 0.1,    // Boundary bounce energy retention (inelastic)
             particle_count: NUM_PARTICLES,
-            _padding: 0,
+            _pad0: 0,
+            _pad1: 0,
         };
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

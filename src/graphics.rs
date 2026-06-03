@@ -45,7 +45,7 @@ impl Graphics {
                 force_fallback_adapter: false,
             })
             .await
-            .unwrap_or_else(|| panic!("Failed to find an appropriate adapter"));
+            .ok_or_else(|| JsValue::from_str("Failed to find an appropriate WebGPU adapter"))?;
 
         console_log!("Adapter: {:?}", adapter.get_info());
 
@@ -58,7 +58,7 @@ impl Graphics {
             .map_err(|e| JsValue::from_str(&format!("Failed to create device: {e:?}")))?;
 
         // Configure the surface
-        let size = (1024, 768);
+        let size = (canvas.width().max(1), canvas.height().max(1));
         let surface_caps = surface.get_capabilities(&adapter);
 
         let surface_format = surface_caps

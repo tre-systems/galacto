@@ -37,7 +37,8 @@ impl AppState {
         let graphics = Graphics::new(canvas).await?;
         let simulation =
             Simulation::new(&graphics.device, &graphics.queue, graphics.config.format)?;
-        let camera = Camera::new();
+        let mut camera = Camera::new();
+        camera.set_aspect_ratio(graphics.size.0 as f32 / graphics.size.1 as f32);
         let input_handler = InputHandler::new()?;
 
         Ok(Self {
@@ -156,10 +157,6 @@ static mut APP_STATE: Option<Rc<RefCell<AppState>>> = None;
 pub fn start() -> Result<(), JsValue> {
     set_panic_hook();
 
-    // Initialize logging
-    #[cfg(target_arch = "wasm32")]
-    console_log::init_with_level(log::Level::Info).unwrap();
-
     console_log!("Starting Black Hole Simulation...");
 
     spawn_local(async {
@@ -171,22 +168,45 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Physical (device-pixel) size to render the canvas at, derived from its CSS
+/// layout size and the device pixel ratio. Falls back to 1024x768 before layout.
+fn canvas_physical_size(
+    window: &web_sys::Window,
+    canvas: &web_sys::HtmlCanvasElement,
+) -> (u32, u32) {
+    let dpr = window.device_pixel_ratio().max(1.0);
+    let css_w = canvas.client_width();
+    let css_h = canvas.client_height();
+    let w = if css_w > 0 {
+        (css_w as f64 * dpr).round() as u32
+    } else {
+        1024
+    };
+    let h = if css_h > 0 {
+        (css_h as f64 * dpr).round() as u32
+    } else {
+        768
+    };
+    (w.max(1), h.max(1))
+}
+
 async fn run() -> Result<(), JsValue> {
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window object"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| JsValue::from_str("no document object"))?;
 
     let canvas = document
         .get_element_by_id("gpu-canvas")
-        .unwrap()
+        .ok_or_else(|| JsValue::from_str("canvas element #gpu-canvas not found"))?
         .dyn_into::<web_sys::HtmlCanvasElement>()?;
 
-    // Set canvas size
-    let width = 1024u32;
-    let height = 768u32;
-    canvas.set_width(width);
-    canvas.set_height(height);
+    // Fill the viewport; size the drawing buffer to the displayed size in device pixels.
     canvas.style().set_property("width", "100vw")?;
     canvas.style().set_property("height", "100vh")?;
+    let (width, height) = canvas_physical_size(&window, &canvas);
+    canvas.set_width(width);
+    canvas.set_height(height);
 
     // Initialize application state
     let app_state = AppState::new(canvas.clone()).await?;
@@ -197,12 +217,30 @@ async fn run() -> Result<(), JsValue> {
         let mut app_state_borrow = app_state_rc.borrow_mut();
         app_state_borrow
             .input_handler
-            .setup_event_listeners(canvas)?;
+            .setup_event_listeners(canvas.clone())?;
     }
 
     // Store global state for animation loop
     unsafe {
         APP_STATE = Some(app_state_rc.clone());
+    }
+
+    // Keep the drawing buffer matched to the displayed size on window resize.
+    {
+        let resize_canvas = canvas;
+        let resize_window = window.clone();
+        let closure = Closure::wrap(Box::new(move |_event: web_sys::Event| {
+            let (w, h) = canvas_physical_size(&resize_window, &resize_canvas);
+            resize_canvas.set_width(w);
+            resize_canvas.set_height(h);
+            unsafe {
+                if let Some(Some(app_state)) = (&raw const APP_STATE).as_ref() {
+                    app_state.borrow_mut().resize(w, h);
+                }
+            }
+        }) as Box<dyn FnMut(web_sys::Event)>);
+        window.add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())?;
+        closure.forget();
     }
 
     // Start the render loop
