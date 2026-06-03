@@ -11,6 +11,10 @@ const WORKGROUP_SIZE: u32 = 64;
 /// size regardless of display refresh rate; see the accumulator in `lib.rs`.
 pub const FIXED_DT: f32 = 1.0 / 60.0;
 
+/// Billboard half-extent for each particle, in NDC.y (screen-constant, so it is
+/// independent of zoom and depth). Tuned for a soft, overlapping additive glow.
+const PARTICLE_SIZE: f32 = 0.016;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Particle {
@@ -78,7 +82,7 @@ impl Simulation {
         // Create camera buffer
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
-            size: 64, // 4x4 matrix = 16 * 4 bytes
+            size: 80, // mat4 (64) + vec4 params (size, aspect, pad, pad)
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -190,14 +194,27 @@ impl Simulation {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    // Additive: overlapping glowing particles accumulate brightness
+                    // (order-independent, correct for points on black).
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             cache: None,
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
@@ -205,13 +222,9 @@ impl Simulation {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
+            // No depth buffer: additive glow is order-independent and there is no
+            // opaque geometry to occlude against.
+            depth_stencil: None,
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -336,12 +349,18 @@ impl Simulation {
     pub fn render_pass<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.render_bind_group, &[]);
-        render_pass.draw(0..NUM_PARTICLES, 0..1);
+        // One triangle-strip quad (4 verts) per particle, instanced.
+        render_pass.draw(0..4, 0..NUM_PARTICLES);
     }
 
     pub fn update_camera(&self, queue: &wgpu::Queue, camera: &crate::camera::Camera) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_array));
+        // mat4 (16 floats) followed by vec4 params: billboard size + aspect ratio.
+        let mut data = [0f32; 20];
+        data[..16].copy_from_slice(matrix_array);
+        data[16] = PARTICLE_SIZE;
+        data[17] = camera.aspect_ratio;
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

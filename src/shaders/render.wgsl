@@ -1,4 +1,6 @@
-// Vertex and fragment shaders for rendering particles as points
+// Render each particle as a camera-facing billboard quad with a soft radial
+// glow. The quads are drawn instanced (4 verts × N particles) and blended
+// additively, so overlapping particles accumulate brightness.
 
 struct Particle {
     position: vec3<f32>,
@@ -7,51 +9,64 @@ struct Particle {
 
 struct Camera {
     transform: mat4x4<f32>,
+    size: f32,    // billboard half-extent in NDC.y (screen-constant)
+    aspect: f32,  // viewport width / height (keeps quads square)
+    _pad0: f32,
+    _pad1: f32,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec3<f32>,
-    @location(1) velocity_magnitude: f32,
+    @location(1) offset: vec2<f32>, // quad corner in [-1, 1], for the radial falloff
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var<storage, read> particles: array<Particle>;
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    let particle = particles[vertex_index];
-
-    let world_position = vec4<f32>(particle.position, 1.0);
-    let clip_position = camera.transform * world_position;
-
-    let velocity_magnitude = length(particle.velocity);
-    let normalized_speed = min(velocity_magnitude / 200.0, 1.0);
-    
-    // Color: blue (slow) -> red (fast)
-    let color = vec3<f32>(
-        normalized_speed * 2.0,
-        0.1,
-        1.0 - normalized_speed
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    // Triangle-strip quad corners.
+    var corners = array<vec2<f32>, 4>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, 1.0),
     );
+    let corner = corners[vertex_index];
+
+    let particle = particles[instance_index];
+    var clip = camera.transform * vec4<f32>(particle.position, 1.0);
+
+    // Offset in clip space so the billboard is a constant size on screen
+    // regardless of depth; divide x by aspect to keep it square.
+    clip.x += corner.x * camera.size * clip.w / camera.aspect;
+    clip.y += corner.y * camera.size * clip.w;
+
+    // Color by speed: blue (slow) -> warm orange (fast).
+    let speed = length(particle.velocity);
+    let t = min(speed / 150.0, 1.0);
+    let color = vec3<f32>(0.30 + t * 0.95, 0.35 + t * 0.20, 1.0 - t * 0.70);
 
     var out: VertexOutput;
-    out.clip_position = clip_position;
+    out.clip_position = clip;
     out.color = color;
-    out.velocity_magnitude = velocity_magnitude;
+    out.offset = corner;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let normalized_speed = min(in.velocity_magnitude / 200.0, 1.0);
-    
-    // Brightness increases with speed
-    let brightness = 3.0 + normalized_speed * 8.0;
-    let final_color = in.color * brightness;
-    
-    // Add velocity-dependent glow
-    let glow = vec3<f32>(0.3, 0.3, 0.3) + normalized_speed * vec3<f32>(1.5, 0.0, 0.0);
+    // Soft round falloff from the quad center.
+    let d = length(in.offset);
+    let glow = max(0.0, 1.0 - d);
+    let intensity = glow * glow;
 
-    return vec4<f32>(final_color + glow, 0.9);
+    // Additive blending sums these into the framebuffer; keep per-particle
+    // brightness modest so dense regions accumulate into a bright core.
+    let rgb = in.color * intensity * 0.6;
+    return vec4<f32>(rgb, intensity);
 }
