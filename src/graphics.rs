@@ -22,21 +22,7 @@ impl Graphics {
             backend_options: wgpu::BackendOptions::default(),
         });
 
-        let canvas_handle = unsafe {
-            raw_window_handle::WebCanvasWindowHandle::new(std::ptr::NonNull::new_unchecked(
-                &canvas as *const _ as *mut std::ffi::c_void,
-            ))
-        };
-        let surface = unsafe {
-            instance
-                .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                    raw_display_handle: raw_window_handle::RawDisplayHandle::Web(
-                        raw_window_handle::WebDisplayHandle::new(),
-                    ),
-                    raw_window_handle: raw_window_handle::RawWindowHandle::WebCanvas(canvas_handle),
-                })
-                .map_err(|e| AppError::Graphics(format!("create surface: {e:?}")))?
-        };
+        let surface = create_canvas_surface(&instance, &canvas)?;
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -141,4 +127,25 @@ impl Graphics {
                 .create_view(&wgpu::TextureViewDescriptor::default());
         }
     }
+}
+
+/// Create a WebGPU surface from the page canvas. wgpu's safe `SurfaceTarget::Canvas`
+/// exists only on the web target; the native stub lets the crate type-check for
+/// `cargo clippy`/`test` on the host (it is never reached — galacto only runs in a browser).
+#[cfg(target_arch = "wasm32")]
+fn create_canvas_surface(
+    instance: &wgpu::Instance,
+    canvas: &web_sys::HtmlCanvasElement,
+) -> Result<wgpu::Surface<'static>, AppError> {
+    instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+        .map_err(|e| AppError::Graphics(format!("create surface: {e:?}")))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn create_canvas_surface(
+    _instance: &wgpu::Instance,
+    _canvas: &web_sys::HtmlCanvasElement,
+) -> Result<wgpu::Surface<'static>, AppError> {
+    Err(AppError::Graphics("canvas surface is web-only".into()))
 }

@@ -5,7 +5,7 @@
   "scripts": {
     "setup": "npm install && rustup target add wasm32-unknown-unknown",
     "build": "npm run build:wasm && npm run copy-assets",
-    "build:wasm": "wasm-pack build --target web --release --out-dir pkg --out-name galacto --no-opt",
+    "build:wasm": "wasm-pack build --target web --release --out-dir pkg --out-name galacto",
     "copy-assets": "cp -r static/* pkg/ && node scripts/cache-bust.mjs",
     "dev": "npm run build && npm run serve",
     "serve": "npx -y serve pkg -l 8000 --cors",

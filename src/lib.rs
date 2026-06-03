@@ -49,7 +49,7 @@ impl AppState {
         let graphics = Graphics::new(canvas)
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let simulation = Simulation::new(&graphics.device, &graphics.queue, graphics.config.format);
+        let simulation = Simulation::new(&graphics.device, graphics.config.format);
         let mut camera = Camera::new();
         camera.set_aspect_ratio(graphics.size.0 as f32 / graphics.size.1 as f32);
         let input_handler = InputHandler::new();
