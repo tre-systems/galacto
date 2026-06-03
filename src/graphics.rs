@@ -1,5 +1,5 @@
+use crate::error::AppError;
 use crate::utils::console_log;
-use wasm_bindgen::JsValue;
 
 pub struct Graphics {
     pub surface: wgpu::Surface<'static>,
@@ -12,7 +12,7 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, AppError> {
         console_log!("Setting up WebGPU...");
 
         // Create WebGPU instance
@@ -35,7 +35,7 @@ impl Graphics {
                     ),
                     raw_window_handle: raw_window_handle::RawWindowHandle::WebCanvas(canvas_handle),
                 })
-                .map_err(|e| JsValue::from_str(&format!("Failed to create surface: {e:?}")))?
+                .map_err(|e| AppError::Graphics(format!("create surface: {e:?}")))?
         };
 
         let adapter = instance
@@ -45,7 +45,7 @@ impl Graphics {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| JsValue::from_str("Failed to find an appropriate WebGPU adapter"))?;
+            .ok_or_else(|| AppError::Graphics("no appropriate WebGPU adapter".into()))?;
 
         console_log!("Adapter: {:?}", adapter.get_info());
 
@@ -55,7 +55,7 @@ impl Graphics {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
-            .map_err(|e| JsValue::from_str(&format!("Failed to create device: {e:?}")))?;
+            .map_err(|e| AppError::Graphics(format!("create device: {e:?}")))?;
 
         // Configure the surface
         let size = (canvas.width().max(1), canvas.height().max(1));

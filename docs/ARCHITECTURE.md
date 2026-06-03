@@ -29,6 +29,7 @@ src/
 ├── camera.rs            # Orbit camera: position, scale, rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── utils.rs             # set_panic_hook, console_log! macro
+├── error.rs             # AppError — the core's domain error (no JsValue)
 └── shaders/
     ├── update.wgsl      # Compute: gravity + Euler integration + boundary bounce
     └── render.wgsl      # Vertex (project + velocity color) + fragment (brightness/glow)
@@ -47,7 +48,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Owning composition root (`AppState`).** One struct (`src/lib.rs`) owns the four subsystems — `Graphics`, `Simulation`, `Camera`, `InputHandler` — and is the only orchestrator. Each frame it calls `update()` then `render()`. Subsystems never reach for each other; they are wired together only through `AppState`.
 
-**Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer.
+**Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer. The loop and the resize handler reach the app through a `thread_local!` `RefCell<Option<Rc<RefCell<AppState>>>>` — the safe single-threaded-WASM global, no `static mut`.
 
 **POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. Two trailing `u32` pads keep `SimulationParams` 16-byte aligned (32 bytes) for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
@@ -73,11 +74,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Integrator guard-rails.** The explicit Euler step is kept stable by a softening epsilon (`r² + 1e-6`) at the singularity, a velocity clamp (`max_velocity`), and the fixed timestep itself (a bounded `dt`, never the raw frame delta). Each one stops a specific way open-form integration can blow up.
 
-**Fallible boundary returns `Result<_, JsValue>`.** Setup that can fail at the JS/GPU boundary (`Graphics::new`, `Simulation::new`, `run`) returns `Result<_, JsValue>` and converts errors with `map_err` / `ok_or_else` — down to the GPU-adapter request and the `window`/`document`/canvas lookups; the per-frame hot path is infallible.
-
-### Patterns not yet adopted
-
-galacto would also benefit from two patterns it does not yet use — an **FFI-free core** (`JsValue` still leaks into `graphics.rs` / `simulation.rs`) and a **non-`unsafe` global** for the app handle (`static mut APP_STATE`). Both are described in [BACKLOG.md](../BACKLOG.md).
+**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The per-frame hot path is infallible.
 
 ## How a Frame Is Produced
 

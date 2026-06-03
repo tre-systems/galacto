@@ -48,7 +48,7 @@ impl Simulation {
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
-    ) -> Result<Self, wasm_bindgen::JsValue> {
+    ) -> Self {
         console_log!("Creating simulation...");
 
         // Generate initial particle data
@@ -270,7 +270,7 @@ impl Simulation {
         );
         console_log!("🎯 Ready to simulate gravitational dynamics!");
 
-        Ok(Self {
+        Self {
             particle_buffer,
             params_buffer,
             compute_pipeline,
@@ -278,7 +278,7 @@ impl Simulation {
             compute_bind_group,
             render_bind_group,
             camera_buffer,
-        })
+        }
     }
 
     fn generate_initial_particles() -> Vec<Particle> {
