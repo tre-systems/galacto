@@ -4,6 +4,7 @@ mod camera;
 mod error;
 mod graphics;
 mod input;
+mod postprocess;
 mod simulation;
 mod utils;
 
@@ -14,6 +15,7 @@ use utils::console_log;
 use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
+use postprocess::PostProcess;
 use simulation::Simulation;
 use utils::set_panic_hook;
 
@@ -34,6 +36,7 @@ pub struct AppState {
     simulation: Simulation,
     camera: Camera,
     input_handler: InputHandler,
+    postprocess: PostProcess,
     paused: bool,
     last_time: f32,
     accumulator: f32,
@@ -49,7 +52,8 @@ impl AppState {
         let graphics = Graphics::new(canvas)
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let simulation = Simulation::new(&graphics.device, graphics.config.format);
+        let postprocess = PostProcess::new(&graphics.device, graphics.config.format, graphics.size);
+        let simulation = Simulation::new(&graphics.device, postprocess::HDR_FORMAT);
         let mut camera = Camera::new();
         camera.set_aspect_ratio(graphics.size.0 as f32 / graphics.size.1 as f32);
         let input_handler = InputHandler::new();
@@ -59,6 +63,7 @@ impl AppState {
             simulation,
             camera,
             input_handler,
+            postprocess,
             paused: false,
             last_time: 0.0,
             accumulator: 0.0,
@@ -134,12 +139,14 @@ impl AppState {
             self.simulation.compute_pass(&mut encoder);
         }
 
-        // Run render pass
+        // Render the particles additively into the HDR scene target.
+        self.simulation
+            .update_camera(&self.graphics.queue, &self.camera);
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
+                label: Some("Particle Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: self.postprocess.scene_view(),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -155,12 +162,11 @@ impl AppState {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-
-            // Update camera uniforms before rendering
-            self.simulation
-                .update_camera(&self.graphics.queue, &self.camera);
             self.simulation.render_pass(&mut render_pass);
         }
+
+        // Bloom + tonemap the HDR scene into the swapchain.
+        self.postprocess.run(&mut encoder, &view);
 
         self.graphics
             .queue
@@ -172,6 +178,8 @@ impl AppState {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.graphics.resize(width, height);
+        self.postprocess
+            .resize(&self.graphics.device, (width, height));
         self.camera.set_aspect_ratio(width as f32 / height as f32);
     }
 }
