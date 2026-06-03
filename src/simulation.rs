@@ -44,11 +44,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(
-        device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-        surface_format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         console_log!("Creating simulation...");
 
         // Generate initial particle data
@@ -58,9 +54,7 @@ impl Simulation {
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
             contents: bytemuck::cast_slice(&particles),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE,
         });
 
         // Create simulation parameters
