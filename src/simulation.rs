@@ -48,7 +48,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, color_format: wgpu::TextureFormat) -> Self {
         console_log!("Creating simulation...");
 
         // Generate initial particle data
@@ -193,7 +193,7 @@ impl Simulation {
                 module: &render_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
+                    format: color_format,
                     // Additive: overlapping glowing particles accumulate brightness
                     // (order-independent, correct for points on black).
                     blend: Some(wgpu::BlendState {
