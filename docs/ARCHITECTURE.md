@@ -30,9 +30,11 @@ src/
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── utils.rs             # set_panic_hook, console_log! macro
 ├── error.rs             # AppError — the core's domain error (no JsValue)
+├── postprocess.rs       # HDR scene target + bloom (bright-pass, blur, tonemap composite)
 └── shaders/
     ├── update.wgsl      # Compute: gravity + Euler integration + boundary bounce
-    └── render.wgsl      # Vertex (project + velocity color) + fragment (brightness/glow)
+    ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
+    └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
 static/                  # Frontend: index.html (WebGPU check + bootstrap), styles.css, favicon.svg
 pkg/                     # wasm-pack output + copied static assets — the deploy root (git-ignored)
 scripts/                 # render-diagrams.mjs, check-diagrams.mjs
@@ -85,7 +87,8 @@ A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) do
 1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
    - run the **compute pass** once per scheduled step (each its own pass, so step N+1 reads step N's writes): dispatch `update_particles` over `ceil(131072 / 64) = 2048` workgroups, advancing every particle in place;
-   - run the **render pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per particle, `draw(0..4, 0..131072)` — additively blended with no depth buffer;
+   - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per particle, `draw(0..4, 0..131072)` — additively blended with no depth buffer, into the **HDR scene** target;
+   - run the **bloom passes** (`postprocess`): bright-pass + downsample, separable blur (H, V), then a tonemapped composite of scene + bloom into the swapchain;
    - submit and `present()`.
 
 Then it schedules the next frame. The simulation state lives only in GPU memory between frames — there is no CPU-side particle array after the initial upload.
@@ -125,7 +128,11 @@ Initial conditions (`Simulation::generate_initial_particles`, seeded `StdRng(42)
 - **Vertex** — transform `position` by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Color ramps by speed, blue (slow) → warm orange (fast).
 - **Fragment** — a soft radial falloff from the quad center (`(1 − d)²`) makes each particle a round glow, scaled down so its per-particle contribution stays modest.
 
-The pipeline uses `TriangleStrip` topology with **additive** blending and **no depth buffer** — additive glow is order-independent and there is no opaque geometry — so overlapping particles accumulate brightness (dense regions glow toward white). The pass clears to a near-black blue `(0.01, 0.01, 0.05)`.
+The pipeline uses `TriangleStrip` topology with **additive** blending and **no depth buffer** — additive glow is order-independent and there is no opaque geometry — so overlapping particles accumulate brightness. It renders into an offscreen **HDR** (`rgba16float`) target (cleared to a near-black blue `(0.01, 0.01, 0.05)`) so dense regions can exceed 1.0 before tonemapping.
+
+## Post-processing
+
+`src/postprocess.rs` (`src/shaders/post.wgsl`) turns the HDR scene into the final image with a bloom chain, each step a fullscreen pass: a **bright-pass** that box-downsamples to quarter resolution and keeps pixels above a threshold; a **separable Gaussian blur** (horizontal then vertical) on the reduced-resolution bloom buffers; and a **composite** that adds the blurred bloom back to the scene, applies an exposure tonemap (`1 − e^(−c·hdr)`), and writes the swapchain. The scene and bloom targets are rebuilt on resize.
 
 ## Camera & Input
 
