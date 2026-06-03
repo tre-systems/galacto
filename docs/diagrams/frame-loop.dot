@@ -48,7 +48,7 @@ digraph FrameLoop {
 
   // update phase (green)
   U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply rotate · pan · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-  U2 [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", width=2.0, height=1.0, label=<<B>Space<BR/>pressed?</B>>];
+  U2 [shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=2.4, height=1.05, label=<<B>Space<BR/>pressed?</B>>];
   U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase

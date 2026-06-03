@@ -1,6 +1,6 @@
 # Diagrams
 
-Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of truth; the PNGs are committed for in-browser viewing on GitHub.
+Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of truth; the PNGs are committed for in-browser viewing on GitHub. Graphviz is for standalone architecture and flow diagrams; Mermaid is used only for small inline diagrams inside Markdown.
 
 ## Files
 
@@ -24,7 +24,7 @@ Color coding by domain:
 - Purple — the GPU rendering boundary (render pipeline, particle buffer).
 - Amber — the per-frame GPU **compute** dispatch (the parallel physics pass).
 - Green bold outline — the terminal on-screen output (`<canvas>`).
-- Diamonds — decisions (paused?).
+- Diamonds — decisions (white fill, dark border).
 
 Fonts: Avenir. Rendered at 220 DPI.
 
