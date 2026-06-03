@@ -1,0 +1,135 @@
+digraph SystemOverview {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.55",
+    ranksep="0.85",
+    splines=polyline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>System Overview</B></FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.21,0.13",
+    width=3.05,
+    height=0.74,
+    fixedsize=false,
+    fontname="Avenir",
+    fontsize=18,
+    penwidth=2.4,
+    fontcolor="#14213d",
+    color="#2264c7",
+    fillcolor="#eaf3ff:#ffffff",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=13,
+    fontcolor="#3d4a5c",
+    penwidth=2.2,
+    arrowsize=0.78
+  ];
+
+  // ---- Host ----
+  subgraph cluster_host {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>HOST</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Cloudflare Pages serves the static pkg/ directory.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    H1 [label=<<B>Cloudflare Pages</B><BR/><FONT POINT-SIZE="15">pkg/: galacto.js + _bg.wasm + index.html</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+  }
+
+  // ---- Browser ----
+  subgraph cluster_browser {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1f5fbf"><B>BROWSER</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#496f9f">A WebGPU page driving a requestAnimationFrame loop.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    B1 [label=<<B>index.html bootstrap</B><BR/><FONT POINT-SIZE="15">checks navigator.gpu, imports galacto.js</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B2 [label=<<B>requestAnimationFrame loop</B><BR/><FONT POINT-SIZE="15">update() then render(), every frame</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B3 [label=<<B>InputHandler</B><BR/><FONT POINT-SIZE="15">mouse · wheel · touch · keys</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B1 -> B2 [style=invis];
+    B2 -> B3 [style=invis];
+  }
+
+  // ---- WASM app core ----
+  subgraph cluster_core {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1e6b43"><B>WASM APP CORE (RUST)</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, and input.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    C1 [label=<<B>AppState</B><BR/><FONT POINT-SIZE="15">#[wasm_bindgen] entry · update / render</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C2 [label=<<B>Camera</B><BR/><FONT POINT-SIZE="15">orbit → view-projection matrix</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C3 [label=<<B>Simulation</B><BR/><FONT POINT-SIZE="15">buffers · pipelines · dispatch</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C1 -> C2 [style=invis];
+  }
+
+  // ---- GPU ----
+  subgraph cluster_gpu {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#5f3b8a"><B>GPU (WEBGPU)</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#6d4d8d">Particle state lives here; physics and drawing both run on-device.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    G1 [label=<<B>Compute pipeline</B><BR/><FONT POINT-SIZE="15">update.wgsl · gravity + integration</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    G2 [label=<<B>Particle storage buffer</B><BR/><FONT POINT-SIZE="15">131,072 × (position, velocity)</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · project + velocity glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  }
+
+  // ---- Output ----
+  CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="15">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+
+  // ---- Edges ----
+  H1 -> B1 [lhead=cluster_browser, label="serves SPA + WASM"];
+
+  B1 -> C1 [lhead=cluster_core, label="init AppState"];
+  B2 -> C1 [label="update() · render()"];
+  B3 -> C2 [label="rotate · pan · zoom", color="#6b7280", fontcolor="#6b7280", style=dashed];
+
+  C1 -> C3 [label="owns / drives"];
+  C3 -> G1 [lhead=cluster_gpu, label="dispatch (2048 workgroups)"];
+
+  G1 -> G2 [label="advance in place"];
+  G2 -> G3 [label="read as storage"];
+  C2 -> G3 [label="view-proj uniform", color="#6b7280", fontcolor="#6b7280", style=dashed];
+
+  G3 -> CANVAS [ltail=cluster_gpu, label="instanced point draw"];
+}
