@@ -24,7 +24,7 @@ The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no `buil
 ```
 src/
 ├── lib.rs               # WASM entry: AppState owns graphics/sim/camera/input; rAF loop
-├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface → depth texture
+├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface
 ├── simulation.rs        # Buffers, pipelines, bind groups, particle init, compute_pass / render_pass
 ├── camera.rs            # Orbit camera: position, scale, rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
@@ -62,7 +62,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Retained closures keep listeners alive.** Each `add_event_listener` closure is pushed into the handler's `_closures` vector so it is not dropped at the end of setup — dropping it would silently unregister the listener.
 
-**Display-synced canvas sizing.** A `resize` listener keeps the drawing buffer at the displayed size × `devicePixelRatio` and reconfigures the surface, depth texture, and camera aspect together (`AppState::resize`), so the view fills the window without stretching.
+**Display-synced canvas sizing.** A `resize` listener keeps the drawing buffer at the displayed size × `devicePixelRatio` and reconfigures the surface and camera aspect together (`AppState::resize`), so the view fills the window without stretching.
 
 **Compile-time-embedded shaders.** WGSL is brought in with `include_str!`, so shaders are compiled into the WASM; there is no runtime fetch or separate asset to deploy.
 
@@ -85,7 +85,7 @@ A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) do
 1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
    - run the **compute pass** once per scheduled step (each its own pass, so step N+1 reads step N's writes): dispatch `update_particles` over `ceil(131072 / 64) = 2048` workgroups, advancing every particle in place;
-   - run the **render pass**: write the camera's view-projection matrix into the camera uniform, then issue one `draw(0..131072)` of point primitives with depth testing against a `Depth32Float` buffer;
+   - run the **render pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per particle, `draw(0..4, 0..131072)` — additively blended with no depth buffer;
    - submit and `present()`.
 
 Then it schedules the next frame. The simulation state lives only in GPU memory between frames — there is no CPU-side particle array after the initial upload.
@@ -98,7 +98,7 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 | ----------------- | ------------------------------------------------- | -------------------------------------- |
 | Particle buffer   | `131072 × Particle` (`position[3]`, `velocity[3]` — 24 B each, ~3.1 MB) | `STORAGE \| VERTEX \| COPY_DST` |
 | Params buffer     | `SimulationParams { dt, gm, max_velocity, boundary, restitution, particle_count, _pad×2 }` | `UNIFORM \| COPY_DST` |
-| Camera buffer     | 4×4 view-projection matrix (64 B)                 | `UNIFORM \| COPY_DST`                  |
+| Camera buffer     | view-projection matrix + billboard size/aspect (80 B) | `UNIFORM \| COPY_DST`              |
 
 - **Compute bind group** (`@compute` visibility): binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`.
 - **Render bind group** (`@vertex` visibility): binding 0 = camera matrix as `uniform`; binding 1 = the *same* particle buffer as `storage, read`.
@@ -120,18 +120,18 @@ Initial conditions (`Simulation::generate_initial_particles`, seeded `StdRng(42)
 
 ## Rendering
 
-`src/shaders/render.wgsl` draws each particle as a single GPU point:
+`src/shaders/render.wgsl` draws each particle as a camera-facing **billboard quad** (instanced: 4 verts × N particles):
 
-- **Vertex** — transform `position` by the camera matrix to clip space; compute `normalized_speed = min(|velocity| / 200, 1)` and a color ramp blue (slow) → red (fast): `color = (speed·2, 0.1, 1 − speed)`.
-- **Fragment** — scale color by a speed-dependent `brightness = 3 + speed·8` and add a reddish `glow`, output at alpha `0.9`.
+- **Vertex** — transform `position` by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Color ramps by speed, blue (slow) → warm orange (fast).
+- **Fragment** — a soft radial falloff from the quad center (`(1 − d)²`) makes each particle a round glow, scaled down so its per-particle contribution stays modest.
 
-The pipeline uses `PointList` topology, `ALPHA_BLENDING`, and depth testing (`Depth32Float`, `Less`, depth-write on) so nearer particles occlude farther ones. The pass clears to a near-black blue `(0.01, 0.01, 0.05)`.
+The pipeline uses `TriangleStrip` topology with **additive** blending and **no depth buffer** — additive glow is order-independent and there is no opaque geometry — so overlapping particles accumulate brightness (dense regions glow toward white). The pass clears to a near-black blue `(0.01, 0.01, 0.05)`.
 
 ## Camera & Input
 
 `Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 5000). It starts rotated 90° horizontally and zoomed in (`scale = 3.0`); `rotation_x` is clamped to ±1.5 rad and `scale` to 0.3–5.0.
 
-A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface, recreate the depth texture, and update the camera aspect — so the view fills the window at native resolution without stretching.
+A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface and update the camera aspect — so the view fills the window at native resolution without stretching.
 
 `InputHandler` (`src/input.rs`) registers DOM listeners and translates them into camera intent, polled once per frame:
 

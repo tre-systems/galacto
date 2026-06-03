@@ -131,5 +131,5 @@ digraph SystemOverview {
   G2 -> G3 [label="read as storage"];
   C2 -> G3 [label="view-proj uniform", color="#6b7280", fontcolor="#6b7280", style=dashed];
 
-  G3 -> CANVAS [ltail=cluster_gpu, label="instanced point draw"];
+  G3 -> CANVAS [ltail=cluster_gpu, label="instanced billboard draw"];
 }
