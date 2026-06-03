@@ -60,7 +60,7 @@
 
         try {
           await checkWebGPUSupport();
-          const { default: init } = await import("./galaxy_sim.js");
+          const { default: init } = await import("./galacto.js");
           await init();
           loadingEl.style.display = "none";
         } catch (error) {

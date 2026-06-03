@@ -1,10 +1,11 @@
 [package]
-name = "galaxy-sim"
+name = "galacto"
 version = "0.1.0"
 edition = "2021"
-authors = ["Robert Gilks <robert@example.com>"]
+authors = ["Robert Gilks <rob.gilks@gmail.com>"]
 description = "A GPU-accelerated black hole accretion disk simulation in Rust with WebGPU"
 license = "MIT"
+repository = "https://github.com/rgilks/galacto"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
