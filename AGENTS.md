@@ -51,6 +51,7 @@ cargo check --target wasm32-unknown-unknown
 - Camera: `src/camera.rs` (orbit camera — position, scale, rotation; `build_view_projection_matrix`).
 - Input: `src/input.rs` (mouse, wheel, touch/pinch, keyboard → camera; pause/reset).
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).
+- Core error type: `src/error.rs` (`AppError`); only `lib.rs` converts it to `JsValue` at the wasm-bindgen boundary.
 - Shaders: `src/shaders/update.wgsl` (compute: gravity + Euler integration + bounds), `src/shaders/render.wgsl` (vertex: project + velocity color; fragment: brightness/glow).
 - Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap), `static/styles.css`.
 

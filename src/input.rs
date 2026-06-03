@@ -52,11 +52,11 @@ pub struct InputHandler {
 }
 
 impl InputHandler {
-    pub fn new() -> Result<Self, JsValue> {
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             state: Rc::new(RefCell::new(InputState::new())),
             _closures: Vec::new(),
-        })
+        }
     }
 
     pub fn setup_event_listeners(&mut self, canvas: HtmlCanvasElement) -> Result<(), JsValue> {

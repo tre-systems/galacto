@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 mod camera;
+mod error;
 mod graphics;
 mod input;
 mod simulation;
@@ -43,12 +44,15 @@ impl AppState {
     pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, JsValue> {
         console_log!("Initializing Black Hole Simulation...");
 
-        let graphics = Graphics::new(canvas).await?;
-        let simulation =
-            Simulation::new(&graphics.device, &graphics.queue, graphics.config.format)?;
+        // Graphics is the only fallible step; convert its domain error to a
+        // JsValue here at the wasm-bindgen boundary so the engine stays FFI-free.
+        let graphics = Graphics::new(canvas)
+            .await
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let simulation = Simulation::new(&graphics.device, &graphics.queue, graphics.config.format);
         let mut camera = Camera::new();
         camera.set_aspect_ratio(graphics.size.0 as f32 / graphics.size.1 as f32);
-        let input_handler = InputHandler::new()?;
+        let input_handler = InputHandler::new();
 
         Ok(Self {
             graphics,
@@ -174,8 +178,11 @@ impl AppState {
     }
 }
 
-// Global state wrapped in Rc<RefCell<>> for sharing between closures
-static mut APP_STATE: Option<Rc<RefCell<AppState>>> = None;
+thread_local! {
+    // Shared between the rAF loop and the resize handler. A thread-local is the
+    // safe single-threaded-WASM stand-in for a mutable global (no `unsafe`).
+    static APP_STATE: RefCell<Option<Rc<RefCell<AppState>>>> = const { RefCell::new(None) };
+}
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
@@ -244,10 +251,10 @@ async fn run() -> Result<(), JsValue> {
             .setup_event_listeners(canvas.clone())?;
     }
 
-    // Store global state for animation loop
-    unsafe {
-        APP_STATE = Some(app_state_rc.clone());
-    }
+    // Store global state for the animation loop and resize handler.
+    APP_STATE.with(|cell| {
+        *cell.borrow_mut() = Some(app_state_rc.clone());
+    });
 
     // Keep the drawing buffer matched to the displayed size on window resize.
     {
@@ -257,10 +264,9 @@ async fn run() -> Result<(), JsValue> {
             let (w, h) = canvas_physical_size(&resize_window, &resize_canvas);
             resize_canvas.set_width(w);
             resize_canvas.set_height(h);
-            unsafe {
-                if let Some(Some(app_state)) = (&raw const APP_STATE).as_ref() {
-                    app_state.borrow_mut().resize(w, h);
-                }
+            let app_state = APP_STATE.with(|cell| cell.borrow().clone());
+            if let Some(app_state) = app_state {
+                app_state.borrow_mut().resize(w, h);
             }
         }) as Box<dyn FnMut(web_sys::Event)>);
         window.add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())?;
@@ -285,13 +291,12 @@ fn request_animation_frame() {
 }
 
 fn animation_frame(time: f32) {
-    unsafe {
-        if let Some(Some(app_state)) = (&raw const APP_STATE).as_ref() {
-            let mut app = app_state.borrow_mut();
-            app.update(time);
-            if let Err(e) = app.render() {
-                console_log!("Render error: {:?}", e);
-            }
+    let app_state = APP_STATE.with(|cell| cell.borrow().clone());
+    if let Some(app_state) = app_state {
+        let mut app = app_state.borrow_mut();
+        app.update(time);
+        if let Err(e) = app.render() {
+            console_log!("Render error: {:?}", e);
         }
     }
 
