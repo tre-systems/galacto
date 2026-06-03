@@ -7,6 +7,10 @@ use wgpu::util::DeviceExt;
 const NUM_PARTICLES: u32 = 131072;
 const WORKGROUP_SIZE: u32 = 64;
 
+/// Fixed simulation timestep (seconds). Physics advances in whole steps of this
+/// size regardless of display refresh rate; see the accumulator in `lib.rs`.
+pub const FIXED_DT: f32 = 1.0 / 60.0;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Particle {
@@ -30,13 +34,13 @@ pub struct SimulationParams {
 pub struct Simulation {
     #[allow(dead_code)]
     particle_buffer: wgpu::Buffer,
-    pub params_buffer: wgpu::Buffer,
+    #[allow(dead_code)] // held only to keep the params uniform's GPU resource alive
+    params_buffer: wgpu::Buffer,
     pub compute_pipeline: wgpu::ComputePipeline,
     pub render_pipeline: wgpu::RenderPipeline,
     pub compute_bind_group: wgpu::BindGroup,
     pub render_bind_group: wgpu::BindGroup,
     pub camera_buffer: wgpu::Buffer,
-    params: SimulationParams,
 }
 
 impl Simulation {
@@ -61,7 +65,7 @@ impl Simulation {
 
         // Create simulation parameters
         let params = SimulationParams {
-            dt: 0.016,           // ~60fps
+            dt: FIXED_DT,        // fixed simulation timestep
             gm: 40000.0,         // Gravitational parameter (G * central_mass)
             max_velocity: 140.0, // Speed clamp for integrator stability
             boundary: 600.0,     // World half-extent; particles bounce here
@@ -274,7 +278,6 @@ impl Simulation {
             compute_bind_group,
             render_bind_group,
             camera_buffer,
-            params,
         })
     }
 
@@ -322,11 +325,6 @@ impl Simulation {
 
         console_log!("✅ Generated {} particles", NUM_PARTICLES);
         particles
-    }
-
-    pub fn update(&mut self, queue: &wgpu::Queue, dt: f32) {
-        self.params.dt = dt.min(0.033); // Cap at ~30fps for stability
-        queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[self.params]));
     }
 
     pub fn compute_pass(&self, encoder: &mut wgpu::CommandEncoder) {
