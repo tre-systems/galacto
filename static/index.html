@@ -82,7 +82,7 @@
           type="range"
           min="0"
           max="100"
-          value="70"
+          value="85"
           step="1"
           aria-label="Disk temperature (release to apply)"
         />
@@ -159,7 +159,7 @@
       function setupTempControl(mod) {
         const slider = document.getElementById("temp-slider");
         const readout = document.getElementById("temp-readout");
-        const MIN = 0.2;
+        const MIN = 0.02;
         const MAX = 2.0;
         const tempFor = () => MIN * Math.pow(MAX / MIN, slider.value / 100);
         slider.addEventListener("input", () => {
