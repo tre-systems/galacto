@@ -17,15 +17,15 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 ## Roadmap — simulation depth
 
-The model is a single self-gravitating cold disk (`generate_disk` in `src/simulation.rs`, the tiled all-pairs solver in `src/shaders/update.wgsl`) that swing-amplifies into recurrent flocculent spiral arms, with a disk-temperature slider for the Toomre-Q regime. Richer behaviour to consider, roughly by effort:
+A `Scenario` (`src/simulation.rs`, on the tiled all-pairs solver in `src/shaders/update.wgsl`) selects the initial conditions: a self-gravitating cold disk that swing-amplifies into flocculent spiral arms (with a disk-temperature slider for the Toomre-Q regime), or a two-galaxy merger. Richer behaviour to consider, roughly by effort:
 
-- **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed; arms are flocculent and a bit grainy at that count. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (cleaner, sharper arms) at the cost of a much larger implementation.
+- **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed; the spiral arms are flocculent and a bit grainy at that count. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (cleaner, sharper arms) at the cost of a much larger implementation.
 - **Sustain the arms** — flocculent spirals self-heat the disk (Q rises), so the pattern fades over many rotations until a re-seed. A dissipative (gas) component that cools/circularizes a fraction of bodies would keep the disk cold and the arms alive.
-- **Grand-design spirals (M51)** — a clean two-armed pattern wants a tidal driver: re-introduce a companion on a prograde flyby (the merger code is in git history) past the cold disk.
+- **Grand-design spirals (M51)** — a clean two-armed pattern wants a tidal driver: a new scenario with a small companion on a prograde flyby past a cold disk (it survives rather than fully merging).
+- **More scenarios** — `Scenario` makes new setups cheap: unequal-mass or retrograde mergers, a head-on collision, or a small group of 3+ galaxies.
 - **Richer dark-matter halo** — the static logarithmic halo could become an NFW profile or a *live* particle halo for more realistic dynamics.
 - **Leapfrog (KDK) integrator** — the current step is symplectic Euler (one force eval/step). Kick-drift-kick leapfrog conserves energy better over long runs, at the cost of a second gravity pass per step.
-- **Selectable scenarios** — expose the past setups (two-galaxy merger, single spiral disk) as switchable modes rather than one hard-coded initial condition.
-- **Auto-replay** — periodically re-seed the disk (it heats and the arms fade over time), so the demo keeps showing fresh spiral structure.
+- **Auto-replay** — periodically re-seed (the spiral disk heats and the arms fade over time), so the demo keeps showing fresh structure.
 
 ## Definition of Done
 

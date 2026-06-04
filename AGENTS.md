@@ -4,7 +4,7 @@ Operational guidance for Claude Code and other repo agents.
 
 ## Project
 
-galacto is a browser-based **self-gravitating N-body** spiral-galaxy simulation. ~16,000 massive bodies attract each other through the all-pairs gravity sum; set up as a cold rotating disk, they swing-amplify into spiral arms, and a live disk-temperature slider (≈ Toomre Q) sweeps between clumpy, spiral, and smooth. The gravity (workgroup-tiled) and integration run entirely on the GPU through WebGPU **compute** shaders, and the bodies are drawn with a single instanced **billboard** draw. The core is Rust compiled to WebAssembly (single-threaded), rendered with `wgpu`/WebGPU, and deployed as a static site to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/).
+galacto is a browser-based **self-gravitating N-body** galaxy sandbox. ~16,000 massive bodies attract each other through the all-pairs gravity sum. A scenario dropdown picks the initial conditions — a cold disk that swing-amplifies into spiral arms (with a disk-temperature slider ≈ Toomre Q sweeping clumpy/spiral/smooth), or two galaxies that merge into one remnant. The gravity (workgroup-tiled) and integration run entirely on the GPU through WebGPU **compute** shaders, and the bodies are drawn with a single instanced **billboard** draw. The core is Rust compiled to WebAssembly (single-threaded), rendered with `wgpu`/WebGPU, and deployed as a static site to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/).
 
 Read these before substantial work:
 
@@ -46,9 +46,9 @@ cargo check --target wasm32-unknown-unknown
 
 ## Code Map
 
-- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier via `set_speed`, and `set_disk_temperature` re-seeds the disk).
+- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier via `set_speed`, while `set_disk_temperature` and `set_scenario` re-seed the sim).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config → depth texture; `resize`).
-- Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, single-disk `generate_disk` + `reseed`, `compute_pass` / `render_pass`).
+- Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, `Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger` + `reseed`, `compute_pass` / `render_pass`).
 - Camera: `src/camera.rs` (orbit camera — position, scale, rotation; `build_view_projection_matrix`).
 - Input: `src/input.rs` (mouse, wheel, touch/pinch, keyboard → camera; pause/reset).
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).

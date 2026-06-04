@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spiral Galaxy - WebGPU</title>
+    <title>Galaxy Sandbox - WebGPU</title>
     <meta
       name="description"
-      content="A GPU-accelerated self-gravitating N-body simulation of a galactic disk that forms spiral arms, with a live disk-temperature control. Built with Rust, WebAssembly, and WebGPU."
+      content="A GPU-accelerated self-gravitating N-body galaxy sandbox: switch between a spiral disk and a two-galaxy merger, with live speed and disk-temperature controls. Built with Rust, WebAssembly, and WebGPU."
     />
     <link rel="stylesheet" href="styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -39,6 +39,13 @@
 
     <!-- On-screen controls -->
     <div id="controls">
+      <div class="control">
+        <label for="scenario-select">Scenario</label>
+        <select id="scenario-select" aria-label="Scenario">
+          <option value="0">Spiral disk</option>
+          <option value="1">Galaxy merger</option>
+        </select>
+      </div>
       <div class="control">
         <label for="speed-slider">Speed</label>
         <input
@@ -93,6 +100,7 @@
           const mod = await import("./galacto.js?v=__CACHE_BUST__");
           await mod.default();
           loadingEl.style.display = "none";
+          setupScenarioControl(mod);
           setupSpeedControl(mod);
           setupTempControl(mod);
         } catch (error) {
@@ -101,6 +109,14 @@
           errorEl.style.display = "block";
           errorDetailsEl.innerHTML = `<p><strong>Error:</strong> ${error.message}</p>`;
         }
+      }
+
+      // Switch the initial-condition scenario; the sim re-seeds immediately.
+      function setupScenarioControl(mod) {
+        const sel = document.getElementById("scenario-select");
+        sel.addEventListener("change", () => {
+          mod.set_scenario(parseInt(sel.value, 10));
+        });
       }
 
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale

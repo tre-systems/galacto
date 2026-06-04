@@ -54,7 +54,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. `Particle` packs position+mass and velocity into two `vec4`s (`pos_mass`, `vel` = 32 bytes); using `vec4` rather than `vec3` sidesteps WGSL's 16-byte `vec3` alignment, so the Rust and WGSL layouts are unambiguous. Trailing `u32` pads keep `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
-**Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `SimulationParams` uniform is constants; the `accel` buffer is GPU-only scratch. The one exception is the disk-temperature slider, which regenerates the disk on the CPU and re-uploads it (`Simulation::reseed`) — an explicit, occasional event, not a per-frame upload. The only true per-frame write is the camera matrix.
+**Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `accel` buffer is GPU-only scratch. The exception is the scenario dropdown and disk-temperature slider: they regenerate the bodies on the CPU and re-upload the particle buffer (and rewrite the `SimulationParams` uniform, since scenarios differ in softening) via `Simulation::reseed` — an explicit, occasional event, not a per-frame upload. The only true per-frame write is the camera matrix.
 
 **Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
 
@@ -76,7 +76,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
-**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The two other exports — `set_speed` and `set_disk_temperature`, called by the page's sliders — take a plain `f32` and are infallible, as is the per-frame hot path.
+**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The three other exports — `set_speed`, `set_disk_temperature`, and `set_scenario`, called by the page's controls — take a plain scalar and are infallible, as is the per-frame hot path.
 
 ## How a Frame Is Produced
 
@@ -116,14 +116,14 @@ All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` un
 - **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case. Finally a static **dark-matter halo** term is added: `a -= v₀² · pos / (|pos|² + r_c²)`, a logarithmic potential centred at the origin whose inward pull keeps the system bound (debris orbits back rather than escaping) and gives a flat outer rotation curve.
 - **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place.
 
-`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, `BULGE_MASS = 40000`, `STAR_MASS = 21`, disk scale length `DISK_RD = 35`, `SOFTENING = 12`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`.
+`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`, and per-scenario params (below).
 
-Initial conditions (`Simulation::generate_disk(temp)`, seeded `StdRng(42)` → a given temperature is reproducible) build one galaxy:
+Initial conditions come from a `Scenario` (seeded `StdRng(42)` → reproducible). The same solver runs for both; they differ only in the seeded bodies and the softening:
 
-- **A heavy central bulge body** (`BULGE_MASS`) sits at the origin, with an **exponential disk** of lighter stars (`STAR_MASS`) around it — radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), which is what makes it spiral-prone.
-- Each star gets a **prograde circular velocity** for the local rotation curve (bulge + enclosed disk + halo, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the disk "temperature" (≈ Toomre Q): too cold (low `temp`) and the disk fragments into clumps, too hot and it stays a featureless smear, and recurrent **spiral arms** (swing amplification) live in between. `DISP_FRAC` is tuned so the default `temp = 1.0` lands in the spiral regime.
+- **`Scenario::Spiral`** (`generate_disk`) — a heavy central bulge body (`BULGE_MASS`) plus an **exponential disk** of lighter stars (`STAR_MASS`), radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), making it spiral-prone. Each star gets a **prograde circular velocity** (bulge + enclosed disk + halo, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the "temperature" (≈ Toomre Q): too cold fragments into clumps, too hot is a featureless smear, and **spiral arms** (swing amplification) live in between. Softening is small (`SPIRAL_SOFTENING = 12`) so self-gravity stays sharp.
+- **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, on a bound prograde approach (`±120` on x, `±20` along y), so self-gravity and dynamical friction merge them into one spinning remnant. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
 
-The disk-temperature slider calls `Simulation::reseed`, which regenerates the disk at the new `temp` and re-uploads the particle buffer — restarting the galaxy so you can sweep clumpy → spiral → smooth. (Flocculent arms slowly heat the disk and fade over many rotations; a re-seed refreshes them.)
+The scenario dropdown and the disk-temperature slider both call `Simulation::reseed(scenario, temp)`, which regenerates the bodies and re-uploads the particle buffer, *and* rewrites the `SimulationParams` uniform (the two scenarios use different softening). It restarts the galaxy from fresh initial conditions — switch scenarios freely, or sweep the spiral disk clumpy → spiral → smooth.
 
 ## Rendering
 
@@ -155,6 +155,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 | R                             | Reset camera      |
 | Speed slider (on-screen)      | Scale sim speed (0.25×–100×) |
 | Disk-temp slider (on-screen)  | Set disk temperature; re-seeds the disk on release |
+| Scenario dropdown (on-screen) | Switch initial conditions (spiral disk / galaxy merger); re-seeds |
 
 ## Build & Deploy
 
