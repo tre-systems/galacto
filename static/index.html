@@ -37,6 +37,21 @@
     <!-- Main canvas -->
     <canvas id="gpu-canvas"></canvas>
 
+    <!-- On-screen controls -->
+    <div id="controls">
+      <label for="speed-slider">Speed</label>
+      <input
+        id="speed-slider"
+        type="range"
+        min="0"
+        max="100"
+        value="29"
+        step="1"
+        aria-label="Simulation speed"
+      />
+      <span id="speed-readout">1.0×</span>
+    </div>
+
     <script type="module">
       async function checkWebGPUSupport() {
         if (!navigator.gpu) {
@@ -60,15 +75,34 @@
 
         try {
           await checkWebGPUSupport();
-          const { default: init } = await import("./galacto.js?v=__CACHE_BUST__");
-          await init();
+          const mod = await import("./galacto.js?v=__CACHE_BUST__");
+          await mod.default();
           loadingEl.style.display = "none";
+          setupSpeedControl(mod);
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
           errorEl.style.display = "block";
           errorDetailsEl.innerHTML = `<p><strong>Error:</strong> ${error.message}</p>`;
         }
+      }
+
+      // Map the speed slider (0–100) to a multiplier on a logarithmic scale
+      // (0.25× … 32×), push it to the sim, and show the current value.
+      function setupSpeedControl(mod) {
+        const slider = document.getElementById("speed-slider");
+        const readout = document.getElementById("speed-readout");
+        const MIN = 0.25;
+        const MAX = 32;
+        const apply = () => {
+          const t = slider.value / 100;
+          const speed = MIN * Math.pow(MAX / MIN, t);
+          mod.set_speed(speed);
+          readout.textContent =
+            (speed < 9.95 ? speed.toFixed(1) : Math.round(speed)) + "×";
+        };
+        slider.addEventListener("input", apply);
+        apply();
       }
 
       init().catch(console.error);

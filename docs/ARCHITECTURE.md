@@ -35,7 +35,7 @@ src/
     ├── update.wgsl      # Compute: core + test-particle gravity, symplectic integration
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
-static/                  # Frontend: index.html (WebGPU check + bootstrap), styles.css, favicon.svg
+static/                  # Frontend: index.html (WebGPU check + bootstrap + speed slider), styles.css, favicon.svg
 pkg/                     # wasm-pack output + copied static assets — the deploy root (git-ignored)
 scripts/                 # render-diagrams.mjs, check-diagrams.mjs
 ```
@@ -72,11 +72,11 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Restricted N-body.** A few massive cores (`NUM_CORES`) move under their mutual gravity — `O(NUM_CORES²)`, trivial — while the many stars are massless test particles in the cores' combined field (`O(N · NUM_CORES)` per step). The stars feel the cores but not each other; there is no self-gravity within a disk, so tidal tails and spiral arms emerge from a shared, *moving* field rather than from star–star interaction.
 
-**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time to an accumulator and runs as many fixed compute dispatches as have accumulated — clamped to `MAX_SUBSTEPS`, with a `MAX_FRAME_DT` clamp on the frame delta so a long stall can't spiral. Step size is independent of frame rate, so the same seed evolves identically on a 60 Hz and a 144 Hz display.
+**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed compute dispatches as have accumulated, clamped to `MAX_SUBSTEPS` (which therefore also caps the top speed: ~64× at 60 fps) with a `MAX_FRAME_DT` clamp so a long stall can't spiral. Higher speeds run *more substeps*, never a bigger `dt`, so integration accuracy is unchanged; step size is independent of frame rate, so the same seed evolves identically on a 60 Hz and a 144 Hz display.
 
 **Symplectic integration with softening.** Both kernels use symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves orbital energy far better than explicit Euler, so disks stay coherent over many orbits. A Plummer softening length (`a = G·m·d / (|d|² + ε²)^{3/2}`) keeps close passages finite, and the fixed timestep (a bounded `dt`, never the raw frame delta) bounds the step. There is no velocity clamp and no boundary: stars are free to stream into tidal tails and escape, which is the physically correct behaviour.
 
-**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The per-frame hot path is infallible.
+**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The one other export, `set_speed` (called by the page's speed slider), takes a plain `f32` and is infallible, as is the per-frame hot path.
 
 ## How a Frame Is Produced
 
@@ -84,7 +84,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) does two things on the shared `AppState`:
 
-1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
+1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta (scaled by the speed multiplier) to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
    - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): first `update_cores` (one workgroup) advances the galaxy cores under their mutual gravity, then `update_particles` over `ceil(131072 / 64) = 2048` workgroups advances every star in the cores' field — both in place;
    - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per particle, `draw(0..4, 0..131072)` — additively blended with no depth buffer, into the **HDR scene** target;
@@ -138,7 +138,7 @@ The pipeline uses `TriangleStrip` topology with **additive** blending and **no d
 
 ## Camera & Input
 
-`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 100000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so both galaxies and their tidal tails sit in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.04–5.0 (distance `800 / scale`, so 160–20000). Wheel/pinch zoom maps the device delta through a bounded exponential step, so a notch is a consistent zoom regardless of input device.
+`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 1,000,000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so both galaxies and their tidal tails sit in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.01–5.0 (distance `800 / scale`, so 160–80000). Wheel/pinch zoom maps the device delta through a bounded exponential step, so a notch is a consistent zoom regardless of input device.
 
 A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface and update the camera aspect — so the view fills the window at native resolution without stretching.
 
@@ -151,6 +151,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 | Wheel / two-finger pinch      | Zoom              |
 | Space                         | Pause / resume    |
 | R                             | Reset camera      |
+| Speed slider (on-screen)      | Scale sim speed (0.25×–32×) |
 
 ## Build & Deploy
 

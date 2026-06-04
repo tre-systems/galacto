@@ -12,6 +12,7 @@ A GPU-accelerated **restricted N-body** simulation of two galaxies colliding: ~1
 - **Restricted N-body** — two massive cores move under their mutual gravity while the star disks fall through their combined, softened field, producing tidal tails and spiral arms.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Interactive 3D camera** — orbit, pan, zoom, pause, and reset, with mouse, keyboard, and touch.
+- **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to ~32× to fast-forward the interaction.
 - **Galaxy coloring** — stars are tinted by which galaxy they began in (cool blue vs warm amber), so mixing and tails stay legible.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
@@ -26,6 +27,7 @@ A GPU-accelerated **restricted N-body** simulation of two galaxies colliding: ~1
 | **Mouse wheel**    | Zoom in and out                     |
 | **Spacebar**       | Pause / resume the simulation       |
 | **R**              | Reset the camera                    |
+| **Speed slider**   | Scale simulation speed (0.25×–32×)  |
 
 ### Touch
 
