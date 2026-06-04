@@ -9,9 +9,9 @@ struct Particle {
 
 struct Camera {
     transform: mat4x4<f32>,
-    size: f32,    // billboard half-extent in NDC.y (screen-constant)
-    aspect: f32,  // viewport width / height (keeps quads square)
-    _pad0: f32,
+    size: f32,          // billboard half-extent in NDC.y (screen-constant)
+    aspect: f32,        // viewport width / height (keeps quads square)
+    galaxy_split: f32,  // instances below this index belong to galaxy A, the rest to B
     _pad1: f32,
 }
 
@@ -46,10 +46,14 @@ fn vs_main(
     clip.x += corner.x * camera.size * clip.w / camera.aspect;
     clip.y += corner.y * camera.size * clip.w;
 
-    // Color by speed: blue (slow) -> warm orange (fast).
+    // Color by galaxy of origin so tidal tails and mixing stay legible: A is a
+    // cool blue-white, B a warm amber. A faint speed term lets fast (inner /
+    // shocked) stars read slightly brighter.
+    let is_a = f32(instance_index) < camera.galaxy_split;
+    let base = select(vec3<f32>(1.0, 0.62, 0.30), vec3<f32>(0.45, 0.65, 1.0), is_a);
     let speed = length(particle.velocity);
-    let t = min(speed / 150.0, 1.0);
-    let color = vec3<f32>(0.30 + t * 0.95, 0.35 + t * 0.20, 1.0 - t * 0.70);
+    let boost = 1.0 + min(speed / 220.0, 0.6);
+    let color = base * boost;
 
     var out: VertexOutput;
     out.clip_position = clip;

@@ -7,13 +7,9 @@ Forward-looking work, roughly ordered by what unblocks or de-risks the most. Pre
 The crate is `cdylib`-only, so there is no native way to unit-test or profile, and `cargo test` runs zero tests today. Add `"rlib"` to `crate-type` and cover the pure logic that does not need a GPU:
 
 - Camera math — `build_view_projection_matrix`, the `scale`/rotation clamps, `pan`/`zoom` behaviour.
-- Particle initialization invariants — count equals `NUM_PARTICLES`, the close-star radii stay in range, the stream seeding is deterministic (it already seeds `StdRng` from a fixed `42`).
+- Galaxy initialization invariants — total star count equals `NUM_PARTICLES` (the per-galaxy split sums exactly), core count equals `NUM_CORES`, disk radii stay in range, and generation is deterministic (it already seeds `StdRng` from a fixed `42`).
 
 This also unlocks a future `examples/headless.rs` for stepping the sim without a browser, if a CPU reference path is ever wanted. The engine is now FFI-free (`graphics`/`simulation`/`camera` carry no `JsValue`), so the only thing between here and native tests is the `rlib` crate-type.
-
-## P3 — Shrink the WASM bundle
-
-`wasm-opt` is disabled (`wasm-opt = false` in `Cargo.toml`'s `[package.metadata.wasm-pack.profile.release]`, plus `--no-opt` on the build command), so the shipped `.wasm` is unoptimized for size. Re-enable `wasm-opt` (or run it as a build step) and confirm it does not miscompile the `wgpu` output, which is the usual reason a wgpu project disables it. Measure the before/after download size.
 
 ## P3 — Dependency freshness
 
@@ -21,7 +17,13 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 ## Roadmap — simulation depth
 
-The visual is driven mostly by one injected particle stream plus ~500 seeded close-orbit stars (`src/simulation.rs`); gravity is to a single fixed central mass (O(N), not N-body). Richer behaviour to consider: shape a genuine accretion disk with a spread of orbital radii, add a relativistic-style color/Doppler shift, an event-horizon cutoff that removes particles crossing a Schwarzschild-like radius, or a second body. Each is a self-contained shader + init change.
+The model is a restricted N-body interaction: two massive cores move under mutual gravity and the star disks are massless test particles in their softened field (`src/simulation.rs`, `src/shaders/update.wgsl`). The stars feel the cores but not each other, so the disks have no self-gravity and slowly disperse over many passages. Richer behaviour to consider, roughly by effort:
+
+- **Static dark-matter halos** — give each core an NFW or logarithmic halo potential for a flat rotation curve, so disks hold together more like real galaxies. A few extra lines in the gravity sum.
+- **Auto-replay** — after the interaction disperses, fade and re-seed from the initial conditions so the demo loops instead of emptying out.
+- **More galaxies / mass ratios** — `NUM_CORES` already generalizes the cores and disks; expose unequal masses, retrograde disks, and 3+ galaxies (a small group) for variety.
+- **True self-gravity** — let the stars attract each other (and the cores) for genuine N-body dynamics. Brute-force is O(N²) (tiled shared-memory reduction); a Barnes-Hut tree or a particle-mesh/FFT solver scales better but is a much larger change.
+- **Render the cores** — draw the cores as distinct bright nuclei rather than relying on the dense inner disk to glow.
 
 ## Definition of Done
 

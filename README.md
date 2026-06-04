@@ -1,17 +1,18 @@
-# ⚫ Black Hole Accretion Disk Simulation
+# 🌌 Interacting Galaxies
 
-A GPU-accelerated black-hole accretion-disk simulation: ~131,000 particles orbiting a central singularity, with all physics running on the GPU. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
+A GPU-accelerated **restricted N-body** simulation of two galaxies colliding: ~131,000 stars orbit two massive cores that swing through each other on a bound orbit, and gravity draws the disks out into tidal tails, bridges, and spiral arms. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
 **Live:** [galacto.tre.systems](https://galacto.tre.systems/) — needs a WebGPU-capable browser (Chrome / Edge 113+, or Firefox with `dom.webgpu.enabled`).
 
-![Black Hole Simulation](screenshot.png)
+![Two interacting galaxies with tidal tails and spiral arms](screenshot.png)
 
 ## Features
 
-- **GPU compute physics** — gravity and integration for every particle run in a WebGPU compute shader; the CPU never touches per-particle state.
+- **GPU compute physics** — the galaxy cores and every test star are advanced in a WebGPU compute shader; the CPU never touches per-particle state.
+- **Restricted N-body** — two massive cores move under their mutual gravity while the star disks fall through their combined, softened field, producing tidal tails and spiral arms.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Interactive 3D camera** — orbit, pan, zoom, pause, and reset, with mouse, keyboard, and touch.
-- **Velocity coloring** — particles shade blue (slow) → red (fast) with a speed-driven glow.
+- **Galaxy coloring** — stars are tinted by which galaxy they began in (cool blue vs warm amber), so mixing and tails stay legible.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
 ## Controls
@@ -64,8 +65,8 @@ galacto/
 │   ├── input.rs          # Mouse / touch / keyboard → camera
 │   ├── utils.rs          # Panic hook, console_log!
 │   └── shaders/
-│       ├── update.wgsl   # Compute: gravity + integration
-│       └── render.wgsl   # Vertex + fragment: project + velocity glow
+│       ├── update.wgsl   # Compute: core + test-particle gravity, symplectic integration
+│       └── render.wgsl   # Vertex + fragment: project + per-galaxy glow
 ├── static/               # Frontend assets (index.html, styles.css, favicon)
 ├── docs/                 # Architecture and diagrams
 ├── scripts/              # Diagram render/check scripts
@@ -91,17 +92,17 @@ The pre-commit hook runs `cargo fmt --check`, `cargo clippy -- -D warnings`, and
 
 ![System overview](docs/diagrams/system-overview.png)
 
-One `requestAnimationFrame` callback updates the camera and simulation parameters, dispatches a single GPU **compute** pass that advances all particles in place, then issues one instanced **point** draw that reads the same buffer. Particle state lives only in GPU memory — there is no CPU readback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
+One `requestAnimationFrame` callback updates the camera, then per fixed step runs two GPU **compute** passes — first advancing the galaxy cores under mutual gravity, then every test star in the cores' field — and issues one instanced **billboard** draw that reads the same buffer. Particle state lives only in GPU memory — there is no CPU readback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 
 ## Physics
 
-The model is a simplified single-body gravitational system (particles are attracted to one fixed central mass, not to each other):
+The model is a **restricted N-body** system: a few massive cores move under their mutual gravity, and the many stars are massless test particles that fall through the cores' combined field (they feel the cores but not each other).
 
-- **Gravity to a fixed center** — acceleration `a = -GM · pos / r³` toward the origin, with a small epsilon at `r → 0`.
-- **Euler integration** — velocity is updated then position, with speed clamped to a maximum to keep the integrator stable; the time step is capped at ~0.033 s.
-- **Inelastic boundary** — particles that reach the world bounds (`±600`) bounce back with ~90 % energy loss, so the cloud settles rather than ricocheting forever.
+- **Softened gravity** — each body's pull uses a Plummer softening, `a = G·m·d / (|d|² + ε²)^{3/2}`, so close passages stay finite and each disk keeps a soft glowing bulge.
+- **Symplectic Euler** — velocity is updated, then position (`v += a·dt; x += v·dt`); this conserves orbital energy far better than plain Euler, with no velocity clamp and no boundary, so stars are free to stream into tidal tails and escape.
+- **Two galaxy disks** — two cores start on a bound, eccentric orbit about their shared centre of mass; each carries a rotating disk of stars on softened-circular orbits. Repeated close passages raise spiral arms and fling out tidal tails.
 
-Initial conditions seed ~500 close-orbit "stars" in a flattened disk near the hole, plus a large injected **stream** of particles that the central gravity sweeps into the visible disk. Everything derives from a fixed RNG seed, so each load looks the same.
+Everything derives from a fixed RNG seed, so each load looks the same.
 
 ## Documentation
 
