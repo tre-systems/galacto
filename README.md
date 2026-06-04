@@ -10,9 +10,10 @@ A GPU-accelerated **N-body** simulation of two galaxies merging: ~16,000 self-gr
 
 - **GPU compute physics** — the all-pairs gravity for every body runs in a WebGPU compute shader (workgroup-tiled); the CPU never touches per-body state.
 - **Self-gravity N-body** — every body has mass and attracts every other, so two galaxies merge under their own gravity (and dynamical friction) and relax into a single spinning remnant.
+- **Dark-matter halo** — a static logarithmic halo gently pulls everything toward the centre, so the remnant and its debris stay bound near the middle (orbiting back rather than dispersing off-screen) with a flat outer rotation curve.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Interactive 3D camera** — orbit, pan, zoom, pause, and reset, with mouse, keyboard, and touch.
-- **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to ~16× to fast-forward the merger (all-pairs gravity is heavy, so the top speed is lower than a test-particle sim).
+- **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to ~100× to fast-forward the merger. The top end is GPU-bound (all-pairs gravity is heavy, so the frame rate drops), but the fixed timestep keeps the physics correct.
 - **Galaxy coloring** — stars are tinted by which galaxy they began in (cool blue vs warm amber), so mixing and tails stay legible.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
@@ -27,7 +28,7 @@ A GPU-accelerated **N-body** simulation of two galaxies merging: ~16,000 self-gr
 | **Mouse wheel**    | Zoom in and out                     |
 | **Spacebar**       | Pause / resume the simulation       |
 | **R**              | Reset the camera                    |
-| **Speed slider**   | Scale simulation speed (0.25×–16×)  |
+| **Speed slider**   | Scale simulation speed (0.25×–100×) |
 
 ### Touch
 
@@ -101,6 +102,7 @@ One `requestAnimationFrame` callback updates the camera, then per fixed step run
 The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). This self-gravity is what lets a galaxy actually form — the two galaxies fall together, sink via dynamical friction, and relax into one bound, rotating remnant instead of dispersing.
 
 - **All-pairs gravity** — each body's acceleration is the softened sum over every other, `a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`. The Plummer softening also keeps the two heavy nuclei from locking into a hard binary, so they coalesce into one.
+- **Dark-matter halo** — a static logarithmic halo adds an inward pull `a = -v₀²·r / (|r|² + r_c²)` toward the origin. Its potential is unbounded, so nothing truly escapes — the system stays bound near the centre instead of dispersing forever.
 - **Symplectic Euler** — computed in two passes per step (gravity, then integrate): velocity is updated, then position (`v += a·dt; x += v·dt`); this conserves energy far better than plain Euler.
 - **Two galaxies** — each is a heavy central body plus a rotating disk of lighter stars, started on a bound, prograde approach so their spins and orbit share an axis and the remnant rotates. Close passages raise tidal spiral arms; then it merges.
 

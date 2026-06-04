@@ -41,7 +41,7 @@ cargo check --target wasm32-unknown-unknown
 - All physics lives in `src/shaders/update.wgsl` (the `compute_accel` and `integrate` kernels). The CPU never touches per-body state — the particle and accel buffers are GPU-resident and never read back.
 - Gravity is all-pairs and self-gravitating (every body attracts every other), evaluated with workgroup-shared tiles. `NUM_PARTICLES` must stay a multiple of `WORKGROUP_SIZE` (the tile size) so the tile loop never reads out of bounds.
 - Each fixed step runs two compute passes — `compute_accel` (all-pairs gravity → accel buffer), then `integrate` (advance in place); the render pass then reads the particle buffer. One draw per frame.
-- Tunable simulation constants live in `src/simulation.rs` (module consts like `G`, `CENTER_MASS`, `STAR_MASS`, `SOFTENING`, surfaced to the shader via the `SimulationParams` uniform); keep them there rather than scattering magic numbers across the shader.
+- Tunable simulation constants live in `src/simulation.rs` (module consts like `G`, `CENTER_MASS`, `STAR_MASS`, `SOFTENING`, and the dark-matter halo's `HALO_V0` / `HALO_RC`, surfaced to the shader via the `SimulationParams` uniform); keep them there rather than scattering magic numbers across the shader.
 - Keep modules small and single-purpose. Match the existing split rather than growing `lib.rs`.
 
 ## Code Map

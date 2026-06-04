@@ -72,7 +72,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what lets a galaxy genuinely form: the two galaxies sink together via dynamical friction and relax into a bound remnant rather than dispersing.
 
-**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` (which therefore also caps the top speed: ~32× at 60 fps) with a `MAX_FRAME_DT` clamp so a long stall can't spiral. Each substep is a full `O(N²)` gravity pass, so high speeds are GPU-bound and the frame rate drops — but step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
+**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` (which therefore also caps the top speed: ~128× at 60 fps) with a `MAX_FRAME_DT` clamp so a long stall can't spiral. Each substep is a full `O(N²)` gravity pass, so high speeds are GPU-bound and the frame rate drops — but step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
 
 **Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the remnant is stable over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite and, being fairly large, lets the two heavy nuclei coalesce into one soft core instead of locking into a hard binary. There is no velocity clamp and no boundary.
 
@@ -113,10 +113,10 @@ The particle buffer is written by the compute stage and read by the vertex stage
 
 All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` uniform (`dt`, `g`, `softening`, `particle_count`). Two kernels run per step, each in its own pass so the second sees the first's writes:
 
-- **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case.
+- **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case. Finally a static **dark-matter halo** term is added: `a -= v₀² · pos / (|pos|² + r_c²)`, a logarithmic potential centred at the origin whose inward pull keeps the system bound (debris orbits back rather than escaping) and gives a flat outer rotation curve.
 - **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place.
 
-`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, `CENTER_MASS = 300000`, `STAR_MASS = 20`, `SOFTENING = 25`.
+`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, `CENTER_MASS = 300000`, `STAR_MASS = 20`, `SOFTENING = 25`, and the halo `HALO_V0 = 75` / `HALO_RC = 150`.
 
 Initial conditions (`Simulation::generate_initial_galaxies`, seeded `StdRng(42)` → reproducible) build two galaxies, half the bodies each:
 
@@ -153,7 +153,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 | Wheel / two-finger pinch      | Zoom              |
 | Space                         | Pause / resume    |
 | R                             | Reset camera      |
-| Speed slider (on-screen)      | Scale sim speed (0.25×–16×) |
+| Speed slider (on-screen)      | Scale sim speed (0.25×–100×) |
 
 ## Build & Deploy
 

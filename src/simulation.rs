@@ -34,6 +34,14 @@ const STAR_MASS: f32 = 20.0;
 /// rather than locking into a hard, never-merging binary.
 const SOFTENING: f32 = 25.0;
 
+/// Static logarithmic dark-matter halo centred at the origin: `HALO_V0` is its
+/// asymptotic circular speed and `HALO_RC` its core radius. It adds a gentle
+/// inward pull so the merged galaxy and its debris stay bound near the centre
+/// (orbiting back rather than dispersing off-screen) and a flat outer rotation
+/// curve. Set `HALO_V0 = 0` to disable.
+const HALO_V0: f32 = 75.0;
+const HALO_RC: f32 = 150.0;
+
 /// Billboard half-extent for each particle, in NDC.y (screen-constant, so it is
 /// independent of zoom and depth). Tuned for a soft, overlapping additive glow.
 const PARTICLE_SIZE: f32 = 0.02;
@@ -54,8 +62,8 @@ pub struct SimulationParams {
     pub g: f32,         // gravitational constant
     pub softening: f32, // Plummer softening length
     pub particle_count: u32,
-    pub _pad0: u32,
-    pub _pad1: u32,
+    pub halo_v0_sq: f32, // dark-matter halo: squared asymptotic circular speed
+    pub halo_rc2: f32,   // dark-matter halo: squared core radius
     pub _pad2: u32,
     pub _pad3: u32,
 }
@@ -101,8 +109,8 @@ impl Simulation {
             g: G,
             softening: SOFTENING,
             particle_count: NUM_PARTICLES,
-            _pad0: 0,
-            _pad1: 0,
+            halo_v0_sq: HALO_V0 * HALO_V0,
+            halo_rc2: HALO_RC * HALO_RC,
             _pad2: 0,
             _pad3: 0,
         };
