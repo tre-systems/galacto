@@ -6,7 +6,7 @@
     <title>Interacting Galaxies - WebGPU</title>
     <meta
       name="description"
-      content="A GPU-accelerated restricted N-body simulation of two galaxies colliding: tens of thousands of stars drawn by gravity into tidal tails and spiral arms. Built with Rust, WebAssembly, and WebGPU."
+      content="A GPU-accelerated N-body simulation of two galaxies merging under their own gravity into a single spinning remnant. Built with Rust, WebAssembly, and WebGPU."
     />
     <link rel="stylesheet" href="styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -45,7 +45,7 @@
         type="range"
         min="0"
         max="100"
-        value="23"
+        value="33"
         step="1"
         aria-label="Simulation speed"
       />
@@ -93,7 +93,7 @@
         const slider = document.getElementById("speed-slider");
         const readout = document.getElementById("speed-readout");
         const MIN = 0.25;
-        const MAX = 100;
+        const MAX = 16;
         const apply = () => {
           const t = slider.value / 100;
           const speed = MIN * Math.pow(MAX / MIN, t);

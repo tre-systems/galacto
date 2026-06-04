@@ -3,8 +3,8 @@
 // additively, so overlapping particles accumulate brightness.
 
 struct Particle {
-    position: vec3<f32>,
-    velocity: vec3<f32>,
+    pos_mass: vec4<f32>, // xyz = position, w = mass
+    vel: vec4<f32>,      // xyz = velocity, w unused
 }
 
 struct Camera {
@@ -39,7 +39,7 @@ fn vs_main(
     let corner = corners[vertex_index];
 
     let particle = particles[instance_index];
-    var clip = camera.transform * vec4<f32>(particle.position, 1.0);
+    var clip = camera.transform * vec4<f32>(particle.pos_mass.xyz, 1.0);
 
     // Offset in clip space so the billboard is a constant size on screen
     // regardless of depth; divide x by aspect to keep it square.
@@ -51,7 +51,7 @@ fn vs_main(
     // shocked) stars read slightly brighter.
     let is_a = f32(instance_index) < camera.galaxy_split;
     let base = select(vec3<f32>(1.0, 0.62, 0.30), vec3<f32>(0.45, 0.65, 1.0), is_a);
-    let speed = length(particle.velocity);
+    let speed = length(particle.vel.xyz);
     let boost = 1.0 + min(speed / 220.0, 0.6);
     let color = base * boost;
 
@@ -69,8 +69,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let glow = max(0.0, 1.0 - d);
     let intensity = glow * glow;
 
-    // Additive blending sums these into the framebuffer; keep per-particle
-    // brightness modest so dense regions accumulate into a bright core.
-    let rgb = in.color * intensity * 0.3;
+    // Additive blending sums these into the framebuffer. With fewer bodies than a
+    // test-particle sim, each one carries a bit more glow so dense regions still
+    // build into a bright core.
+    let rgb = in.color * intensity * 0.55;
     return vec4<f32>(rgb, intensity);
 }

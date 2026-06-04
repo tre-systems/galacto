@@ -5,13 +5,15 @@ use rand::{Rng, SeedableRng};
 use std::f32::consts::TAU;
 use wgpu::util::DeviceExt;
 
-const NUM_PARTICLES: u32 = 131072;
-const WORKGROUP_SIZE: u32 = 64;
+/// Total bodies in the simulation. Self-gravity is all-pairs (O(N²)), so this is
+/// far smaller than a test-particle sim would allow. Must be a multiple of
+/// `WORKGROUP_SIZE` so the tiled gravity kernel never reads out of bounds.
+const NUM_PARTICLES: u32 = 16384;
+/// Compute workgroup size, equal to `TILE` in `update.wgsl`.
+const WORKGROUP_SIZE: u32 = 256;
 
-/// Number of massive galaxy cores. Each carries a disk of test particles; the
-/// cores move under their mutual gravity and the particles fall through their
-/// combined field. Must not exceed `MAX_CORES` in `update.wgsl`.
-const NUM_CORES: u32 = 2;
+/// Number of galaxies (each = one heavy central body + a disk of lighter stars).
+const NUM_GALAXIES: u32 = 2;
 
 /// Fixed simulation timestep (seconds). Physics advances in whole steps of this
 /// size regardless of display refresh rate; see the accumulator in `lib.rs`.
@@ -19,34 +21,28 @@ pub const FIXED_DT: f32 = 1.0 / 60.0;
 
 /// Gravitational constant for the sim's arbitrary unit system.
 const G: f32 = 1.0;
-/// Mass of each galaxy core (sets the depth of its potential well).
-const CORE_MASS: f32 = 450_000.0;
-/// Plummer softening length: smooths the core potential so inner orbits stay
-/// finite and the disk has a soft glowing bulge instead of a singular spike.
-const SOFTENING: f32 = 12.0;
+/// Mass of each galaxy's heavy central body (anchors the disk and dominates the
+/// merger dynamics).
+const CENTER_MASS: f32 = 300_000.0;
+/// Mass of each disk star. The disk's summed mass is a sizeable fraction of the
+/// centre, so self-gravity drives the merger (dynamical friction) and binds the
+/// remnant — but the centre still dominates, which keeps the initial disk stable.
+const STAR_MASS: f32 = 20.0;
+/// Plummer softening length: smooths close encounters so the integrator stays
+/// stable and gives a soft glowing core instead of a singular spike. Large
+/// enough that the two heavy centres coalesce into one soft nucleus on contact
+/// rather than locking into a hard, never-merging binary.
+const SOFTENING: f32 = 25.0;
 
 /// Billboard half-extent for each particle, in NDC.y (screen-constant, so it is
 /// independent of zoom and depth). Tuned for a soft, overlapping additive glow.
-const PARTICLE_SIZE: f32 = 0.016;
+const PARTICLE_SIZE: f32 = 0.02;
 
-/// One test star. WGSL lays out `vec3<f32>` on a 16-byte alignment, so a
-/// `{ position: vec3, velocity: vec3 }` storage struct has `velocity` at offset
-/// 16 and a 32-byte stride. The explicit pads make the Rust layout match exactly
-/// (a tightly packed 24-byte struct would scatter velocity bytes into position).
+/// One body. `pos_mass` packs position in xyz and mass in w; `vel` packs velocity
+/// in xyz (w unused). vec4 packing keeps the Rust/WGSL storage layout unambiguous.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Particle {
-    pub position: [f32; 3],
-    pub _pad0: f32,
-    pub velocity: [f32; 3],
-    pub _pad1: f32,
-}
-
-/// A massive body. `pos_mass` packs position in xyz and mass in w; `vel` packs
-/// velocity in xyz (w unused). vec4 packing keeps the GPU layout unambiguous.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Core {
     pub pos_mass: [f32; 4],
     pub vel: [f32; 4],
 }
@@ -58,21 +54,21 @@ pub struct SimulationParams {
     pub g: f32,         // gravitational constant
     pub softening: f32, // Plummer softening length
     pub particle_count: u32,
-    pub num_cores: u32,
     pub _pad0: u32,
     pub _pad1: u32,
     pub _pad2: u32,
+    pub _pad3: u32,
 }
 
 pub struct Simulation {
     #[allow(dead_code)] // held only to keep the GPU resource alive
     particle_buffer: wgpu::Buffer,
     #[allow(dead_code)] // held only to keep the GPU resource alive
-    core_buffer: wgpu::Buffer,
+    accel_buffer: wgpu::Buffer,
     #[allow(dead_code)] // held only to keep the GPU resource alive
     params_buffer: wgpu::Buffer,
-    pub cores_pipeline: wgpu::ComputePipeline,
-    pub compute_pipeline: wgpu::ComputePipeline,
+    pub accel_pipeline: wgpu::ComputePipeline,
+    pub integrate_pipeline: wgpu::ComputePipeline,
     pub render_pipeline: wgpu::RenderPipeline,
     pub compute_bind_group: wgpu::BindGroup,
     pub render_bind_group: wgpu::BindGroup,
@@ -83,8 +79,7 @@ impl Simulation {
     pub fn new(device: &wgpu::Device, color_format: wgpu::TextureFormat) -> Self {
         console_log!("Creating simulation...");
 
-        // Generate initial galaxies: massive cores and their disks of test stars.
-        let (particles, cores) = Self::generate_initial_galaxies();
+        let particles = Self::generate_initial_galaxies();
 
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
@@ -92,12 +87,13 @@ impl Simulation {
             usage: wgpu::BufferUsages::STORAGE,
         });
 
-        // Cores are read AND written on the GPU (they move under mutual gravity),
-        // so the buffer is plain STORAGE with no CPU upload after init.
-        let core_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Core Buffer"),
-            contents: bytemuck::cast_slice(&cores),
+        // Scratch acceleration buffer: written by the accel pass, read by the
+        // integrate pass each step. Contents need no initialization.
+        let accel_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Accel Buffer"),
+            size: (NUM_PARTICLES as u64) * 16, // vec4<f32> per body
             usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
         });
 
         let params = SimulationParams {
@@ -105,10 +101,10 @@ impl Simulation {
             g: G,
             softening: SOFTENING,
             particle_count: NUM_PARTICLES,
-            num_cores: NUM_CORES,
             _pad0: 0,
             _pad1: 0,
             _pad2: 0,
+            _pad3: 0,
         };
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -117,7 +113,6 @@ impl Simulation {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Create camera buffer
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
             size: 80, // mat4 (64) + vec4 params (size, aspect, galaxy_split, pad)
@@ -125,21 +120,19 @@ impl Simulation {
             mapped_at_creation: false,
         });
 
-        // Load and create compute shader (holds both the particle and core kernels)
+        // Compute shader holds both the accel and integrate kernels.
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/update.wgsl").into()),
         });
 
-        // Load and create render shader
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/render.wgsl").into()),
         });
 
-        // Compute bind group layout: particles (rw), params (uniform), cores (rw).
-        // Both compute kernels share this layout and one bind group; the particle
-        // kernel only reads `cores`, the core kernel ignores `particles`.
+        // Compute bind group: particles (rw), params (uniform), accel (rw). Both
+        // kernels share this one layout and bind group.
         let compute_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Compute Bind Group Layout"),
@@ -177,7 +170,6 @@ impl Simulation {
                 ],
             });
 
-        // Create render bind group layout
         let render_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Render Bind Group Layout"),
@@ -205,7 +197,6 @@ impl Simulation {
                 ],
             });
 
-        // Create compute pipeline
         let compute_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
@@ -213,27 +204,26 @@ impl Simulation {
                 push_constant_ranges: &[],
             });
 
-        // Advances the galaxy cores under their mutual gravity.
-        let cores_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Cores Pipeline"),
+        // All-pairs gravity: reads positions, writes accelerations.
+        let accel_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Accel Pipeline"),
             layout: Some(&compute_pipeline_layout),
             module: &compute_shader,
-            entry_point: Some("update_cores"),
+            entry_point: Some("compute_accel"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
 
-        // Advances every test particle in the cores' combined field.
-        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
+        // Advances velocity and position from the accelerations.
+        let integrate_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Integrate Pipeline"),
             layout: Some(&compute_pipeline_layout),
             module: &compute_shader,
-            entry_point: Some("update_particles"),
+            entry_point: Some("integrate"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
 
-        // Create render pipeline
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -294,7 +284,6 @@ impl Simulation {
             multiview: None,
         });
 
-        // Create bind groups
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
             layout: &compute_bind_group_layout,
@@ -309,7 +298,7 @@ impl Simulation {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: core_buffer.as_entire_binding(),
+                    resource: accel_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -329,26 +318,20 @@ impl Simulation {
             ],
         });
 
-        console_log!("✨ Galaxy interaction initialized!");
+        console_log!("✨ Self-gravitating galaxy merger initialized!");
         console_log!(
-            "📊 {} test stars across {} galaxies ({}K each)",
+            "📊 {} bodies across {} galaxies (all-pairs self-gravity)",
             NUM_PARTICLES,
-            NUM_CORES,
-            NUM_PARTICLES / NUM_CORES / 1000
+            NUM_GALAXIES
         );
-        console_log!(
-            "⚡ Workgroups: {} ({} particles per workgroup)",
-            NUM_PARTICLES.div_ceil(WORKGROUP_SIZE),
-            WORKGROUP_SIZE
-        );
-        console_log!("🌌 Ready to simulate a galaxy flyby!");
+        console_log!("🌌 Two galaxies will merge into one spinning remnant.");
 
         Self {
             particle_buffer,
-            core_buffer,
+            accel_buffer,
             params_buffer,
-            cores_pipeline,
-            compute_pipeline,
+            accel_pipeline,
+            integrate_pipeline,
             render_pipeline,
             compute_bind_group,
             render_bind_group,
@@ -356,104 +339,90 @@ impl Simulation {
         }
     }
 
-    /// Build two rotating disks of test stars around two massive cores set on a
-    /// grazing approach. Their mutual pull draws out tidal tails and bridges.
-    fn generate_initial_galaxies() -> (Vec<Particle>, Vec<Core>) {
+    /// Build two rotating disks, each anchored by a heavy central body, on a bound
+    /// approach so self-gravity merges them into a single spinning remnant. Both
+    /// disk spins and the orbit share the same axis (+z), so their angular momenta
+    /// add into a well-rotating result.
+    fn generate_initial_galaxies() -> Vec<Particle> {
         let mut rng = StdRng::seed_from_u64(42);
 
-        // Two cores on a bound, eccentric orbit about their shared centre of mass
-        // (at the origin). They start near apocenter on the x-axis with opposed
-        // tangential velocities along y, so they swing through a deep pericenter
-        // passage and back, repeatedly — a galaxy "dance" that stays in frame
-        // (semi-major axis ~275, period ~30 s) rather than flying apart.
-        let cores = vec![
-            Core {
-                pos_mass: [-213.0, 0.0, 0.0, CORE_MASS],
-                vel: [0.0, 15.4, 0.0, 0.0],
-            },
-            Core {
-                pos_mass: [213.0, 0.0, 0.0, CORE_MASS],
-                vel: [0.0, -15.4, 0.0, 0.0],
-            },
+        // (centre position, centre velocity) for each galaxy. They start
+        // separated on the x-axis with opposed tangential velocities, deeply
+        // bound (low relative speed) so they fall together and merge quickly.
+        let galaxies = [
+            ([-120.0_f32, 0.0, 0.0], [0.0_f32, -20.0, 0.0]),
+            ([120.0_f32, 0.0, 0.0], [0.0_f32, 20.0, 0.0]),
         ];
 
         let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
-        let per_galaxy = NUM_PARTICLES / NUM_CORES;
-        let sqrt_gm = (G * CORE_MASS).sqrt();
+        let per_galaxy = NUM_PARTICLES / NUM_GALAXIES;
+        let sqrt_gm = (G * CENTER_MASS).sqrt();
 
-        for (c, core) in cores.iter().enumerate() {
-            let center = [core.pos_mass[0], core.pos_mass[1], core.pos_mass[2]];
-            let bulk = [core.vel[0], core.vel[1], core.vel[2]];
-            // Give the last galaxy any remainder so the counts always sum to NUM_PARTICLES.
-            let count = if c as u32 == NUM_CORES - 1 {
-                NUM_PARTICLES - per_galaxy * (NUM_CORES - 1)
-            } else {
-                per_galaxy
-            };
+        for (center, bulk) in galaxies {
+            // Heavy central body.
+            particles.push(Particle {
+                pos_mass: [center[0], center[1], center[2], CENTER_MASS],
+                vel: [bulk[0], bulk[1], bulk[2], 0.0],
+            });
 
-            for _ in 0..count {
-                // Centrally concentrated radius (dense bulge -> sparse outskirts),
-                // a thin disk in the x-y plane.
+            // Disk stars (one fewer than per_galaxy, to leave room for the centre).
+            for _ in 1..per_galaxy {
+                // Centrally concentrated radius, thin disk in the x-y plane.
                 let t: f32 = rng.gen_range(0.0_f32..1.0);
                 let r = 4.0 + 116.0 * t.powf(1.7);
                 let theta = rng.gen_range(0.0_f32..TAU);
                 let z = rng.gen_range(-4.0_f32..4.0);
 
-                let position = [
-                    center[0] + r * theta.cos(),
-                    center[1] + r * theta.sin(),
-                    center[2] + z,
-                ];
-
-                // Circular speed in the Plummer-softened potential:
-                //   v_circ^2 = G M r^2 / (r^2 + eps^2)^{3/2}
-                // so inner stars don't orbit unphysically fast inside the soft core.
+                // Circular speed in the central body's Plummer-softened potential.
                 let denom = (r * r + SOFTENING * SOFTENING).powf(0.75);
                 let v_circ = sqrt_gm * r / denom;
 
-                // Prograde (counter-clockwise) tangential velocity plus the core's
-                // bulk motion, so the whole disk drifts with its galaxy.
-                let velocity = [
-                    bulk[0] - v_circ * theta.sin(),
-                    bulk[1] + v_circ * theta.cos(),
-                    bulk[2],
-                ];
-
+                // Prograde (+z) tangential velocity plus the galaxy's bulk motion.
                 particles.push(Particle {
-                    position,
-                    _pad0: 0.0,
-                    velocity,
-                    _pad1: 0.0,
+                    pos_mass: [
+                        center[0] + r * theta.cos(),
+                        center[1] + r * theta.sin(),
+                        center[2] + z,
+                        STAR_MASS,
+                    ],
+                    vel: [
+                        bulk[0] - v_circ * theta.sin(),
+                        bulk[1] + v_circ * theta.cos(),
+                        bulk[2],
+                        0.0,
+                    ],
                 });
             }
         }
 
-        console_log!("✅ Generated {} test stars", particles.len());
-        (particles, cores)
+        console_log!("✅ Generated {} bodies", particles.len());
+        particles
     }
 
     pub fn compute_pass(&self, encoder: &mut wgpu::CommandEncoder) {
-        // Cores first, in their own pass so the write is visible to the particle
-        // pass that reads it (pass boundaries act as the storage barrier).
+        let workgroups = NUM_PARTICLES / WORKGROUP_SIZE;
+
+        // All-pairs gravity into the accel buffer, then integrate. Separate passes
+        // so the integrate pass sees the freshly written accelerations, and so the
+        // accel pass reads positions that are not being modified concurrently.
         {
-            let mut cores_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Cores Pass"),
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Accel Pass"),
                 timestamp_writes: None,
             });
-            cores_pass.set_pipeline(&self.cores_pipeline);
-            cores_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            cores_pass.dispatch_workgroups(1, 1, 1);
+            pass.set_pipeline(&self.accel_pipeline);
+            pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Compute Pass"),
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Integrate Pass"),
                 timestamp_writes: None,
             });
-            compute_pass.set_pipeline(&self.compute_pipeline);
-            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            let workgroups = NUM_PARTICLES.div_ceil(WORKGROUP_SIZE);
-            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+            pass.set_pipeline(&self.integrate_pipeline);
+            pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            pass.dispatch_workgroups(workgroups, 1, 1);
         }
     }
 
@@ -473,7 +442,7 @@ impl Simulation {
         data[..16].copy_from_slice(matrix_array);
         data[16] = PARTICLE_SIZE;
         data[17] = camera.aspect_ratio;
-        data[18] = (NUM_PARTICLES / NUM_CORES) as f32;
+        data[18] = (NUM_PARTICLES / NUM_GALAXIES) as f32;
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

@@ -52,8 +52,8 @@ digraph FrameLoop {
   U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt × speed → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase
-  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step: update_cores → update_particles (2048 wg)<BR/>softened gravity → symplectic step</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">131,072 billboard quads (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step: compute_accel → integrate (64 wg)<BR/>tiled all-pairs self-gravity → symplectic step</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">16,384 billboard quads (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
 
