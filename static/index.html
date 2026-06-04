@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Interacting Galaxies - WebGPU</title>
+    <title>Spiral Galaxy - WebGPU</title>
     <meta
       name="description"
-      content="A GPU-accelerated N-body simulation of two galaxies merging under their own gravity into a single spinning remnant. Built with Rust, WebAssembly, and WebGPU."
+      content="A GPU-accelerated self-gravitating N-body simulation of a galactic disk that forms spiral arms, with a live disk-temperature control. Built with Rust, WebAssembly, and WebGPU."
     />
     <link rel="stylesheet" href="styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -39,17 +39,32 @@
 
     <!-- On-screen controls -->
     <div id="controls">
-      <label for="speed-slider">Speed</label>
-      <input
-        id="speed-slider"
-        type="range"
-        min="0"
-        max="100"
-        value="23"
-        step="1"
-        aria-label="Simulation speed"
-      />
-      <span id="speed-readout">1.0×</span>
+      <div class="control">
+        <label for="speed-slider">Speed</label>
+        <input
+          id="speed-slider"
+          type="range"
+          min="0"
+          max="100"
+          value="41"
+          step="1"
+          aria-label="Simulation speed"
+        />
+        <span id="speed-readout">1.0×</span>
+      </div>
+      <div class="control">
+        <label for="temp-slider">Disk temp</label>
+        <input
+          id="temp-slider"
+          type="range"
+          min="0"
+          max="100"
+          value="70"
+          step="1"
+          aria-label="Disk temperature (release to apply)"
+        />
+        <span id="temp-readout">1.0</span>
+      </div>
     </div>
 
     <script type="module">
@@ -79,6 +94,7 @@
           await mod.default();
           loadingEl.style.display = "none";
           setupSpeedControl(mod);
+          setupTempControl(mod);
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -103,6 +119,24 @@
         };
         slider.addEventListener("input", apply);
         apply();
+      }
+
+      // Map the disk-temperature slider (0–100) to a multiplier on a log scale
+      // (0.3 … 3.0). The readout updates live while dragging, but the disk only
+      // re-seeds on release (the `change` event), since each re-seed restarts it.
+      function setupTempControl(mod) {
+        const slider = document.getElementById("temp-slider");
+        const readout = document.getElementById("temp-readout");
+        const MIN = 0.2;
+        const MAX = 2.0;
+        const tempFor = () => MIN * Math.pow(MAX / MIN, slider.value / 100);
+        slider.addEventListener("input", () => {
+          readout.textContent = tempFor().toFixed(2);
+        });
+        slider.addEventListener("change", () => {
+          mod.set_disk_temperature(tempFor());
+        });
+        readout.textContent = tempFor().toFixed(2);
       }
 
       init().catch(console.error);

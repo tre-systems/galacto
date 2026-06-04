@@ -1,4 +1,4 @@
-/* Interacting Galaxies Simulation Styles */
+/* Spiral Galaxy Simulation Styles */
 
 * {
   box-sizing: border-box;
@@ -88,12 +88,12 @@ body {
   bottom: 18px;
   transform: translateX(-50%);
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 18px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px;
   background: rgba(10, 14, 28, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
+  border-radius: 16px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   font-size: 13px;
@@ -103,20 +103,27 @@ body {
   z-index: 100;
 }
 
-#controls label {
+.control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.control label {
+  width: 72px;
   text-transform: uppercase;
   font-size: 11px;
   opacity: 0.8;
 }
 
-#controls input[type="range"] {
+.control input[type="range"] {
   width: 200px;
   accent-color: #7aa2f7;
   cursor: pointer;
 }
 
-#speed-readout {
-  min-width: 3.5ch;
+.control span {
+  min-width: 4ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
