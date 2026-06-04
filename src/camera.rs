@@ -40,7 +40,9 @@ impl Camera {
     pub fn zoom(&mut self, delta: f32) {
         let zoom_factor = 1.0 + delta * 0.01;
         self.scale *= zoom_factor;
-        self.scale = self.scale.clamp(0.3, 5.0);
+        // Min 0.1 (distance 8000) zooms out far enough to frame the whole
+        // interaction and its tidal tails; max 5.0 zooms into a single core.
+        self.scale = self.scale.clamp(0.1, 5.0);
     }
 
     pub fn reset(&mut self) {
@@ -61,7 +63,9 @@ impl Camera {
         let camera_pos = Point3::from_vec(rotated_position);
 
         let view = Matrix4::look_at_rh(camera_pos, Point3::new(0.0, 0.0, 0.0), Vector3::unit_y());
-        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 5000.0);
+        // Far plane is generous (the rendering has no depth buffer, so there is
+        // no precision cost) so escaped stars and far zoom-out never clip.
+        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 50000.0);
 
         proj * view
     }
