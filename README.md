@@ -30,7 +30,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Spacebar**       | Pause / resume the simulation       |
 | **R**              | Reset the camera                    |
 | **Speed slider**   | Scale simulation speed (0.25×–100×) |
-| **Disk-temp slider** | Set disk temperature; re-seeds on release (0.2 cold/clumpy → 2.0 hot/smooth) |
+| **Disk-temp slider** | Set disk temperature; re-seeds on release (0.02 cold/clumpy → 2.0 hot/smooth) |
 | **Scenario dropdown** | Switch initial conditions: spiral disk or galaxy merger (re-seeds) |
 
 ### Touch
