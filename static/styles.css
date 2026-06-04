@@ -145,3 +145,24 @@ body {
   font-weight: 600;
   color: #fff;
 }
+
+/* Buy Me a Coffee (Ko-fi) badge */
+#kofi {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  opacity: 0.92;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+#kofi:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+#kofi img {
+  display: block;
+  height: 36px;
+  width: auto;
+}
