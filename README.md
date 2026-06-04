@@ -1,6 +1,6 @@
-# 🌀 Spiral Galaxy
+# 🌌 Galaxy Sandbox
 
-A GPU-accelerated **self-gravitating N-body** simulation: ~16,000 bodies where every star pulls on every other, set up as a cold rotating disk that spontaneously grows **spiral arms**. A live disk-temperature slider lets you dial between a smooth disk, churning spiral arms, and a clumpy fragmenting one. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
+A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk temperature and speed live. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
 **Live:** [galacto.tre.systems](https://galacto.tre.systems/) — needs a WebGPU-capable browser (Chrome / Edge 113+, or Firefox with `dom.webgpu.enabled`).
 
@@ -9,7 +9,8 @@ A GPU-accelerated **self-gravitating N-body** simulation: ~16,000 bodies where e
 ## Features
 
 - **GPU compute physics** — the all-pairs gravity for every body runs in a WebGPU compute shader (workgroup-tiled); the CPU never touches per-body state.
-- **Self-gravity N-body** — every body has mass and attracts every other, so a cold disk swing-amplifies small perturbations into recurrent spiral arms (no scripted texture — real density waves).
+- **Self-gravity N-body** — every body has mass and attracts every other, so structure forms for real: a cold disk swing-amplifies into recurrent spiral arms, and two galaxies merge under their own gravity.
+- **Selectable scenarios** — a dropdown switches the initial conditions: **Spiral disk** (single cold disk → spiral arms) or **Galaxy merger** (two galaxies fall together and coalesce).
 - **Live disk-temperature slider** — sets the disk's random velocity dispersion (≈ Toomre Q) and re-seeds on release: cold fragments into clumps, hot is a featureless smear, and the spiral sweet spot is in between.
 - **Dark-matter halo** — a static logarithmic halo binds the disk (nothing escapes) and sets a flat outer rotation curve.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
@@ -30,6 +31,7 @@ A GPU-accelerated **self-gravitating N-body** simulation: ~16,000 bodies where e
 | **R**              | Reset the camera                    |
 | **Speed slider**   | Scale simulation speed (0.25×–100×) |
 | **Disk-temp slider** | Set disk temperature; re-seeds on release (0.2 cold/clumpy → 2.0 hot/smooth) |
+| **Scenario dropdown** | Switch initial conditions: spiral disk or galaxy merger (re-seeds) |
 
 ### Touch
 
@@ -100,16 +102,15 @@ One `requestAnimationFrame` callback updates the camera, then per fixed step run
 
 ## Physics
 
-The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). Set up as a cold rotating disk, that self-gravity is what lets **spiral arms** grow — small over-densities are sheared by the disk's differential rotation and self-gravity amplifies them into recurrent, trailing spiral patterns (swing amplification). They're real density waves, not a painted-on texture.
+The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). The same solver drives both scenarios — only the initial conditions differ.
 
 - **All-pairs gravity** — each body's acceleration is the softened sum over every other, `a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`.
-- **Dark-matter halo** — a static logarithmic halo adds an inward pull `a = -v₀²·r / (|r|² + r_c²)`. Its potential is unbounded, so the disk stays bound, with a flat outer rotation curve.
+- **Dark-matter halo** — a static logarithmic halo adds an inward pull `a = -v₀²·r / (|r|² + r_c²)`. Its potential is unbounded, so the system stays bound, with a flat outer rotation curve.
 - **Symplectic Euler** — computed in two passes per step (gravity, then integrate): velocity is updated, then position (`v += a·dt; x += v·dt`); this conserves energy far better than plain Euler.
-- **Initial disk** — a heavy central bulge plus an exponential disk of stars on near-circular prograde orbits, each given a random thermal kick scaled by the disk-temperature slider. The dispersion (≈ Toomre Q) decides the outcome: too cold fragments into clumps, too hot stays a smooth smear, and the spiral arms live in between. Moving the slider re-seeds the disk so you can sweep through all three.
+- **Spiral disk** — a heavy central bulge plus an exponential disk on near-circular prograde orbits, each given a random thermal kick scaled by the temperature slider (≈ Toomre Q). Cold fragments into clumps, hot stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
+- **Galaxy merger** — two such disks, each anchored by a heavy core, on a bound prograde approach. Self-gravity and dynamical friction pull them together into one spinning remnant.
 
-Everything derives from a fixed RNG seed, so a given temperature always evolves the same way.
-
-Everything derives from a fixed RNG seed, so each load looks the same.
+Everything derives from a fixed RNG seed, so a given scenario and temperature always evolve the same way.
 
 ## Documentation
 

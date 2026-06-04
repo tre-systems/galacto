@@ -16,7 +16,7 @@ use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
 use postprocess::PostProcess;
-use simulation::Simulation;
+use simulation::{Scenario, Simulation};
 use utils::set_panic_hook;
 
 use std::cell::RefCell;
@@ -46,6 +46,9 @@ pub struct AppState {
     steps_this_frame: u32,
     /// Simulation speed multiplier (1.0 = real time); driven by the page's speed slider.
     speed: f32,
+    /// Current scenario and disk temperature, so changing one re-seeds with the other.
+    scenario: Scenario,
+    disk_temp: f32,
 }
 
 impl AppState {
@@ -74,6 +77,8 @@ impl AppState {
             accumulator: 0.0,
             steps_this_frame: 0,
             speed: 1.0,
+            scenario: Scenario::Spiral,
+            disk_temp: simulation::DEFAULT_TEMP,
         })
     }
 
@@ -189,9 +194,18 @@ impl AppState {
         self.camera.set_aspect_ratio(width as f32 / height as f32);
     }
 
-    /// Re-seed the disk at a new temperature (the disk-temperature slider).
-    pub fn set_temperature(&self, temp: f32) {
-        self.simulation.reseed(&self.graphics.queue, temp);
+    /// Re-seed at a new disk temperature (the disk-temperature slider).
+    pub fn set_temperature(&mut self, temp: f32) {
+        self.disk_temp = temp;
+        self.simulation
+            .reseed(&self.graphics.queue, self.scenario, self.disk_temp);
+    }
+
+    /// Switch scenario (the dropdown) and re-seed from its initial conditions.
+    pub fn set_scenario(&mut self, id: u32) {
+        self.scenario = Scenario::from_id(id);
+        self.simulation
+            .reseed(&self.graphics.queue, self.scenario, self.disk_temp);
     }
 }
 
@@ -234,7 +248,18 @@ pub fn set_speed(speed: f32) {
 pub fn set_disk_temperature(temp: f32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
-            app.borrow().set_temperature(temp);
+            app.borrow_mut().set_temperature(temp);
+        }
+    });
+}
+
+/// Switch the initial-condition scenario (0 = spiral disk, 1 = merger), re-seeding
+/// from its initial conditions. Called by the page's scenario dropdown.
+#[wasm_bindgen]
+pub fn set_scenario(id: u32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_scenario(id);
         }
     });
 }
