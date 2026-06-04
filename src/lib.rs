@@ -45,7 +45,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, JsValue> {
-        console_log!("Initializing Black Hole Simulation...");
+        console_log!("Initializing Galaxy Simulation...");
 
         // Graphics is the only fallible step; convert its domain error to a
         // JsValue here at the wasm-bindgen boundary so the engine stays FFI-free.
@@ -194,7 +194,7 @@ thread_local! {
 pub fn start() -> Result<(), JsValue> {
     set_panic_hook();
 
-    console_log!("Starting Black Hole Simulation...");
+    console_log!("Starting Galaxy Simulation...");
 
     spawn_local(async {
         if let Err(e) = run().await {

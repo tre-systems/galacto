@@ -12,10 +12,12 @@ impl Camera {
     pub fn new() -> Self {
         Self {
             position: Vector3::new(0.0, 0.0, 800.0),
-            scale: 3.0,
+            // Zoomed out and face-on (looking down the disk normal) so both
+            // galaxies and their tidal tails sit in frame.
+            scale: 0.7,
             aspect_ratio: 1.0,
             rotation_x: 0.0,
-            rotation_y: std::f32::consts::FRAC_PI_2,
+            rotation_y: 0.0,
         }
     }
 
@@ -43,9 +45,9 @@ impl Camera {
 
     pub fn reset(&mut self) {
         self.position = Vector3::new(0.0, 0.0, 800.0);
-        self.scale = 3.0;
+        self.scale = 0.7;
         self.rotation_x = 0.0;
-        self.rotation_y = std::f32::consts::FRAC_PI_2;
+        self.rotation_y = 0.0;
     }
 
     pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
