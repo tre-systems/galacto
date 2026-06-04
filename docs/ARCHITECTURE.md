@@ -138,7 +138,7 @@ The pipeline uses `TriangleStrip` topology with **additive** blending and **no d
 
 ## Camera & Input
 
-`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 50000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so both galaxies and their tidal tails sit in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.1–5.0 (distance `800 / scale`, so 160–8000).
+`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 100000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so both galaxies and their tidal tails sit in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.04–5.0 (distance `800 / scale`, so 160–20000). Wheel/pinch zoom maps the device delta through a bounded exponential step, so a notch is a consistent zoom regardless of input device.
 
 A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface and update the camera aspect — so the view fills the window at native resolution without stretching.
 
