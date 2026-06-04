@@ -45,7 +45,7 @@ cargo check --target wasm32-unknown-unknown
 
 ## Code Map
 
-- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`).
+- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier set via the `set_speed` export).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config → depth texture; `resize`).
 - Simulation: `src/simulation.rs` (particle/core/params/camera buffers, cores + particle compute pipelines and the render pipeline, bind groups, two-galaxy generation, `compute_pass` / `render_pass`).
 - Camera: `src/camera.rs` (orbit camera — position, scale, rotation; `build_view_projection_matrix`).
@@ -53,7 +53,7 @@ cargo check --target wasm32-unknown-unknown
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).
 - Core error type: `src/error.rs` (`AppError`); only `lib.rs` converts it to `JsValue` at the wasm-bindgen boundary.
 - Shaders: `src/shaders/update.wgsl` (compute: softened core + test-particle gravity, symplectic integration), `src/shaders/render.wgsl` (vertex: project + per-galaxy color; fragment: brightness/glow).
-- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap), `static/styles.css`.
+- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, speed-slider wiring), `static/styles.css`.
 
 ## Tests
 

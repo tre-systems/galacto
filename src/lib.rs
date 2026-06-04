@@ -23,9 +23,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 
-/// Cap on simulation substeps run in a single frame, so a long stall (e.g. a
-/// backgrounded tab) can't request a huge catch-up burst.
-const MAX_SUBSTEPS: u32 = 8;
+/// Cap on simulation substeps run in a single frame. Bounds both a long-stall
+/// catch-up burst and the top simulation speed: at 60 fps this many substeps per
+/// frame is the highest speed multiplier the slider can actually realize.
+const MAX_SUBSTEPS: u32 = 64;
 
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
@@ -41,6 +42,8 @@ pub struct AppState {
     last_time: f32,
     accumulator: f32,
     steps_this_frame: u32,
+    /// Simulation speed multiplier (1.0 = real time); driven by the page's speed slider.
+    speed: f32,
 }
 
 impl AppState {
@@ -68,6 +71,7 @@ impl AppState {
             last_time: 0.0,
             accumulator: 0.0,
             steps_this_frame: 0,
+            speed: 1.0,
         })
     }
 
@@ -98,7 +102,7 @@ impl AppState {
             self.accumulator = 0.0;
             return;
         }
-        self.accumulator += frame_dt.clamp(0.0, MAX_FRAME_DT);
+        self.accumulator += frame_dt.clamp(0.0, MAX_FRAME_DT) * self.speed;
         let mut steps = (self.accumulator / simulation::FIXED_DT) as u32;
         if steps > MAX_SUBSTEPS {
             steps = MAX_SUBSTEPS;
@@ -203,6 +207,18 @@ pub fn start() -> Result<(), JsValue> {
     });
 
     Ok(())
+}
+
+/// Set the simulation speed multiplier (1.0 = real time). Called from the page's
+/// speed slider. No-ops until `AppState` has finished async initialization.
+#[wasm_bindgen]
+pub fn set_speed(speed: f32) {
+    let speed = speed.clamp(0.0, MAX_SUBSTEPS as f32);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().speed = speed;
+        }
+    });
 }
 
 /// Physical (device-pixel) size to render the canvas at, derived from its CSS
