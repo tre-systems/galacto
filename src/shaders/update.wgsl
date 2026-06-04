@@ -16,11 +16,11 @@ struct Particle {
 
 struct Params {
     dt: f32,
-    g: f32,         // gravitational constant
-    softening: f32, // Plummer softening length
+    g: f32,          // gravitational constant
+    softening: f32,  // Plummer softening length
     particle_count: u32,
-    _pad0: u32,
-    _pad1: u32,
+    halo_v0_sq: f32, // dark-matter halo: squared asymptotic circular speed
+    halo_rc2: f32,   // dark-matter halo: squared core radius
     _pad2: u32,
     _pad3: u32,
 }
@@ -65,6 +65,14 @@ fn compute_accel(
         workgroupBarrier();
         base = base + TILE;
     }
+
+    // Static logarithmic dark-matter halo centred at the origin: a gentle inward
+    // pull, a = -v0^2 · pos / (|pos|^2 + rc^2). Its potential grows without bound,
+    // so the system stays gravitationally bound — debris orbits back instead of
+    // escaping to infinity — and it adds a flat outer rotation curve.
+    let rh2 = dot(pi, pi) + params.halo_rc2;
+    a = a - params.halo_v0_sq * pi / rh2;
+
     accel[i] = vec4<f32>(a, 0.0);
 }
 

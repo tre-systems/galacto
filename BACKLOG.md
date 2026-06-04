@@ -22,7 +22,7 @@ The model is a full self-gravitating N-body merger: every body attracts every ot
 - **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (denser, prettier galaxies) at the cost of a much larger implementation.
 - **A dissipative (gas) component** — a collisionless merger relaxes into a puffy elliptical-like remnant. Letting some fraction of bodies shed energy (mimicking gas) would let a thin rotating disk and grand-design spiral arms re-form after the merger.
 - **Tidally-induced spirals (M51)** — a single self-gravitating cold disk plus a companion flyby produces grand-design spiral arms without a full merger; needs a disk tuned near Toomre `Q ≈ 1.5`.
-- **Dark-matter halos** — give each galaxy a live or static halo for a flat rotation curve and more realistic binding.
+- **Richer dark-matter halo** — a single static logarithmic halo (centred at the origin) already binds the system; consider an NFW profile, a *live* (particle) halo, or per-galaxy halos that merge for more realistic dynamics.
 - **More galaxies / mass ratios** — `NUM_GALAXIES` generalizes the setup; expose unequal masses, retrograde disks, and 3+ galaxies (a small group).
 - **Leapfrog (KDK) integrator** — the current step is symplectic Euler (one force eval/step). Kick-drift-kick leapfrog conserves energy better over long runs, at the cost of a second gravity pass per step.
 - **Auto-replay** — re-seed from the initial conditions once the remnant has settled, so the demo loops.

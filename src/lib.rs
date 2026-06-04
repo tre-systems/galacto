@@ -25,9 +25,10 @@ use wasm_bindgen_futures::spawn_local;
 
 /// Cap on simulation substeps run in a single frame. Bounds both a long-stall
 /// catch-up burst and the top simulation speed. Each substep is an all-pairs
-/// O(N²) gravity pass, so this is far lower than a test-particle sim would allow;
-/// at high speed the frame rate drops but the fixed timestep keeps physics correct.
-const MAX_SUBSTEPS: u32 = 32;
+/// O(N²) gravity pass, so cranking the speed slider to its top makes a frame
+/// run many passes: the frame rate drops (it becomes GPU-bound) but the fixed
+/// timestep keeps the physics correct and frame-rate-independent.
+const MAX_SUBSTEPS: u32 = 128;
 
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
