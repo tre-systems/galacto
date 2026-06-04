@@ -38,11 +38,17 @@ impl Camera {
     }
 
     pub fn zoom(&mut self, delta: f32) {
-        let zoom_factor = 1.0 + delta * 0.01;
-        self.scale *= zoom_factor;
-        // Min 0.1 (distance 8000) zooms out far enough to frame the whole
-        // interaction and its tidal tails; max 5.0 zooms into a single core.
-        self.scale = self.scale.clamp(0.1, 5.0);
+        // `delta` is the raw wheel/pinch delta, which varies wildly by device (a
+        // few units on some mice, ~100+ on others). Map it through a bounded
+        // exponential step: the bound stops big-delta mice from overshooting or
+        // inverting the scale, and the coefficient keeps low-delta devices from
+        // needing dozens of notches to cross the (now wide) zoom range. ~4-6
+        // notches span the full range either way.
+        let step = (delta * 0.1).clamp(-0.8, 0.8);
+        self.scale *= step.exp();
+        // Min 0.04 (distance 20000) zooms way out to see the full interaction
+        // and far-flung tails; max 5.0 zooms into a single core.
+        self.scale = self.scale.clamp(0.04, 5.0);
     }
 
     pub fn reset(&mut self) {
@@ -65,7 +71,7 @@ impl Camera {
         let view = Matrix4::look_at_rh(camera_pos, Point3::new(0.0, 0.0, 0.0), Vector3::unit_y());
         // Far plane is generous (the rendering has no depth buffer, so there is
         // no precision cost) so escaped stars and far zoom-out never clip.
-        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 50000.0);
+        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 100000.0);
 
         proj * view
     }
