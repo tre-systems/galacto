@@ -3,7 +3,7 @@ name = "galacto"
 version = "0.1.0"
 edition = "2021"
 authors = ["Robert Gilks <rob.gilks@gmail.com>"]
-description = "A GPU-accelerated restricted N-body galaxy-collision simulation in Rust with WebGPU"
+description = "A GPU-accelerated self-gravitating N-body spiral-galaxy simulation in Rust with WebGPU"
 license = "MIT"
 repository = "https://github.com/tre-systems/galacto"
 

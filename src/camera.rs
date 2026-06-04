@@ -12,8 +12,8 @@ impl Camera {
     pub fn new() -> Self {
         Self {
             position: Vector3::new(0.0, 0.0, 800.0),
-            // Zoomed out and face-on (looking down the disk normal) so both
-            // galaxies and their tidal tails sit in frame.
+            // Zoomed out and face-on (looking down the disk normal) so the
+            // whole galactic disk sits in frame.
             scale: 0.7,
             aspect_ratio: 1.0,
             rotation_x: 0.0,

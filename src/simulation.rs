@@ -12,35 +12,41 @@ const NUM_PARTICLES: u32 = 16384;
 /// Compute workgroup size, equal to `TILE` in `update.wgsl`.
 const WORKGROUP_SIZE: u32 = 256;
 
-/// Number of galaxies (each = one heavy central body + a disk of lighter stars).
-const NUM_GALAXIES: u32 = 2;
-
 /// Fixed simulation timestep (seconds). Physics advances in whole steps of this
 /// size regardless of display refresh rate; see the accumulator in `lib.rs`.
 pub const FIXED_DT: f32 = 1.0 / 60.0;
 
 /// Gravitational constant for the sim's arbitrary unit system.
 const G: f32 = 1.0;
-/// Mass of each galaxy's heavy central body (anchors the disk and dominates the
-/// merger dynamics).
-const CENTER_MASS: f32 = 300_000.0;
-/// Mass of each disk star. The disk's summed mass is a sizeable fraction of the
-/// centre, so self-gravity drives the merger (dynamical friction) and binds the
-/// remnant — but the centre still dominates, which keeps the initial disk stable.
-const STAR_MASS: f32 = 20.0;
+
+/// A single galaxy: a heavy central bulge body plus a self-gravitating
+/// exponential disk of lighter stars. The disk dominates its own region (a
+/// "maximal disk"), which is what makes it spiral-prone.
+const BULGE_MASS: f32 = 40_000.0;
+const STAR_MASS: f32 = 21.0;
+const DISK_RD: f32 = 35.0; // exponential scale length
+const DISK_RMAX: f32 = 170.0; // clamp on the sampled disk radius
+const DISK_THICKNESS: f32 = 4.0; // initial vertical scale
+
 /// Plummer softening length: smooths close encounters so the integrator stays
-/// stable and gives a soft glowing core instead of a singular spike. Large
-/// enough that the two heavy centres coalesce into one soft nucleus on contact
-/// rather than locking into a hard, never-merging binary.
-const SOFTENING: f32 = 25.0;
+/// stable. Small relative to the disk so self-gravity stays "sharp" enough for
+/// spiral structure, but large enough to damp two-body scattering noise.
+const SOFTENING: f32 = 12.0;
 
 /// Static logarithmic dark-matter halo centred at the origin: `HALO_V0` is its
-/// asymptotic circular speed and `HALO_RC` its core radius. It adds a gentle
-/// inward pull so the merged galaxy and its debris stay bound near the centre
-/// (orbiting back rather than dispersing off-screen) and a flat outer rotation
-/// curve. Set `HALO_V0 = 0` to disable.
+/// asymptotic circular speed and `HALO_RC` its core radius. It confines the disk
+/// (nothing escapes) and sets the flat outer rotation curve. Set `HALO_V0 = 0`
+/// to disable.
 const HALO_V0: f32 = 75.0;
 const HALO_RC: f32 = 150.0;
+
+/// Disk "temperature": the initial random velocity dispersion as a fraction of
+/// the local circular speed, scaled by the temperature slider. Too cold and the
+/// disk fragments into clumps; too hot and it stays a featureless smear; spiral
+/// arms live in between. `DISP_FRAC` is tuned so the default temperature (1.0)
+/// lands in the spiral sweet spot; the slider then explores either side.
+const DISP_FRAC: f32 = 0.072;
+const DEFAULT_TEMP: f32 = 1.0;
 
 /// Billboard half-extent for each particle, in NDC.y (screen-constant, so it is
 /// independent of zoom and depth). Tuned for a soft, overlapping additive glow.
@@ -69,7 +75,7 @@ pub struct SimulationParams {
 }
 
 pub struct Simulation {
-    #[allow(dead_code)] // held only to keep the GPU resource alive
+    // Written at init and re-uploaded on reseed (temperature changes).
     particle_buffer: wgpu::Buffer,
     #[allow(dead_code)] // held only to keep the GPU resource alive
     accel_buffer: wgpu::Buffer,
@@ -87,12 +93,12 @@ impl Simulation {
     pub fn new(device: &wgpu::Device, color_format: wgpu::TextureFormat) -> Self {
         console_log!("Creating simulation...");
 
-        let particles = Self::generate_initial_galaxies();
+        let particles = Self::generate_disk(DEFAULT_TEMP);
 
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
             contents: bytemuck::cast_slice(&particles),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
         // Scratch acceleration buffer: written by the accel pass, read by the
@@ -326,13 +332,12 @@ impl Simulation {
             ],
         });
 
-        console_log!("✨ Self-gravitating galaxy merger initialized!");
+        console_log!("✨ Self-gravitating spiral disk initialized!");
         console_log!(
-            "📊 {} bodies across {} galaxies (all-pairs self-gravity)",
-            NUM_PARTICLES,
-            NUM_GALAXIES
+            "📊 {} bodies, all-pairs self-gravity — watch for spiral arms",
+            NUM_PARTICLES
         );
-        console_log!("🌌 Two galaxies will merge into one spinning remnant.");
+        console_log!("🌌 Tweak the disk-temperature slider to find the spiral sweet spot.");
 
         Self {
             particle_buffer,
@@ -347,64 +352,74 @@ impl Simulation {
         }
     }
 
-    /// Build two rotating disks, each anchored by a heavy central body, on a bound
-    /// approach so self-gravity merges them into a single spinning remnant. Both
-    /// disk spins and the orbit share the same axis (+z), so their angular momenta
-    /// add into a well-rotating result.
-    fn generate_initial_galaxies() -> Vec<Particle> {
+    /// Circular speed at radius `r`, from the bulge + enclosed disk mass + halo.
+    /// The disk uses a spherical enclosed-mass approximation — not exact for a
+    /// flat disk, but close enough that the disk settles and then ripples.
+    fn circular_velocity(r: f32) -> f32 {
+        let r = r.max(1.0);
+        let r2 = r * r;
+        let eps2 = SOFTENING * SOFTENING;
+        let v_bulge2 = G * BULGE_MASS * r2 / (r2 + eps2).powf(1.5);
+        let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
+        let x = r / DISK_RD;
+        let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
+        let v_disk2 = G * m_enc / r;
+        let v_halo2 = HALO_V0 * HALO_V0 * r2 / (r2 + HALO_RC * HALO_RC);
+        (v_bulge2 + v_disk2 + v_halo2).sqrt()
+    }
+
+    /// Standard-normal sample (Box–Muller).
+    fn gaussian(rng: &mut StdRng) -> f32 {
+        let u1: f32 = rng.gen_range(1e-6_f32..1.0);
+        let u2: f32 = rng.gen_range(0.0_f32..1.0);
+        (-2.0 * u1.ln()).sqrt() * (TAU * u2).cos()
+    }
+
+    /// Build a single galaxy: a heavy central bulge body plus a self-gravitating
+    /// exponential disk on near-circular prograde (+z) orbits, with a random
+    /// thermal velocity dispersion scaled by `temp` (the disk-temperature slider).
+    fn generate_disk(temp: f32) -> Vec<Particle> {
         let mut rng = StdRng::seed_from_u64(42);
-
-        // (centre position, centre velocity) for each galaxy. They start
-        // separated on the x-axis with opposed tangential velocities, deeply
-        // bound (low relative speed) so they fall together and merge quickly.
-        let galaxies = [
-            ([-120.0_f32, 0.0, 0.0], [0.0_f32, -20.0, 0.0]),
-            ([120.0_f32, 0.0, 0.0], [0.0_f32, 20.0, 0.0]),
-        ];
-
         let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
-        let per_galaxy = NUM_PARTICLES / NUM_GALAXIES;
-        let sqrt_gm = (G * CENTER_MASS).sqrt();
 
-        for (center, bulk) in galaxies {
-            // Heavy central body.
+        // Central bulge body, at rest at the origin.
+        particles.push(Particle {
+            pos_mass: [0.0, 0.0, 0.0, BULGE_MASS],
+            vel: [0.0, 0.0, 0.0, 0.0],
+        });
+
+        let disp = DISP_FRAC * temp.max(0.0);
+        for _ in 1..NUM_PARTICLES {
+            // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
+            let u1: f32 = rng.gen_range(1e-4_f32..1.0);
+            let u2: f32 = rng.gen_range(1e-4_f32..1.0);
+            let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
+            let theta = rng.gen_range(0.0_f32..TAU);
+            let (st, ct) = (theta.sin(), theta.cos());
+            let z = Self::gaussian(&mut rng) * DISK_THICKNESS;
+
+            let vc = Self::circular_velocity(r);
+            let sigma = disp * vc;
+            // Prograde circular velocity plus a random thermal kick (the
+            // "temperature"); the vertical kick is smaller to keep the disk thin.
+            let vx = -vc * st + Self::gaussian(&mut rng) * sigma;
+            let vy = vc * ct + Self::gaussian(&mut rng) * sigma;
+            let vz = Self::gaussian(&mut rng) * sigma * 0.4;
+
             particles.push(Particle {
-                pos_mass: [center[0], center[1], center[2], CENTER_MASS],
-                vel: [bulk[0], bulk[1], bulk[2], 0.0],
+                pos_mass: [r * ct, r * st, z, STAR_MASS],
+                vel: [vx, vy, vz, 0.0],
             });
-
-            // Disk stars (one fewer than per_galaxy, to leave room for the centre).
-            for _ in 1..per_galaxy {
-                // Centrally concentrated radius, thin disk in the x-y plane.
-                let t: f32 = rng.gen_range(0.0_f32..1.0);
-                let r = 4.0 + 116.0 * t.powf(1.7);
-                let theta = rng.gen_range(0.0_f32..TAU);
-                let z = rng.gen_range(-4.0_f32..4.0);
-
-                // Circular speed in the central body's Plummer-softened potential.
-                let denom = (r * r + SOFTENING * SOFTENING).powf(0.75);
-                let v_circ = sqrt_gm * r / denom;
-
-                // Prograde (+z) tangential velocity plus the galaxy's bulk motion.
-                particles.push(Particle {
-                    pos_mass: [
-                        center[0] + r * theta.cos(),
-                        center[1] + r * theta.sin(),
-                        center[2] + z,
-                        STAR_MASS,
-                    ],
-                    vel: [
-                        bulk[0] - v_circ * theta.sin(),
-                        bulk[1] + v_circ * theta.cos(),
-                        bulk[2],
-                        0.0,
-                    ],
-                });
-            }
         }
 
-        console_log!("✅ Generated {} bodies", particles.len());
         particles
+    }
+
+    /// Regenerate the disk at a new temperature and upload it, restarting the
+    /// galaxy from fresh initial conditions. Driven by the disk-temperature slider.
+    pub fn reseed(&self, queue: &wgpu::Queue, temp: f32) {
+        let particles = Self::generate_disk(temp);
+        queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
     }
 
     pub fn compute_pass(&self, encoder: &mut wgpu::CommandEncoder) {
@@ -444,13 +459,12 @@ impl Simulation {
     pub fn update_camera(&self, queue: &wgpu::Queue, camera: &crate::camera::Camera) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
-        // mat4 (16 floats) followed by vec4 params: billboard size, aspect ratio,
-        // and the galaxy split index used by the render shader to tint by galaxy.
+        // mat4 (16 floats) followed by vec4 params: billboard size + aspect ratio
+        // (the 4th slot is spare; the render shader tints by radius, not index).
         let mut data = [0f32; 20];
         data[..16].copy_from_slice(matrix_array);
         data[16] = PARTICLE_SIZE;
         data[17] = camera.aspect_ratio;
-        data[18] = (NUM_PARTICLES / NUM_GALAXIES) as f32;
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

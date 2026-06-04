@@ -188,6 +188,11 @@ impl AppState {
             .resize(&self.graphics.device, (width, height));
         self.camera.set_aspect_ratio(width as f32 / height as f32);
     }
+
+    /// Re-seed the disk at a new temperature (the disk-temperature slider).
+    pub fn set_temperature(&self, temp: f32) {
+        self.simulation.reseed(&self.graphics.queue, temp);
+    }
 }
 
 thread_local! {
@@ -219,6 +224,17 @@ pub fn set_speed(speed: f32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().speed = speed;
+        }
+    });
+}
+
+/// Re-seed the disk at a new "temperature" (the disk-temperature slider), which
+/// restarts the galaxy from fresh initial conditions. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_disk_temperature(temp: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow().set_temperature(temp);
         }
     });
 }

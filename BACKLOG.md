@@ -7,7 +7,7 @@ Forward-looking work, roughly ordered by what unblocks or de-risks the most. Pre
 The crate is `cdylib`-only, so there is no native way to unit-test or profile, and `cargo test` runs zero tests today. Add `"rlib"` to `crate-type` and cover the pure logic that does not need a GPU:
 
 - Camera math — `build_view_projection_matrix`, the `scale`/rotation clamps, `pan`/`zoom` behaviour.
-- Galaxy initialization invariants — body count equals `NUM_PARTICLES` (a multiple of `WORKGROUP_SIZE`, with the per-galaxy split summing exactly), every body has positive mass, disk radii stay in range, and generation is deterministic (it already seeds `StdRng` from a fixed `42`).
+- Disk initialization invariants — body count equals `NUM_PARTICLES` (a multiple of `WORKGROUP_SIZE`), every body has positive mass, disk radii stay within `DISK_RMAX`, the velocity dispersion scales with the temperature argument, and generation is deterministic (it seeds `StdRng` from a fixed `42`, so a given temperature is reproducible).
 
 This also unlocks a future `examples/headless.rs` for stepping the sim without a browser, if a CPU reference path is ever wanted. The engine is now FFI-free (`graphics`/`simulation`/`camera` carry no `JsValue`), so the only thing between here and native tests is the `rlib` crate-type.
 
@@ -17,15 +17,15 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 ## Roadmap — simulation depth
 
-The model is a full self-gravitating N-body merger: every body attracts every other through the tiled all-pairs sum, so two galaxies coalesce into one bound, rotating remnant (`src/simulation.rs`, `src/shaders/update.wgsl`). Richer behaviour to consider, roughly by effort:
+The model is a single self-gravitating cold disk (`generate_disk` in `src/simulation.rs`, the tiled all-pairs solver in `src/shaders/update.wgsl`) that swing-amplifies into recurrent flocculent spiral arms, with a disk-temperature slider for the Toomre-Q regime. Richer behaviour to consider, roughly by effort:
 
-- **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (denser, prettier galaxies) at the cost of a much larger implementation.
-- **A dissipative (gas) component** — a collisionless merger relaxes into a puffy elliptical-like remnant. Letting some fraction of bodies shed energy (mimicking gas) would let a thin rotating disk and grand-design spiral arms re-form after the merger.
-- **Tidally-induced spirals (M51)** — a single self-gravitating cold disk plus a companion flyby produces grand-design spiral arms without a full merger; needs a disk tuned near Toomre `Q ≈ 1.5`.
-- **Richer dark-matter halo** — a single static logarithmic halo (centred at the origin) already binds the system; consider an NFW profile, a *live* (particle) halo, or per-galaxy halos that merge for more realistic dynamics.
-- **More galaxies / mass ratios** — `NUM_GALAXIES` generalizes the setup; expose unequal masses, retrograde disks, and 3+ galaxies (a small group).
+- **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed; arms are flocculent and a bit grainy at that count. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (cleaner, sharper arms) at the cost of a much larger implementation.
+- **Sustain the arms** — flocculent spirals self-heat the disk (Q rises), so the pattern fades over many rotations until a re-seed. A dissipative (gas) component that cools/circularizes a fraction of bodies would keep the disk cold and the arms alive.
+- **Grand-design spirals (M51)** — a clean two-armed pattern wants a tidal driver: re-introduce a companion on a prograde flyby (the merger code is in git history) past the cold disk.
+- **Richer dark-matter halo** — the static logarithmic halo could become an NFW profile or a *live* particle halo for more realistic dynamics.
 - **Leapfrog (KDK) integrator** — the current step is symplectic Euler (one force eval/step). Kick-drift-kick leapfrog conserves energy better over long runs, at the cost of a second gravity pass per step.
-- **Auto-replay** — re-seed from the initial conditions once the remnant has settled, so the demo loops.
+- **Selectable scenarios** — expose the past setups (two-galaxy merger, single spiral disk) as switchable modes rather than one hard-coded initial condition.
+- **Auto-replay** — periodically re-seed the disk (it heats and the arms fade over time), so the demo keeps showing fresh spiral structure.
 
 ## Definition of Done
 

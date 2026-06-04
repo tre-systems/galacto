@@ -54,11 +54,11 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. `Particle` packs position+mass and velocity into two `vec4`s (`pos_mass`, `vel` = 32 bytes); using `vec4` rather than `vec3` sidesteps WGSL's 16-byte `vec3` alignment, so the Rust and WGSL layouts are unambiguous. Trailing `u32` pads keep `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
-**Upload-once vs upload-per-frame.** Data that is static after init — the particle buffer (seeded once, then evolved in place on the GPU) and the `SimulationParams` uniform (entirely constants now that `dt` is fixed) — is uploaded once at creation; the `accel` buffer is GPU-only scratch that is never uploaded. Only the camera matrix changes per frame, pushed with `queue.write_buffer` into its `UNIFORM | COPY_DST` buffer.
+**Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `SimulationParams` uniform is constants; the `accel` buffer is GPU-only scratch. The one exception is the disk-temperature slider, which regenerates the disk on the CPU and re-uploads it (`Simulation::reseed`) — an explicit, occasional event, not a per-frame upload. The only true per-frame write is the camera matrix.
 
 **Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
 
-**Derived visuals in-shader (single source of truth).** Color, brightness, and glow are pure functions of a star's galaxy of origin (its instance index relative to the galaxy split) and its speed, computed in the shaders and never stored. Position + velocity is the only per-body state; appearance is recomputed each frame, so it can never drift out of sync with the simulation.
+**Derived visuals in-shader (single source of truth).** Color, brightness, and glow are pure functions of a star's galactocentric radius and its speed, computed in the shaders and never stored. Position + velocity is the only per-body state; appearance is recomputed each frame, so it can never drift out of sync with the simulation.
 
 **Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating, is-dragging) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
 
@@ -70,13 +70,13 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Deterministic seeded initialization.** All initial particle state is generated from a fixed RNG seed (`StdRng::seed_from_u64(42)`), so every page load produces an identical starting configuration.
 
-**All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what lets a galaxy genuinely form: the two galaxies sink together via dynamical friction and relax into a bound remnant rather than dispersing.
+**All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what makes spiral arms real: in a cold disk, self-gravity amplifies small over-densities into recurrent density-wave spirals rather than the structure being painted on.
 
 **Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` (which therefore also caps the top speed: ~128× at 60 fps) with a `MAX_FRAME_DT` clamp so a long stall can't spiral. Each substep is a full `O(N²)` gravity pass, so high speeds are GPU-bound and the frame rate drops — but step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
 
-**Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the remnant is stable over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite and, being fairly large, lets the two heavy nuclei coalesce into one soft core instead of locking into a hard binary. There is no velocity clamp and no boundary.
+**Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
-**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The one other export, `set_speed` (called by the page's speed slider), takes a plain `f32` and is infallible, as is the per-frame hot path.
+**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The two other exports — `set_speed` and `set_disk_temperature`, called by the page's sliders — take a plain `f32` and are infallible, as is the per-frame hot path.
 
 ## How a Frame Is Produced
 
@@ -99,15 +99,15 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 
 | Resource          | Contents                                          | Usage                                  |
 | ----------------- | ------------------------------------------------- | -------------------------------------- |
-| Particle buffer   | `16384 × Particle` (`pos_mass: vec4`, `vel: vec4` — 32 B each, ~0.5 MB) | `STORAGE` |
+| Particle buffer   | `16384 × Particle` (`pos_mass: vec4`, `vel: vec4` — 32 B each, ~0.5 MB) | `STORAGE \| COPY_DST` |
 | Accel buffer      | `16384 × vec4<f32>` scratch accelerations         | `STORAGE` |
-| Params buffer     | `SimulationParams { dt, g, softening, particle_count, _pad×4 }` | `UNIFORM \| COPY_DST` |
-| Camera buffer     | view-projection matrix + billboard size / aspect / galaxy split (80 B) | `UNIFORM \| COPY_DST`              |
+| Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², _pad×2 }` | `UNIFORM \| COPY_DST` |
+| Camera buffer     | view-projection matrix + billboard size / aspect (+ 2 spare) (80 B) | `UNIFORM \| COPY_DST`              |
 
 - **Compute bind group** (`@compute` visibility), shared by both compute pipelines: binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`; binding 2 = accel buffer as `storage, read_write`. `compute_accel` reads particles and writes accel; `integrate` reads accel and writes particles.
 - **Render bind group** (`@vertex` visibility): binding 0 = camera as `uniform`; binding 1 = the *same* particle buffer as `storage, read`.
 
-The particle buffer is written by the compute stage and read by the vertex stage, so the data the compute shader just wrote is exactly what the vertex shader reads — no copies, no staging. The vertex shader indexes `particles[instance_index]` directly rather than using a vertex buffer layout.
+The particle buffer is written by the compute stage and read by the vertex stage, so the data the compute shader just wrote is exactly what the vertex shader reads — no copies, no staging. The vertex shader indexes `particles[instance_index]` directly rather than using a vertex buffer layout. It carries `COPY_DST` because the disk-temperature slider re-uploads a freshly seeded disk into it (`Simulation::reseed`).
 
 ## Simulation & Physics
 
@@ -116,20 +116,20 @@ All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` un
 - **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case. Finally a static **dark-matter halo** term is added: `a -= v₀² · pos / (|pos|² + r_c²)`, a logarithmic potential centred at the origin whose inward pull keeps the system bound (debris orbits back rather than escaping) and gives a flat outer rotation curve.
 - **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place.
 
-`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, `CENTER_MASS = 300000`, `STAR_MASS = 20`, `SOFTENING = 25`, and the halo `HALO_V0 = 75` / `HALO_RC = 150`.
+`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, `BULGE_MASS = 40000`, `STAR_MASS = 21`, disk scale length `DISK_RD = 35`, `SOFTENING = 12`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`.
 
-Initial conditions (`Simulation::generate_initial_galaxies`, seeded `StdRng(42)` → reproducible) build two galaxies, half the bodies each:
+Initial conditions (`Simulation::generate_disk(temp)`, seeded `StdRng(42)` → a given temperature is reproducible) build one galaxy:
 
-- **A heavy central body** (`CENTER_MASS`) anchors each galaxy. The two start on the x-axis at `±120` with opposed tangential velocities (`±20` along y) — deeply bound, so they fall together and merge in a couple of passages rather than orbiting forever.
-- **A disk of lighter stars** (`STAR_MASS`) fills a thin, centrally concentrated disk (radius ~4–120) around each centre, each star on a prograde circular orbit in the centre's softened potential plus the galaxy's bulk velocity. Both disk spins and the orbit share the `+z` axis, so their angular momenta add and the merged remnant rotates. A body keeps its galaxy's identity by index (first half = galaxy A, second = B), which the renderer uses to tint it.
+- **A heavy central bulge body** (`BULGE_MASS`) sits at the origin, with an **exponential disk** of lighter stars (`STAR_MASS`) around it — radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), which is what makes it spiral-prone.
+- Each star gets a **prograde circular velocity** for the local rotation curve (bulge + enclosed disk + halo, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the disk "temperature" (≈ Toomre Q): too cold (low `temp`) and the disk fragments into clumps, too hot and it stays a featureless smear, and recurrent **spiral arms** (swing amplification) live in between. `DISP_FRAC` is tuned so the default `temp = 1.0` lands in the spiral regime.
 
-Because the bodies self-gravitate, the centres sink together (dynamical friction) into a single nucleus and the stars relax into one bound, rotating remnant — a collisionless major merger, which realistically yields a puffy elliptical-like remnant rather than a thin spiral disk.
+The disk-temperature slider calls `Simulation::reseed`, which regenerates the disk at the new `temp` and re-uploads the particle buffer — restarting the galaxy so you can sweep clumpy → spiral → smooth. (Flocculent arms slowly heat the disk and fade over many rotations; a re-seed refreshes them.)
 
 ## Rendering
 
 `src/shaders/render.wgsl` draws each particle as a camera-facing **billboard quad** (instanced: 4 verts × N particles):
 
-- **Vertex** — transform the body's position (`pos_mass.xyz`) by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Color is set by galaxy of origin — cool blue for one, warm amber for the other (instance index vs the galaxy-split value in the camera uniform) — with a slight speed-driven brightness boost.
+- **Vertex** — transform the body's position (`pos_mass.xyz`) by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Color is set by galactocentric radius — a warm yellow-white bulge in the centre fading to cool blue in the disk and arms — with a slight speed-driven brightness boost.
 - **Fragment** — a soft radial falloff from the quad center (`(1 − d)²`) makes each particle a round glow, scaled down so its per-particle contribution stays modest.
 
 The pipeline uses `TriangleStrip` topology with **additive** blending and **no depth buffer** — additive glow is order-independent and there is no opaque geometry — so overlapping particles accumulate brightness. It renders into an offscreen **HDR** (`rgba16float`) target (cleared to a near-black blue `(0.01, 0.01, 0.05)`) so dense regions can exceed 1.0 before tonemapping.
@@ -140,7 +140,7 @@ The pipeline uses `TriangleStrip` topology with **additive** blending and **no d
 
 ## Camera & Input
 
-`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 10,000,000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so both galaxies and their tidal tails sit in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.001–5.0 (distance `800 / scale`, so 160–800000, wide enough to frame the whole dispersing debris cloud). Wheel/pinch zoom maps the device delta through a bounded exponential step, so a notch is a consistent zoom regardless of input device.
+`Camera` (`src/camera.rs`) is an orbit camera: it keeps a `scale` (zoom), `rotation_x` / `rotation_y`, and an aspect ratio, and places the eye at `distance = 800 / scale` rotated around the origin, always looking at `(0,0,0)` through a 45° perspective (near 0.1, far 10,000,000 — generous because there is no depth buffer, so far zoom-out never clips). It starts face-on (no rotation, looking down the disk normal) and zoomed out (`scale = 0.7`) so the whole disk sits in frame; `rotation_x` is clamped to ±1.5 rad and `scale` to 0.001–5.0 (distance `800 / scale`, so 160–800000, wide enough to pull right back from the disk). Wheel/pinch zoom maps the device delta through a bounded exponential step, so a notch is a consistent zoom regardless of input device.
 
 A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface and update the camera aspect — so the view fills the window at native resolution without stretching.
 
@@ -154,6 +154,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 | Space                         | Pause / resume    |
 | R                             | Reset camera      |
 | Speed slider (on-screen)      | Scale sim speed (0.25×–100×) |
+| Disk-temp slider (on-screen)  | Set disk temperature; re-seeds the disk on release |
 
 ## Build & Deploy
 
@@ -168,5 +169,5 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 - **No CPU physics.** All per-body work is on the GPU; the CPU only sets `dt`, the camera, and pause/speed state. The particle buffer is never read back.
 - **No threads.** The WASM is single-threaded — no `rayon`, no `SharedArrayBuffer`. It therefore needs **no** cross-origin-isolation (COOP/COEP) headers; the `_headers` file only sets `Cache-Control: no-cache` so the wasm and HTML revalidate (the JS glue is cache-busted via `?v=` instead).
 - **No force approximation (yet).** Gravity is the exact all-pairs sum, `O(N²)`. That is what caps the body count near ~16k for interactive speed; a Barnes-Hut tree or particle-mesh/FFT solver would scale to far more bodies but is a much larger change (see the [backlog](../BACKLOG.md)).
-- **No dissipation.** The bodies are collisionless (no gas), so a merger relaxes into a puffy, elliptical-like rotating remnant rather than re-forming a thin spiral disk. A dissipative component would be needed for a settling disk.
+- **No dissipation.** The bodies are collisionless (no gas), so the spiral arms self-heat the disk and fade over many rotations (until a re-seed), and the arms are flocculent rather than a clean grand design. A dissipative (gas) component would keep the disk cold and the arms alive; a companion flyby would drive a grand-design two-arm pattern. Both are in the [backlog](../BACKLOG.md).
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it up front and shows a "WebGPU not supported" message rather than degrading.

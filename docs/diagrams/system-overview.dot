@@ -111,7 +111,7 @@ digraph SystemOverview {
     ];
     G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · all-pairs gravity → integrate</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
     G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">16,384 self-gravitating bodies</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · project + per-galaxy glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · project + radius glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }
 
   // ---- Output ----
