@@ -26,7 +26,7 @@ use wasm_bindgen_futures::spawn_local;
 /// Cap on simulation substeps run in a single frame. Bounds both a long-stall
 /// catch-up burst and the top simulation speed: at 60 fps this many substeps per
 /// frame is the highest speed multiplier the slider can actually realize.
-const MAX_SUBSTEPS: u32 = 64;
+const MAX_SUBSTEPS: u32 = 128;
 
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
