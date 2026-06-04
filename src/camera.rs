@@ -46,9 +46,9 @@ impl Camera {
         // notches span the full range either way.
         let step = (delta * 0.1).clamp(-0.8, 0.8);
         self.scale *= step.exp();
-        // Min 0.01 (distance 80000) zooms way out to watch the whole debris
-        // field spread; max 5.0 zooms into a single core.
-        self.scale = self.scale.clamp(0.01, 5.0);
+        // Min 0.001 (distance 800000) pulls right back to a wide field of view
+        // for watching the whole debris cloud disperse; max 5.0 zooms into a core.
+        self.scale = self.scale.clamp(0.001, 5.0);
     }
 
     pub fn reset(&mut self) {
@@ -71,7 +71,7 @@ impl Camera {
         let view = Matrix4::look_at_rh(camera_pos, Point3::new(0.0, 0.0, 0.0), Vector3::unit_y());
         // Far plane is generous (the rendering has no depth buffer, so there is
         // no precision cost) so escaped stars and far zoom-out never clip.
-        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 1_000_000.0);
+        let proj = perspective(Deg(45.0), self.aspect_ratio, 0.1, 10_000_000.0);
 
         proj * view
     }
