@@ -15,7 +15,8 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 - **Dark-matter halo** — a static logarithmic halo binds the disk (nothing escapes) and sets a flat outer rotation curve.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Interactive 3D camera** — orbit, pan, zoom, pause, and reset, with mouse, keyboard, and touch.
-- **Adjustable speed** — an on-screen slider scales the simulation up to ~100× so the arms develop in seconds. The top end is GPU-bound (all-pairs gravity is heavy, so the frame rate drops), but the fixed timestep keeps the physics correct.
+- **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent.
+- **Collapsible controls** — the control panel folds away to a small "Controls" tab so it stays out of the view.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
 ## Controls
@@ -29,7 +30,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Mouse wheel**    | Zoom in and out                     |
 | **Spacebar**       | Pause / resume the simulation       |
 | **R**              | Reset the camera                    |
-| **Speed slider**   | Scale simulation speed (0.25×–100×) |
+| **Speed slider**   | Scale simulation speed (0.25×–8×)   |
 | **Disk-temp slider** | Set disk temperature; re-seeds on release (0.02 cold/clumpy → 2.0 hot/smooth) |
 | **Scenario dropdown** | Switch initial conditions: spiral disk or galaxy merger (re-seeds) |
 

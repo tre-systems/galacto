@@ -103,6 +103,46 @@ body {
   z-index: 100;
 }
 
+#controls-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0 2px 2px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+#controls-toggle:hover {
+  opacity: 1;
+}
+
+#controls-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Collapsed: hide the controls, leaving just the toggle as a small pill. */
+#controls.collapsed #controls-body {
+  display: none;
+}
+
+#controls.collapsed #controls-toggle {
+  padding-bottom: 0;
+}
+
 .control {
   display: flex;
   align-items: center;

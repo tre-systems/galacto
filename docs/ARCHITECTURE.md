@@ -72,7 +72,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what makes spiral arms real: in a cold disk, self-gravity amplifies small over-densities into recurrent density-wave spirals rather than the structure being painted on.
 
-**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` (which therefore also caps the top speed: ~128× at 60 fps) with a `MAX_FRAME_DT` clamp so a long stall can't spiral. Each substep is a full `O(N²)` gravity pass, so high speeds are GPU-bound and the frame rate drops — but step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
+**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` with a `MAX_FRAME_DT` clamp so a long stall can't spiral. The speed slider tops out at 8×; `MAX_SUBSTEPS` sits above that so a low frame rate can still catch up to the requested speed, and it bounds the catch-up burst (each substep is a full `O(N²)` gravity pass). Step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
 
 **Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
@@ -153,7 +153,7 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 | Wheel / two-finger pinch      | Zoom              |
 | Space                         | Pause / resume    |
 | R                             | Reset camera      |
-| Speed slider (on-screen)      | Scale sim speed (0.25×–100×) |
+| Speed slider (on-screen)      | Scale sim speed (0.25×–8×) |
 | Disk-temp slider (on-screen)  | Set disk temperature; re-seeds the disk on release |
 | Scenario dropdown (on-screen) | Switch initial conditions (spiral disk / galaxy merger); re-seeds |
 

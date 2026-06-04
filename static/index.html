@@ -55,38 +55,49 @@
 
     <!-- On-screen controls -->
     <div id="controls">
-      <div class="control">
-        <label for="scenario-select">Scenario</label>
-        <select id="scenario-select" aria-label="Scenario">
-          <option value="0">Spiral disk</option>
-          <option value="1">Galaxy merger</option>
-        </select>
-      </div>
-      <div class="control">
-        <label for="speed-slider">Speed</label>
-        <input
-          id="speed-slider"
-          type="range"
-          min="0"
-          max="100"
-          value="41"
-          step="1"
-          aria-label="Simulation speed"
-        />
-        <span id="speed-readout">1.0×</span>
-      </div>
-      <div class="control">
-        <label for="temp-slider">Disk temp</label>
-        <input
-          id="temp-slider"
-          type="range"
-          min="0"
-          max="100"
-          value="85"
-          step="1"
-          aria-label="Disk temperature (release to apply)"
-        />
-        <span id="temp-readout">1.0</span>
+      <button
+        id="controls-toggle"
+        type="button"
+        aria-expanded="true"
+        aria-controls="controls-body"
+        title="Minimise controls"
+      >
+        <span>Controls</span><span id="controls-chevron">▾</span>
+      </button>
+      <div id="controls-body">
+        <div class="control">
+          <label for="scenario-select">Scenario</label>
+          <select id="scenario-select" aria-label="Scenario">
+            <option value="0">Spiral disk</option>
+            <option value="1">Galaxy merger</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="speed-slider">Speed</label>
+          <input
+            id="speed-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="71"
+            step="1"
+            aria-label="Simulation speed"
+          />
+          <span id="speed-readout">1.0×</span>
+        </div>
+        <div class="control">
+          <label for="temp-slider">Disk temp</label>
+          <input
+            id="temp-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="85"
+            step="1"
+            aria-label="Disk temperature (release to apply)"
+          />
+          <span id="temp-readout">1.0</span>
+        </div>
       </div>
     </div>
 
@@ -119,6 +130,7 @@
           setupScenarioControl(mod);
           setupSpeedControl(mod);
           setupTempControl(mod);
+          setupPanelToggle();
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -136,12 +148,12 @@
       }
 
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale
-      // (0.25× … 32×), push it to the sim, and show the current value.
+      // (0.25× … 8×), push it to the sim, and show the current value.
       function setupSpeedControl(mod) {
         const slider = document.getElementById("speed-slider");
         const readout = document.getElementById("speed-readout");
         const MIN = 0.25;
-        const MAX = 100;
+        const MAX = 8;
         const apply = () => {
           const t = slider.value / 100;
           const speed = MIN * Math.pow(MAX / MIN, t);
@@ -151,6 +163,19 @@
         };
         slider.addEventListener("input", apply);
         apply();
+      }
+
+      // Collapse/expand the control panel.
+      function setupPanelToggle() {
+        const controls = document.getElementById("controls");
+        const toggle = document.getElementById("controls-toggle");
+        const chevron = document.getElementById("controls-chevron");
+        toggle.addEventListener("click", () => {
+          const collapsed = controls.classList.toggle("collapsed");
+          toggle.setAttribute("aria-expanded", String(!collapsed));
+          toggle.title = collapsed ? "Show controls" : "Minimise controls";
+          chevron.textContent = collapsed ? "▸" : "▾";
+        });
       }
 
       // Map the disk-temperature slider (0–100) to a multiplier on a log scale
