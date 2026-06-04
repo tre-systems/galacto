@@ -103,14 +103,14 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#5f3b8a"><B>GPU (WEBGPU)</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#6d4d8d">Star and core state live here; physics and drawing both run on-device.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#6d4d8d">Body state lives here; physics and drawing both run on-device.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · cores, then test stars</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-    G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">131,072 stars + 2 cores</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · all-pairs gravity → integrate</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">16,384 self-gravitating bodies</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
     G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · project + per-galaxy glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }
 
@@ -125,7 +125,7 @@ digraph SystemOverview {
   B3 -> C2 [label="rotate · pan · zoom", color="#6b7280", fontcolor="#6b7280", style=dashed];
 
   C1 -> C3 [label="owns / drives"];
-  C3 -> G1 [lhead=cluster_gpu, label="dispatch: cores + 2048 wg"];
+  C3 -> G1 [lhead=cluster_gpu, label="dispatch: accel + integrate"];
 
   G1 -> G2 [label="advance in place"];
   G2 -> G3 [label="read as storage"];
