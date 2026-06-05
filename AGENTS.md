@@ -4,19 +4,18 @@ Operational guidance for Claude Code and other repo agents.
 
 ## Project
 
-galacto is a browser-based **self-gravitating N-body** galaxy sandbox. ~16,000 massive bodies attract each other through the all-pairs gravity sum. A scenario dropdown picks the initial conditions — a cold disk that swing-amplifies into spiral arms (with a disk-temperature slider ≈ Toomre Q sweeping clumpy/spiral/smooth), or two galaxies that merge into one remnant. The gravity (workgroup-tiled) and integration run entirely on the GPU through WebGPU **compute** shaders, and the bodies are drawn with a single instanced **billboard** draw. The core is Rust compiled to WebAssembly (single-threaded), rendered with `wgpu`/WebGPU, and deployed as a static site to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/).
+galacto is a browser-based **self-gravitating N-body** galaxy sandbox: ~16,000 bodies attract each other through an all-pairs gravity sum that runs entirely on the GPU (WebGPU **compute** shaders, workgroup-tiled), drawn with one instanced **billboard** draw. Rust → WebAssembly (single-threaded), `wgpu`/WebGPU, deployed to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/). See the [README](README.md) for features and the two scenarios.
 
 Read these before substantial work:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the code is organized and how one frame is produced.
-- [docs/diagrams/README.md](docs/diagrams/README.md) — the system-overview and frame-loop diagrams.
+- [docs/diagrams/README.md](docs/diagrams/README.md) — the system-overview, frame-loop, and GPU-buffer diagrams.
 - [BACKLOG.md](BACKLOG.md) — ordered next work and known constraints.
 
 ## Workflow
 
 - Work directly on `main`.
 - Check `git status` before editing; preserve unrelated local changes.
-- Stage explicit file paths, not `git add -A` / `git add .`.
 - For user-visible code changes the standing flow is: commit, push, watch CI, then smoke-test the live site. Docs-only changes just need commit + push.
 
 ## Verification
@@ -30,7 +29,7 @@ cargo test
 cargo check --target wasm32-unknown-unknown
 ```
 
-- Web build: `npm run build` (wasm-pack `--target web`, then copies `static/` into `pkg/`).
+- Web build: `npm run build` (wasm-pack `--target web`, then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs` to stamp the JS import with `?v=<git-sha>`).
 - Local run: `npm run dev` (builds, then serves `pkg/` on port 8000). Needs a WebGPU-capable browser.
 - Diagrams: `npm run diagrams` to render, `npm run check:diagrams` to verify (needs Graphviz on PATH — `brew install graphviz`).
 - Never bypass the hook with `--no-verify` unless explicitly asked.
@@ -47,19 +46,20 @@ cargo check --target wasm32-unknown-unknown
 ## Code Map
 
 - WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier via `set_speed`, while `set_disk_temperature` and `set_scenario` re-seed the sim).
-- WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config → depth texture; `resize`).
+- WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config; `resize`, `reconfigure`). No depth buffer — the renderer is additive and order-independent.
 - Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, `reseed`, `compute_pass` / `render_pass`, `update_camera`).
 - Scenarios / initial conditions: `src/scenarios.rs` (`Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger`, the shared `push_disk_star` disk seeder, and `circular_velocity`; consumed by `Simulation::reseed`).
-- Camera: `src/camera.rs` (orbit camera — position, scale, rotation; `build_view_projection_matrix`).
+- Camera: `src/camera.rs` (orbit camera — scale + rotation; `build_view_projection_matrix`).
 - Input: `src/input.rs` (mouse, wheel, touch/pinch, keyboard → camera; pause/reset).
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).
 - Core error type: `src/error.rs` (`AppError`); only `lib.rs` converts it to `JsValue` at the wasm-bindgen boundary.
-- Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + symplectic integration, in two kernels), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow).
-- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, speed-slider wiring), `static/styles.css`.
+- Post-processing: `src/postprocess.rs` (HDR `rgba16float` scene target + bloom — bright-pass, separable blur, tonemapped composite; rebuilt on resize). Owned by `AppState`, run after the particle pass each frame.
+- Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + symplectic integration, in two kernels), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow), `src/shaders/post.wgsl` (fullscreen bright-pass / separable blur / tonemap composite).
+- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario / speed / disk-temp / panel toggle), `static/styles.css`.
 
 ## Tests
 
-- The crate is `cdylib` + `rlib`, so `cargo test` runs native unit tests with no GPU. Coverage: the `Particle` / `SimulationParams` buffer-layout contract and tile-count invariant (`src/simulation.rs`), camera math (zoom/rotation clamps, pan, reset, finite matrix — `src/camera.rs`), and scenario seeding (body count, positive mass, finiteness, determinism, temperature scaling — `src/scenarios.rs`).
+- The crate is `cdylib` + `rlib`, so `cargo test` runs native unit tests with no GPU. Coverage: the `Particle` / `SimulationParams` buffer-layout contract and tile-count invariant (`src/simulation.rs`), camera math (zoom/rotation clamps, reset, finite matrix — `src/camera.rs`), and scenario seeding (body count, positive mass, finiteness, determinism, temperature scaling — `src/scenarios.rs`).
 - Pure CPU logic only; the GPU pipeline and DOM wiring are not unit-tested. A headless step mode for the sim is a [BACKLOG](BACKLOG.md) item.
 
 ## Commits
