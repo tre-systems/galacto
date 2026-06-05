@@ -186,21 +186,57 @@ body {
   color: #fff;
 }
 
-/* Buy Me a Coffee (Ko-fi) badge — sits at the bottom of the controls panel */
-#kofi {
+/* Restart button — re-seeds the current scenario */
+.restart {
+  appearance: none;
+  -webkit-appearance: none;
   align-self: center;
-  margin-top: 2px;
-  opacity: 0.92;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  margin-top: 4px;
+  padding: 6px 20px;
+  background: rgba(122, 162, 247, 0.18);
+  color: #c7d2fe;
+  border: 1px solid rgba(122, 162, 247, 0.5);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-#kofi:hover {
-  opacity: 1;
+.restart:hover {
+  background: rgba(122, 162, 247, 0.32);
   transform: translateY(-1px);
 }
 
-#kofi img {
-  display: block;
-  height: 30px;
-  width: auto;
+/* Self-styled Ko-fi link — sits at the bottom of the controls panel */
+#kofi {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  margin-top: 2px;
+  padding: 6px 13px;
+  border: 1px solid rgba(116, 189, 255, 0.28);
+  border-radius: 999px;
+  color: rgba(214, 230, 255, 0.72);
+  background: rgba(116, 189, 255, 0.06);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+#kofi:hover,
+#kofi:focus-visible {
+  color: #fff;
+  border-color: rgba(116, 189, 255, 0.58);
+  background: rgba(116, 189, 255, 0.13);
+  transform: translateY(-1px);
+  outline: none;
 }

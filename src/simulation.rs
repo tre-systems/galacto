@@ -26,9 +26,9 @@ pub(crate) const G: f32 = 1.0;
 pub(crate) const HALO_V0: f32 = 75.0;
 pub(crate) const HALO_RC: f32 = 150.0;
 
-/// Billboard half-extent for each particle, in NDC.y (screen-constant, so it is
-/// independent of zoom and depth). Tuned for a soft, overlapping additive glow.
-const PARTICLE_SIZE: f32 = 0.02;
+/// Default billboard half-extent for each particle, in NDC.y (screen-constant, so
+/// it is independent of zoom and depth). The star-size slider overrides it live.
+pub(crate) const DEFAULT_PARTICLE_SIZE: f32 = 0.016;
 
 /// One body. `pos_mass` packs position in xyz and mass in w; `vel` packs velocity
 /// in xyz and a 0..1 colour tint in w (read by the render shader). Packing as two
@@ -95,7 +95,7 @@ impl Simulation {
             mapped_at_creation: false,
         });
 
-        let params = Self::build_params(scenario.softening());
+        let params = Self::build_params(scenario.softening(), G, HALO_V0);
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Params Buffer"),
@@ -327,27 +327,41 @@ impl Simulation {
         }
     }
 
-    /// The `SimulationParams` uniform; only `softening` varies (per scenario).
-    fn build_params(softening: f32) -> SimulationParams {
+    /// The `SimulationParams` uniform. `softening` varies per scenario; `gravity`
+    /// and `halo_v0` are live knobs driven by their sliders.
+    fn build_params(softening: f32, gravity: f32, halo_v0: f32) -> SimulationParams {
         SimulationParams {
             dt: FIXED_DT,
-            g: G,
+            g: gravity,
             softening,
             particle_count: NUM_PARTICLES,
-            halo_v0_sq: HALO_V0 * HALO_V0,
+            halo_v0_sq: halo_v0 * halo_v0,
             halo_rc2: HALO_RC * HALO_RC,
             _pad0: 0,
             _pad1: 0,
         }
     }
 
-    /// Regenerate from fresh initial conditions for `scenario` at `temp` and
-    /// upload them, restarting the galaxy. Also updates the params uniform, since
-    /// scenarios use different softening. Driven by the scenario / temperature UI.
-    pub fn reseed(&self, queue: &wgpu::Queue, scenario: Scenario, temp: f32) {
+    /// Regenerate from fresh initial conditions for `scenario` at `temp` and upload
+    /// them, restarting the galaxy. Also rewrites the params uniform (scenarios use
+    /// different softening; gravity/halo carry the current live values).
+    pub fn reseed(
+        &self,
+        queue: &wgpu::Queue,
+        scenario: Scenario,
+        temp: f32,
+        gravity: f32,
+        halo_v0: f32,
+    ) {
         let particles = scenario.generate(temp);
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
-        let params = Self::build_params(scenario.softening());
+        self.set_physics(queue, scenario.softening(), gravity, halo_v0);
+    }
+
+    /// Rewrite only the params uniform (live gravity / halo changes), leaving the
+    /// running bodies untouched.
+    pub fn set_physics(&self, queue: &wgpu::Queue, softening: f32, gravity: f32, halo_v0: f32) {
+        let params = Self::build_params(softening, gravity, halo_v0);
         queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[params]));
     }
 
@@ -390,6 +404,7 @@ impl Simulation {
         queue: &wgpu::Queue,
         camera: &crate::camera::Camera,
         scenario: Scenario,
+        particle_size: f32,
     ) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
@@ -404,7 +419,7 @@ impl Simulation {
         // one spare slot.
         let mut data = [0f32; 20];
         data[..16].copy_from_slice(matrix_array);
-        data[16..].copy_from_slice(&[PARTICLE_SIZE, camera.aspect_ratio, color_mode, 0.0]);
+        data[16..].copy_from_slice(&[particle_size, camera.aspect_ratio, color_mode, 0.0]);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

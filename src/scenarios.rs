@@ -38,7 +38,7 @@ const HEADON_SPEED: f32 = 26.0; // closing speed for the head-on collision
 /// arms live in between. `DISP_FRAC` is tuned so the default temperature (1.0)
 /// lands in the spiral sweet spot; the slider then explores either side.
 const DISP_FRAC: f32 = 0.072;
-pub const DEFAULT_TEMP: f32 = 1.0;
+pub const DEFAULT_TEMP: f32 = 0.5;
 
 /// Initial velocity dispersion (a fraction of the local circular speed) for a
 /// disk temperature; clamped non-negative. The single home for the temp→σ rule.

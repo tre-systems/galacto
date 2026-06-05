@@ -28,7 +28,7 @@ struct VertexOutput {
 const TINT_RADIUS: f32 = 90.0;    // disk radius mapped to the cool end of the ramp
 const SPEED_REF: f32 = 260.0;     // speed at which the brightness boost saturates
 const SPEED_BOOST_MAX: f32 = 0.5; // peak extra brightness from speed
-const GLOW_GAIN: f32 = 0.55;      // per-particle additive glow gain
+const GLOW_GAIN: f32 = 0.45;      // per-particle additive glow gain
 
 @vertex
 fn vs_main(

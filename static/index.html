@@ -79,25 +79,36 @@
             type="range"
             min="0"
             max="100"
-            value="85"
+            value="70"
             step="1"
-            title="Disk temperature — release to apply"
+            title="Disk temperature — staged; applied on Restart"
           />
-          <span id="temp-readout">1.0</span>
+          <span id="temp-readout">0.50</span>
         </div>
+        <div class="control">
+          <label for="gravity-slider">Gravity</label>
+          <input id="gravity-slider" type="range" min="0" max="100" value="50" step="1" />
+          <span id="gravity-readout">1.0×</span>
+        </div>
+        <div class="control">
+          <label for="halo-slider">Halo</label>
+          <input id="halo-slider" type="range" min="0" max="100" value="50" step="1" />
+          <span id="halo-readout">1.0×</span>
+        </div>
+        <div class="control">
+          <label for="size-slider">Star size</label>
+          <input id="size-slider" type="range" min="0" max="100" value="50" step="1" />
+          <span id="size-readout">1.0×</span>
+        </div>
+        <button id="restart-btn" type="button" class="restart">↻ Restart</button>
         <a
           id="kofi"
           href="https://ko-fi.com/N4N31DPNUS"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Buy me a coffee at ko-fi.com"
         >
-          <img
-            src="https://storage.ko-fi.com/cdn/kofi2.png?v=6"
-            alt="Buy Me a Coffee at ko-fi.com"
-            width="145"
-            height="36"
-          />
+          <span aria-hidden="true">☕</span>
+          Buy me a coffee
         </a>
       </div>
     </div>
@@ -127,6 +138,10 @@
           setupScenarioControl(mod);
           setupSpeedControl(mod);
           setupTempControl(mod);
+          setupGravityControl(mod);
+          setupHaloControl(mod);
+          setupStarSizeControl(mod);
+          setupRestartButton(mod);
           setupPanelToggle();
         } catch (error) {
           console.error("Failed to initialize application:", error);
@@ -175,22 +190,76 @@
         });
       }
 
-      // Map the disk-temperature slider (0–100) to a multiplier on a log scale
-      // (0.3 … 3.0). The readout updates live while dragging, but the disk only
-      // re-seeds on release (the `change` event), since each re-seed restarts it.
+      // Disk-temperature slider (0–100) → log scale (0.02 … 2.0). It's a seed-time
+      // property, so it doesn't touch the running sim — it's staged and applied on
+      // the next Restart or scenario switch.
       function setupTempControl(mod) {
         const slider = document.getElementById("temp-slider");
         const readout = document.getElementById("temp-readout");
         const MIN = 0.02;
         const MAX = 2.0;
-        const tempFor = () => MIN * Math.pow(MAX / MIN, slider.value / 100);
-        slider.addEventListener("input", () => {
-          readout.textContent = tempFor().toFixed(2);
-        });
-        slider.addEventListener("change", () => {
-          mod.set_disk_temperature(tempFor());
-        });
-        readout.textContent = tempFor().toFixed(2);
+        const apply = () => {
+          const temp = MIN * Math.pow(MAX / MIN, slider.value / 100);
+          mod.set_disk_temperature(temp);
+          readout.textContent = temp.toFixed(2);
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Gravity slider (0–100) → log scale (0.25× … 4×). Live: rewrites the params
+      // uniform, so the running galaxy collapses or disperses immediately.
+      function setupGravityControl(mod) {
+        const slider = document.getElementById("gravity-slider");
+        const readout = document.getElementById("gravity-readout");
+        const MIN = 0.25;
+        const MAX = 4.0;
+        const apply = () => {
+          const g = MIN * Math.pow(MAX / MIN, slider.value / 100);
+          mod.set_gravity(g);
+          readout.textContent = g.toFixed(2) + "×";
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Dark-matter halo slider (0–100) → 0 … 2× the default confining pull. Live:
+      // turn it down and debris drifts off; turn it up and the system compresses.
+      function setupHaloControl(mod) {
+        const slider = document.getElementById("halo-slider");
+        const readout = document.getElementById("halo-readout");
+        const DEFAULT = 75; // matches the Rust HALO_V0 default (value 50 → 1×)
+        const apply = () => {
+          const halo = (slider.value / 50) * DEFAULT;
+          mod.set_halo(halo);
+          readout.textContent = (halo / DEFAULT).toFixed(2) + "×";
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Star-size slider (0–100) → 0.006 … 0.026 NDC half-extent (value 50 → 1×).
+      // Live (render only): how big and glowy each star appears.
+      function setupStarSizeControl(mod) {
+        const slider = document.getElementById("size-slider");
+        const readout = document.getElementById("size-readout");
+        const MIN = 0.006;
+        const MAX = 0.026;
+        const DEFAULT = 0.016;
+        const apply = () => {
+          const size = MIN + (slider.value / 100) * (MAX - MIN);
+          mod.set_particle_size(size);
+          readout.textContent = (size / DEFAULT).toFixed(2) + "×";
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Restart: re-seed the current scenario with the staged disk temperature.
+      function setupRestartButton(mod) {
+        document
+          .getElementById("restart-btn")
+          .addEventListener("click", () => mod.restart());
       }
 
       init().catch(console.error);

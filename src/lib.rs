@@ -9,8 +9,6 @@ mod scenarios;
 mod simulation;
 mod utils;
 
-// Import the console_log macro from utils
-#[allow(unused_imports)]
 use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
@@ -48,9 +46,13 @@ pub struct AppState {
     steps_this_frame: u32,
     /// Simulation speed multiplier (1.0 = real time); driven by the page's speed slider.
     speed: f32,
-    /// Current scenario and disk temperature, so changing one re-seeds with the other.
+    /// Current scenario and the disk temperature staged for the next (re)seed.
     scenario: Scenario,
     disk_temp: f32,
+    /// Live physics/visual knobs (no re-seed): gravity, halo speed, star size.
+    gravity: f32,
+    halo_v0: f32,
+    particle_size: f32,
 }
 
 impl AppState {
@@ -81,6 +83,9 @@ impl AppState {
             speed: 1.0,
             scenario: Scenario::Spiral,
             disk_temp: scenarios::DEFAULT_TEMP,
+            gravity: simulation::G,
+            halo_v0: simulation::HALO_V0,
+            particle_size: simulation::DEFAULT_PARTICLE_SIZE,
         })
     }
 
@@ -156,8 +161,12 @@ impl AppState {
         }
 
         // Render the particles additively into the HDR scene target.
-        self.simulation
-            .update_camera(&self.graphics.queue, &self.camera, self.scenario);
+        self.simulation.update_camera(
+            &self.graphics.queue,
+            &self.camera,
+            self.scenario,
+            self.particle_size,
+        );
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Particle Pass"),
@@ -201,18 +210,61 @@ impl AppState {
         self.camera.set_aspect_ratio(width as f32 / height as f32);
     }
 
-    /// Re-seed at a new disk temperature (the disk-temperature slider).
+    /// Stage the disk temperature for the next (re)seed (the disk-temperature
+    /// slider). It does not disturb the running sim — Restart or a scenario switch
+    /// applies it.
     pub fn set_temperature(&mut self, temp: f32) {
         self.disk_temp = temp;
-        self.simulation
-            .reseed(&self.graphics.queue, self.scenario, self.disk_temp);
     }
 
     /// Switch scenario (the dropdown) and re-seed from its initial conditions.
     pub fn set_scenario(&mut self, id: u32) {
         self.scenario = Scenario::from_id(id);
-        self.simulation
-            .reseed(&self.graphics.queue, self.scenario, self.disk_temp);
+        self.reseed();
+    }
+
+    /// Re-seed the current scenario from fresh initial conditions (the Restart
+    /// button). The live gravity / halo / star-size knobs carry over.
+    pub fn restart(&mut self) {
+        self.reseed();
+    }
+
+    fn reseed(&self) {
+        self.simulation.reseed(
+            &self.graphics.queue,
+            self.scenario,
+            self.disk_temp,
+            self.gravity,
+            self.halo_v0,
+        );
+    }
+
+    /// Live gravity strength (the gravity slider): rewrites the params uniform
+    /// without re-seeding, so the running galaxy responds immediately.
+    pub fn set_gravity(&mut self, gravity: f32) {
+        self.gravity = gravity;
+        self.push_physics();
+    }
+
+    /// Live dark-matter halo strength (the halo slider). Live, no re-seed.
+    pub fn set_halo(&mut self, halo_v0: f32) {
+        self.halo_v0 = halo_v0;
+        self.push_physics();
+    }
+
+    fn push_physics(&self) {
+        self.simulation.set_physics(
+            &self.graphics.queue,
+            self.scenario.softening(),
+            self.gravity,
+            self.halo_v0,
+        );
+    }
+
+    /// Live on-screen star size (the star-size slider); applied each frame in
+    /// `update_camera`.
+    pub fn set_particle_size(&mut self, size: f32) {
+        self.particle_size = size;
     }
 }
 
@@ -249,8 +301,9 @@ pub fn set_speed(speed: f32) {
     });
 }
 
-/// Re-seed the disk at a new "temperature" (the disk-temperature slider), which
-/// restarts the galaxy from fresh initial conditions. No-ops until ready.
+/// Stage the disk "temperature" for the next (re)seed (the disk-temperature
+/// slider). Doesn't restart the running sim — Restart or a scenario switch applies
+/// it. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_disk_temperature(temp: f32) {
     APP_STATE.with(|cell| {
@@ -260,13 +313,57 @@ pub fn set_disk_temperature(temp: f32) {
     });
 }
 
-/// Switch the initial-condition scenario (0 = spiral disk, 1 = merger), re-seeding
-/// from its initial conditions. Called by the page's scenario dropdown.
+/// Switch the initial-condition scenario (0 = spiral disk, 1–5 = the multi-galaxy
+/// setups), re-seeding from its initial conditions. Called by the scenario dropdown.
 #[wasm_bindgen]
 pub fn set_scenario(id: u32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_scenario(id);
+        }
+    });
+}
+
+/// Re-seed the current scenario from fresh initial conditions (the Restart
+/// button). No-ops until ready.
+#[wasm_bindgen]
+pub fn restart() {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().restart();
+        }
+    });
+}
+
+/// Live gravity strength (the gravity slider). No-ops until ready.
+#[wasm_bindgen]
+pub fn set_gravity(gravity: f32) {
+    let gravity = gravity.clamp(0.0, 10.0);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_gravity(gravity);
+        }
+    });
+}
+
+/// Live dark-matter halo strength (the halo slider). No-ops until ready.
+#[wasm_bindgen]
+pub fn set_halo(halo_v0: f32) {
+    let halo_v0 = halo_v0.clamp(0.0, 400.0);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_halo(halo_v0);
+        }
+    });
+}
+
+/// Live on-screen star size (the star-size slider). No-ops until ready.
+#[wasm_bindgen]
+pub fn set_particle_size(size: f32) {
+    let size = size.clamp(0.002, 0.06);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_particle_size(size);
         }
     });
 }
