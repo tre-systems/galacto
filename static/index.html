@@ -37,32 +37,16 @@
     <!-- Main canvas -->
     <canvas id="gpu-canvas"></canvas>
 
-    <!-- Support (Buy Me a Coffee at ko-fi.com) -->
-    <a
-      id="kofi"
-      href="https://ko-fi.com/N4N31DPNUS"
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Buy me a coffee at ko-fi.com"
-    >
-      <img
-        src="https://storage.ko-fi.com/cdn/kofi2.png?v=6"
-        alt="Buy Me a Coffee at ko-fi.com"
-        width="145"
-        height="36"
-      />
-    </a>
-
-    <!-- On-screen controls -->
-    <div id="controls">
+    <!-- On-screen controls (the Buy Me a Coffee link sits at the bottom) -->
+    <div id="controls" class="collapsed">
       <button
         id="controls-toggle"
         type="button"
-        aria-expanded="true"
+        aria-expanded="false"
         aria-controls="controls-body"
-        title="Minimise controls"
+        title="Show controls"
       >
-        <span>Controls</span><span id="controls-chevron">▾</span>
+        <span>Controls</span><span id="controls-chevron">▸</span>
       </button>
       <div id="controls-body">
         <div class="control">
@@ -98,6 +82,20 @@
           <span id="temp-readout">1.0</span>
         </div>
       </div>
+      <a
+        id="kofi"
+        href="https://ko-fi.com/N4N31DPNUS"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Buy me a coffee at ko-fi.com"
+      >
+        <img
+          src="https://storage.ko-fi.com/cdn/kofi2.png?v=6"
+          alt="Buy Me a Coffee at ko-fi.com"
+          width="145"
+          height="36"
+        />
+      </a>
     </div>
 
     <script type="module">
