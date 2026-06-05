@@ -5,9 +5,13 @@
 // and violently relax into a single rotating remnant. Gravity is the all-pairs
 // sum, evaluated with workgroup-shared "tiles" to amortise global memory reads.
 //
-// Two passes per step avoid a read-while-write race across the all-pairs sum:
-// `compute_accel` reads positions and writes accelerations; `integrate` then
-// advances velocity and position (symplectic Euler).
+// Each step is a drift–kick–drift (leapfrog) integration, recorded as three
+// passes: `drift_half` advances positions by half a step, `compute_accel`
+// evaluates the all-pairs sum at that midpoint (a separate pass so the gravity
+// sum never reads positions while they are being written), and `kick_drift_half`
+// applies the full velocity kick plus the second half-drift. Leapfrog is
+// symplectic and 2nd-order, so orbits and the cold disk hold their structure far
+// longer than the 1st-order Euler step would allow.
 
 struct Particle {
     pos_mass: vec4<f32>, // xyz = position, w = mass
@@ -76,16 +80,32 @@ fn compute_accel(
     accel[i] = vec4<f32>(a, 0.0);
 }
 
+// Leapfrog, part 1 — half-drift: advance position by half a step using the
+// current velocity, moving each body to the interval midpoint where the kick is
+// sampled. This reads no acceleration, so a freshly seeded scenario needs no
+// primed accel buffer: the very next pass evaluates gravity at this midpoint.
 @compute @workgroup_size(256)
-fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if i >= params.particle_count {
         return;
     }
     let p = particles[i];
-    // Symplectic Euler: kick, then drift. vel.w carries the colour tint, so carry
-    // it through unchanged rather than overwriting it.
+    let x = p.pos_mass.xyz + p.vel.xyz * (0.5 * params.dt);
+    particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), p.vel);
+}
+
+// Leapfrog, part 2 — full kick + second half-drift: with acceleration now sampled
+// at the midpoint, apply the whole-step velocity kick, then drift the second half
+// with the updated velocity. vel.w carries the colour tint, so preserve it.
+@compute @workgroup_size(256)
+fn kick_drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if i >= params.particle_count {
+        return;
+    }
+    let p = particles[i];
     let v = p.vel.xyz + accel[i].xyz * params.dt;
-    let x = p.pos_mass.xyz + v * params.dt;
+    let x = p.pos_mass.xyz + v * (0.5 * params.dt);
     particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), vec4<f32>(v, p.vel.w));
 }

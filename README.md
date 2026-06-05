@@ -92,7 +92,7 @@ A pre-commit hook and CI run the same gate — `fmt` / `clippy` / `test` / wasm 
 
 ![System overview](docs/diagrams/system-overview.png)
 
-One `requestAnimationFrame` callback updates the camera, then per fixed step runs two GPU **compute** passes — an all-pairs gravity pass that sums each body's acceleration, then an integrate pass that advances it — and issues one instanced **billboard** draw that reads the same buffer. Body state lives only in GPU memory — there is no CPU readback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
+One `requestAnimationFrame` callback updates the camera, then per fixed step runs three GPU **compute** passes — a half-drift, an all-pairs gravity pass that sums each body's acceleration at the midpoint, then a kick + half-drift that advances it (a leapfrog step) — and issues one instanced **billboard** draw that reads the same buffer. Body state lives only in GPU memory — there is no CPU readback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 
 ## Physics
 
@@ -100,7 +100,7 @@ The model is a full **N-body** system: every body has mass and attracts every ot
 
 - **All-pairs gravity** — each body's acceleration is the Plummer-softened sum of the pull of every other body.
 - **Dark-matter halo** — a static logarithmic halo adds an inward pull whose potential is unbounded, so the system stays bound (debris orbits back) with a flat outer rotation curve.
-- **Symplectic Euler** — computed in two passes per step (gravity, then integrate): velocity is updated, then position (`v += a·dt; x += v·dt`); this conserves energy far better than plain Euler.
+- **Symplectic leapfrog (drift–kick–drift)** — computed in three passes per step (half-drift, gravity at the midpoint, then kick + half-drift): `x += v·dt/2; v += a·dt; x += v·dt/2`. It is 2nd-order and conserves energy far better than plain Euler, so the cold disk and orbits hold their structure over many more rotations.
 - **Spiral disk** — a heavy central bulge plus an exponential disk on near-circular prograde orbits, each given a random thermal kick scaled by the temperature slider (≈ Toomre Q). Cold fragments into clumps, hot stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
 - **Galaxy merger** — two such disks, each anchored by a heavy core, on a bound prograde approach. Self-gravity and dynamical friction pull them together into one spinning remnant.
 
