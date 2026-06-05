@@ -123,9 +123,10 @@ impl Simulation {
         // tiles with no tail guard, so the count must divide evenly.
         debug_assert_eq!(NUM_PARTICLES % WORKGROUP_SIZE, 0);
 
-        // Start in the spiral-disk scenario at the default temperature, balanced
-        // against the default (logarithmic) halo.
-        let scenario = Scenario::Spiral;
+        // Start in the grand-design (M51) flyby at the default temperature,
+        // balanced against the default (logarithmic) halo — the first thing a
+        // visitor sees, so it leads with the most dynamic scenario.
+        let scenario = Scenario::GrandDesign;
         let particles = scenario.generate(DEFAULT_TEMP, HaloKind::Logarithmic);
 
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -370,7 +371,7 @@ impl Simulation {
             "✨ Self-gravitating galaxy ({} bodies) initialized!",
             NUM_PARTICLES
         );
-        console_log!("🌌 Pick a scenario (spiral disk or merger) and tweak the sliders.");
+        console_log!("🌌 Pick a scenario and tweak the sliders.");
 
         Self {
             particle_buffer,
