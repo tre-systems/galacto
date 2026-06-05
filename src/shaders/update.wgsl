@@ -23,9 +23,9 @@ struct Params {
     g: f32,          // gravitational constant
     softening: f32,  // Plummer softening length
     particle_count: u32,
-    halo_v0_sq: f32, // dark-matter halo: squared asymptotic circular speed
-    halo_rc2: f32,   // dark-matter halo: squared core radius
-    _pad0: u32,
+    halo_v0_sq: f32, // dark-matter halo: squared characteristic circular speed
+    halo_rc2: f32,   // dark-matter halo: squared core / scale radius
+    halo_kind: u32,  // dark-matter halo profile: 0 = logarithmic, 1 = NFW
     _pad1: u32,
 }
 
@@ -70,12 +70,28 @@ fn compute_accel(
         base = base + TILE;
     }
 
-    // Static logarithmic dark-matter halo centred at the origin: a gentle inward
-    // pull, a = -v0^2 · pos / (|pos|^2 + rc^2). Its potential grows without bound,
-    // so the system stays gravitationally bound — debris orbits back instead of
-    // escaping to infinity — and it adds a flat outer rotation curve.
-    let rh2 = dot(pi, pi) + params.halo_rc2;
-    a = a - params.halo_v0_sq * pi / rh2;
+    // Static dark-matter halo centred at the origin; the profile is chosen by
+    // halo_kind (mirrored by the scenario seeding so disks start in equilibrium).
+    if params.halo_kind == 0u {
+        // Logarithmic: a = -v0^2 · pos / (|pos|^2 + rc^2). Its potential grows
+        // without bound, so the system stays bound — debris orbits back instead of
+        // escaping — and the outer rotation curve is flat.
+        let rh2 = dot(pi, pi) + params.halo_rc2;
+        a = a - params.halo_v0_sq * pi / rh2;
+    } else {
+        // NFW (cold dark matter): the enclosed-mass pull of a rho ~ 1/(r(1+r/rs)^2)
+        // halo. With x = r/rs and rs = sqrt(rc2), the circular-velocity shape
+        // [ln(1+x) - x/(1+x)]/x is normalised by its peak (0.2162 = NFW_G_MAX) so
+        // v0 is the *peak* speed. Unlike the log halo, its potential is finite, so
+        // fast debris can escape. The mass factor ~ x^2/2 near the centre cancels
+        // the r^3, so |a| stays finite at the origin (the cusp is in density only);
+        // the floored r^3 just guards the exact-origin 0/0.
+        let rs = sqrt(params.halo_rc2);
+        let x = length(pi) / rs;
+        let mass_factor = log(1.0 + x) - x / (1.0 + x);
+        let r3 = max(dot(pi, pi) * length(pi), 1e-3);
+        a = a - params.halo_v0_sq * rs * mass_factor / (0.2162 * r3) * pi;
+    }
 
     accel[i] = vec4<f32>(a, 0.0);
 }

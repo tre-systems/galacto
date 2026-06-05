@@ -93,6 +93,13 @@
           <span id="gravity-readout">1.0×</span>
         </div>
         <div class="control">
+          <label for="halo-select">Halo model</label>
+          <select id="halo-select">
+            <option value="0">Logarithmic</option>
+            <option value="1">NFW</option>
+          </select>
+        </div>
+        <div class="control">
           <label for="halo-slider">Halo</label>
           <input id="halo-slider" type="range" min="0" max="100" value="50" step="1" />
           <span id="halo-readout">1.0×</span>
@@ -142,6 +149,7 @@
           setupTempControl(mod);
           setupGravityControl(mod);
           setupHaloControl(mod);
+          setupHaloProfileControl(mod);
           setupStarSizeControl(mod);
           setupRestartButton(mod);
           setupControlPanel();
@@ -158,6 +166,16 @@
         const sel = document.getElementById("scenario-select");
         sel.addEventListener("change", () => {
           mod.set_scenario(parseInt(sel.value, 10));
+        });
+      }
+
+      // Switch the dark-matter halo profile; the sim re-seeds so the disk starts
+      // balanced against it (logarithmic = a flat rotation curve that confines the
+      // system; NFW = a rising-then-falling curve whose fast debris can escape).
+      function setupHaloProfileControl(mod) {
+        const sel = document.getElementById("halo-select");
+        sel.addEventListener("change", () => {
+          mod.set_halo_profile(parseInt(sel.value, 10));
         });
       }
 

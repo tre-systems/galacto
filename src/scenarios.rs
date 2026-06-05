@@ -2,7 +2,7 @@
 //! galaxy/disk construction they have in common. The GPU solver in `simulation`
 //! is identical for every scenario — only these initial conditions differ.
 
-use crate::simulation::{Particle, G, HALO_RC, HALO_V0, NUM_PARTICLES};
+use crate::simulation::{HaloKind, Particle, G, HALO_RC, HALO_V0, NFW_G_MAX, NUM_PARTICLES};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::f32::consts::TAU;
@@ -86,9 +86,12 @@ impl Scenario {
     }
 
     /// Generate the initial bodies for this scenario at a given disk temperature.
-    pub fn generate(self, temp: f32) -> Vec<Particle> {
+    /// `halo_kind` matters only to the spiral disk, whose circular velocities are
+    /// balanced against the global halo; the multi-galaxy disks orbit their own
+    /// cores and treat the halo as a background, so they ignore it.
+    pub fn generate(self, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
         match self {
-            Scenario::Spiral => generate_disk(temp),
+            Scenario::Spiral => generate_disk(temp, halo_kind),
             Scenario::Merger => generate_merger(temp),
             Scenario::HeadOn => generate_head_on(temp),
             Scenario::Retrograde => generate_retrograde(temp),
@@ -117,7 +120,7 @@ struct DiskStar {
 /// Circular speed at radius `r`, from the bulge + enclosed disk mass + halo.
 /// The disk uses a spherical enclosed-mass approximation — not exact for a
 /// flat disk, but close enough that the disk settles and then ripples.
-fn circular_velocity(r: f32) -> f32 {
+fn circular_velocity(r: f32, halo_kind: HaloKind) -> f32 {
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
@@ -126,8 +129,24 @@ fn circular_velocity(r: f32) -> f32 {
     let x = r / DISK_RD;
     let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
     let v_disk2 = G * m_enc / r;
-    let v_halo2 = HALO_V0 * HALO_V0 * r2 / (r2 + HALO_RC * HALO_RC);
-    (v_bulge2 + v_disk2 + v_halo2).sqrt()
+    (v_bulge2 + v_disk2 + halo_velocity_sq(r, halo_kind)).sqrt()
+}
+
+/// The halo's contribution to circular velocity squared at radius `r`. This must
+/// match the force applied in `update.wgsl` for each profile, so the seeded disk
+/// is born in equilibrium with whichever halo is active.
+fn halo_velocity_sq(r: f32, halo_kind: HaloKind) -> f32 {
+    match halo_kind {
+        // Logarithmic: v_halo² = v0²·r² / (r² + rc²).
+        HaloKind::Logarithmic => HALO_V0 * HALO_V0 * r * r / (r * r + HALO_RC * HALO_RC),
+        // NFW: v_halo² = v0²·[ln(1+x) − x/(1+x)] / (x·NFW_G_MAX), with x = r/rs and
+        // rs = HALO_RC; normalised so v0 is the halo's peak circular speed.
+        HaloKind::Nfw => {
+            let x = r / HALO_RC;
+            let mass_factor = (1.0 + x).ln() - x / (1.0 + x);
+            HALO_V0 * HALO_V0 * mass_factor / (x * NFW_G_MAX)
+        }
+    }
 }
 
 /// Standard-normal sample (Box–Muller).
@@ -161,7 +180,7 @@ fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, rng: &mut StdRng) {
 /// exponential disk on near-circular prograde (+z) orbits, with a random thermal
 /// velocity dispersion scaled by `temp` (the disk-temperature slider). The render
 /// shader colours the disk by live galactocentric radius (warm core → blue arms).
-fn generate_disk(temp: f32) -> Vec<Particle> {
+fn generate_disk(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
     let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
 
@@ -179,7 +198,7 @@ fn generate_disk(temp: f32) -> Vec<Particle> {
         let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
         let theta = rng.random_range(0.0_f32..TAU);
         let z = gaussian(&mut rng) * DISK_THICKNESS;
-        let vc = circular_velocity(r);
+        let vc = circular_velocity(r, halo_kind);
         push_disk_star(
             &mut particles,
             &DiskStar {
@@ -424,10 +443,12 @@ mod tests {
 
     #[test]
     fn circular_velocity_is_positive_and_finite() {
-        for r in [0.0, 1.0, 10.0, 35.0, 100.0, 170.0, 500.0] {
-            let v = circular_velocity(r);
-            assert!(v.is_finite(), "v({r}) should be finite");
-            assert!(v > 0.0, "v({r}) should be positive");
+        for halo in [HaloKind::Logarithmic, HaloKind::Nfw] {
+            for r in [0.0, 1.0, 10.0, 35.0, 100.0, 170.0, 500.0] {
+                let v = circular_velocity(r, halo);
+                assert!(v.is_finite(), "v({r}) for {halo:?} should be finite");
+                assert!(v > 0.0, "v({r}) for {halo:?} should be positive");
+            }
         }
     }
 
@@ -445,11 +466,13 @@ mod tests {
 
     #[test]
     fn spiral_seeds_valid_bodies() {
-        assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP));
+        assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Logarithmic));
+        assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Nfw));
     }
 
     /// Every scenario must fill the buffer exactly (galaxy counts summing to
-    /// NUM_PARTICLES) with finite, positively-massed, in-range bodies.
+    /// NUM_PARTICLES) with finite, positively-massed, in-range bodies — under
+    /// either halo profile.
     #[test]
     fn all_scenarios_seed_valid_bodies() {
         for s in [
@@ -460,13 +483,15 @@ mod tests {
             Scenario::MinorMerger,
             Scenario::Group,
         ] {
-            assert_valid_bodies(&s.generate(DEFAULT_TEMP));
+            for halo in [HaloKind::Logarithmic, HaloKind::Nfw] {
+                assert_valid_bodies(&s.generate(DEFAULT_TEMP, halo));
+            }
         }
     }
 
     #[test]
     fn spiral_disk_radii_stay_within_bounds() {
-        let bodies = Scenario::Spiral.generate(DEFAULT_TEMP);
+        let bodies = Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Logarithmic);
         // Skip the bulge at index 0; disk radii are clamped to DISK_RMAX.
         for b in &bodies[1..] {
             let r = (b.pos_mass[0] * b.pos_mass[0] + b.pos_mass[1] * b.pos_mass[1]).sqrt();
@@ -477,8 +502,8 @@ mod tests {
     #[test]
     fn seeding_is_deterministic() {
         // A fixed RNG seed means a given scenario+temperature is reproducible.
-        let a = Scenario::Spiral.generate(1.0);
-        let b = Scenario::Spiral.generate(1.0);
+        let a = Scenario::Spiral.generate(1.0, HaloKind::Nfw);
+        let b = Scenario::Spiral.generate(1.0, HaloKind::Nfw);
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&a),
             bytemuck::cast_slice::<_, u8>(&b)
@@ -490,7 +515,7 @@ mod tests {
         // Temperature is the velocity dispersion: the vertical kick is purely
         // thermal for the spiral disk, so a hot disk spreads in vz far more.
         let mean_abs_vz = |temp| {
-            let bodies = Scenario::Spiral.generate(temp);
+            let bodies = Scenario::Spiral.generate(temp, HaloKind::Logarithmic);
             let disk = &bodies[1..]; // skip the bulge
             disk.iter().map(|b| b.vel[2].abs()).sum::<f32>() / disk.len() as f32
         };
