@@ -84,13 +84,13 @@ impl PostProcess {
 
         let blur_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Post Blur Pipeline Layout"),
-            bind_group_layouts: &[&blur_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&blur_layout)],
+            immediate_size: 0,
         });
         let composite_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Post Composite Pipeline Layout"),
-            bind_group_layouts: &[&blur_layout, &bloom_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&blur_layout), Some(&bloom_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = |entry: &str, layout: &wgpu::PipelineLayout, format: wgpu::TextureFormat| {
@@ -116,7 +116,7 @@ impl PostProcess {
                 primitive: wgpu::PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             })
         };
@@ -133,7 +133,7 @@ impl PostProcess {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -283,6 +283,7 @@ impl PostProcess {
             label: Some(label),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -292,6 +293,7 @@ impl PostProcess {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         rp.set_pipeline(pipeline);
         rp.set_bind_group(0, bind0, &[]);
