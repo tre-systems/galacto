@@ -62,7 +62,10 @@ pub struct Simulation {
     // Written at init and re-uploaded on reseed (scenario softening changes).
     params_buffer: wgpu::Buffer,
     accel_pipeline: wgpu::ComputePipeline,
-    integrate_pipeline: wgpu::ComputePipeline,
+    // Leapfrog is two integrate kernels: a half-drift before gravity, then the
+    // kick + second half-drift after it (`compute_pass`).
+    drift_pipeline: wgpu::ComputePipeline,
+    kick_pipeline: wgpu::ComputePipeline,
     render_pipeline: wgpu::RenderPipeline,
     compute_bind_group: wgpu::BindGroup,
     render_bind_group: wgpu::BindGroup,
@@ -204,12 +207,23 @@ impl Simulation {
             cache: None,
         });
 
-        // Advances velocity and position from the accelerations.
-        let integrate_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Integrate Pipeline"),
+        // Leapfrog half-drift (part 1): advance positions to the step midpoint.
+        let drift_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Drift Pipeline"),
             layout: Some(&compute_pipeline_layout),
             module: &compute_shader,
-            entry_point: Some("integrate"),
+            entry_point: Some("drift_half"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
+
+        // Leapfrog kick + half-drift (part 2): apply the velocity kick from the
+        // midpoint accelerations, then drift the second half-step.
+        let kick_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Kick Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("kick_drift_half"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
@@ -319,7 +333,8 @@ impl Simulation {
             accel_buffer,
             params_buffer,
             accel_pipeline,
-            integrate_pipeline,
+            drift_pipeline,
+            kick_pipeline,
             render_pipeline,
             compute_bind_group,
             render_bind_group,
@@ -365,31 +380,31 @@ impl Simulation {
         queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[params]));
     }
 
+    /// Record one leapfrog (drift–kick–drift) step: half-drift, recompute the
+    /// all-pairs accelerations at the midpoint, then kick + the second half-drift.
+    /// Each kernel is its own compute pass so the GPU orders every pass's reads
+    /// after the previous pass's writes — in particular the gravity sum never reads
+    /// a body's position while another pass is moving it.
     pub fn compute_pass(&self, encoder: &mut wgpu::CommandEncoder) {
-        let workgroups = NUM_PARTICLES / WORKGROUP_SIZE;
+        self.dispatch(encoder, &self.drift_pipeline, "Drift Pass");
+        self.dispatch(encoder, &self.accel_pipeline, "Accel Pass");
+        self.dispatch(encoder, &self.kick_pipeline, "Kick Pass");
+    }
 
-        // All-pairs gravity into the accel buffer, then integrate. Separate passes
-        // so the integrate pass sees the freshly written accelerations, and so the
-        // accel pass reads positions that are not being modified concurrently.
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Accel Pass"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.accel_pipeline);
-            pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            pass.dispatch_workgroups(workgroups, 1, 1);
-        }
-
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Integrate Pass"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.integrate_pipeline);
-            pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            pass.dispatch_workgroups(workgroups, 1, 1);
-        }
+    /// Run one compute kernel over every body, one workgroup per tile.
+    fn dispatch(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        pipeline: &wgpu::ComputePipeline,
+        label: &str,
+    ) {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some(label),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &self.compute_bind_group, &[]);
+        pass.dispatch_workgroups(NUM_PARTICLES / WORKGROUP_SIZE, 1, 1);
     }
 
     pub fn render_pass<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {

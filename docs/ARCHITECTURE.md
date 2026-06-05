@@ -9,13 +9,13 @@
 | Layer            | Choice                          | Notes                                                          |
 | ---------------- | ------------------------------- | -------------------------------------------------------------- |
 | Language         | Rust (edition 2021)             | ~2,000 lines of Rust (+ 3 WGSL shaders)                        |
-| GPU access       | `wgpu` 24 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
+| GPU access       | `wgpu` 29 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
 | WASM bindings    | `wasm-bindgen` + `web-sys`      | Canvas, events, `requestAnimationFrame`, console               |
 | Build            | `wasm-pack` (`--target web`)    | Emits `pkg/galacto.js` + `galacto_bg.wasm`                     |
 | Host             | Cloudflare Pages                | Serves the static `pkg/` directory                             |
-| Scale            | 16,384 self-gravitating bodies  | Two compute passes (all-pairs gravity, then integrate) + one instanced draw per step |
+| Scale            | 16,384 self-gravitating bodies  | Three compute passes per step (leapfrog: half-drift, all-pairs gravity, kick + half-drift) + one instanced draw |
 
 The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no `build-std`, no threads.
 
@@ -33,7 +33,7 @@ src/
 ├── error.rs             # AppError — the core's domain error (no JsValue)
 ├── postprocess.rs       # HDR scene target + bloom (bright-pass, blur, tonemap composite)
 └── shaders/
-    ├── update.wgsl      # Compute: tiled all-pairs self-gravity + symplectic integration
+    ├── update.wgsl      # Compute: tiled all-pairs self-gravity + leapfrog integration
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
 static/                  # Frontend: index.html (WebGPU check + bootstrap + controls), styles.css, favicon.svg, _headers
@@ -47,7 +47,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **GPU-resident state, no readback.** After the initial upload, every body's position/velocity/mass lives only in a GPU storage buffer (plus a scratch acceleration buffer). The compute passes are the sole writers and the render pass the sole reader; the CPU never reads body data back. The CPU's only per-frame write is the small camera uniform.
 
-**Two-pass gravity instead of ping-pong.** The all-pairs sum means every body reads every other body's position, so positions must not change mid-sum. Rather than double-buffer the whole particle array (ping-pong), the step is split into two passes over one buffer: `compute_accel` reads positions and writes a separate `accel` buffer; `integrate` then reads `accel` and advances each body in place. Each body only ever writes its own slot, and the pass boundary makes the write visible to the next read — so a single particle buffer suffices, with the small `accel` buffer as the only extra copy.
+**Pass-ordered hazards instead of ping-pong.** The all-pairs sum means every body reads every other body's position, so positions must not change mid-sum. Rather than double-buffer the whole particle array (ping-pong), each step runs as separate passes over one buffer: a half-drift moves every body to the step midpoint, `compute_accel` reads those positions and writes a separate `accel` buffer, then the kick + second half-drift reads `accel` and advances each body in place (see Simulation & Physics for the leapfrog). Each body only ever writes its own slot, and every pass boundary makes the previous pass's writes visible to the next read — so a single particle buffer suffices, with the small `accel` buffer as the only extra copy.
 
 **Owning composition root (`AppState`).** One struct (`src/lib.rs`) owns the four subsystems — `Graphics`, `Simulation`, `Camera`, `InputHandler` — and is the only orchestrator. Each frame it calls `update()` then `render()`. Subsystems never reach for each other; they are wired together only through `AppState`.
 
@@ -77,7 +77,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` with a `MAX_FRAME_DT` clamp so a long stall can't spiral. The speed slider tops out at `MAX_SPEED` (8×); `MAX_SUBSTEPS` is a separate, larger bound that lets a low frame rate still catch up to the requested speed while bounding the catch-up burst (each substep is a full `O(N²)` gravity pass). Step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate — on a given GPU; the massively-parallel all-pairs sum is not bit-reproducible across different hardware, so the long-run trajectory can diverge between machines even though the seeded starting state is identical everywhere.
 
-**Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (the `ε²` in the force sum — see Simulation & Physics) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
+**Symplectic leapfrog integration with softening.** The step is a drift–kick–drift leapfrog — half-drift `position += velocity · dt/2`, evaluate the acceleration at that midpoint, then `velocity += a · dt` and a second half-drift `position += velocity · dt/2`. It is symplectic and 2nd-order, conserving energy far better than the 1st-order Euler it replaces, so the cold disk and individual orbits hold their structure over many more rotations. A Plummer softening length (the `ε²` in the force sum — see Simulation & Physics) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
 **FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The three other exports — `set_speed`, `set_disk_temperature`, and `set_scenario`, called by the page's controls — take a plain scalar and are infallible, as is the per-frame hot path.
 
@@ -89,7 +89,7 @@ A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) do
 
 1. **`update(time)`** — let the `InputHandler` apply pending rotate/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta (scaled by the speed multiplier) to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
-   - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): first `compute_accel` sums the all-pairs gravity into the accel buffer, then `integrate` advances every body in place — each over `16384 / 256 = 64` workgroups;
+   - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): a half-drift advances positions to the step midpoint, `compute_accel` sums the all-pairs gravity there into the accel buffer, then the kick + second half-drift advances every body in place — each over `16384 / 256 = 64` workgroups;
    - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per body, `draw(0..4, 0..16384)` — additively blended with no depth buffer, into the **HDR scene** target;
    - run the **bloom passes** (`postprocess`): bright-pass + downsample, separable blur (H, V), then a tonemapped composite of scene + bloom into the swapchain;
    - submit and `present()`.
@@ -98,7 +98,7 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 
 ## GPU Data Model
 
-`Simulation::new` (`src/simulation.rs`) creates four buffers and three pipelines (two compute, one render):
+`Simulation::new` (`src/simulation.rs`) creates four buffers and four pipelines (three compute, one render):
 
 | Resource          | Contents                                          | Usage                                  |
 | ----------------- | ------------------------------------------------- | -------------------------------------- |
@@ -107,17 +107,18 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 | Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², _pad×2 }` | `UNIFORM \| COPY_DST` |
 | Camera buffer     | view-projection matrix + billboard size / aspect / colour-mode (+1 spare) (80 B) | `UNIFORM \| COPY_DST`              |
 
-- **Compute bind group** (`@compute` visibility), shared by both compute pipelines: binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`; binding 2 = accel buffer as `storage, read_write`. `compute_accel` reads particles and writes accel; `integrate` reads accel and writes particles.
+- **Compute bind group** (`@compute` visibility), shared by all three compute pipelines: binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`; binding 2 = accel buffer as `storage, read_write`. `compute_accel` reads particles and writes accel; the leapfrog `drift_half` / `kick_drift_half` kernels advance particles in place (the kick reading accel).
 - **Render bind group** (`@vertex` visibility): binding 0 = camera as `uniform`; binding 1 = the *same* particle buffer as `storage, read`.
 
 The particle buffer is written by the compute stage and read by the vertex stage, so the data the compute shader just wrote is exactly what the vertex shader reads — no copies, no staging. The vertex shader indexes `particles[instance_index]` directly rather than using a vertex buffer layout. It carries `COPY_DST` because the disk-temperature slider re-uploads a freshly seeded disk into it (`Simulation::reseed`).
 
 ## Simulation & Physics
 
-All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` uniform (`dt`, `g`, `softening`, `particle_count`). Two kernels run per step, each in its own pass so the second sees the first's writes:
+All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` uniform (`dt`, `g`, `softening`, `particle_count`). Three kernels run per step — a drift–kick–drift leapfrog — each in its own pass so each sees the previous one's writes:
 
+- **`drift_half`.** Advances each body half a step using its current velocity (`position += velocity · dt/2`) — no force is read, so a freshly seeded scenario needs no primed accelerations. This moves every body to the interval midpoint where gravity is sampled.
 - **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case. Finally a static **dark-matter halo** term is added: `a -= v₀² · pos / (|pos|² + r_c²)`, a logarithmic potential centred at the origin whose inward pull keeps the system bound (debris orbits back rather than escaping) and gives a flat outer rotation curve.
-- **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place and carrying its `vel.w` colour tint through unchanged.
+- **`kick_drift_half`.** Reads the midpoint acceleration, applies the whole-step velocity kick (`velocity += a · dt`), then the second half-drift (`position += velocity · dt/2`), writing the body back in place and carrying its `vel.w` colour tint through unchanged. With `drift_half` it forms a symplectic, 2nd-order leapfrog.
 
 `NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer — a `debug_assert` at init and a native test guard it. Core solver constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, and `FIXED_DT`. The scenario/disk constants — masses, the disk profile, the per-scenario softenings, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP` — live with the initial conditions in `src/scenarios.rs`.
 
