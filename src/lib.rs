@@ -124,14 +124,17 @@ impl AppState {
 
     pub fn render(&mut self) -> Result<(), wasm_bindgen::JsValue> {
         let frame = match self.graphics.surface.get_current_texture() {
-            Ok(frame) => frame,
-            // The surface goes stale on resize or tab switches; reconfigure and
-            // skip this frame rather than erroring.
-            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(JsValue::from_str("surface validation error"));
+            }
+            // Outdated / Lost / Timeout / Occluded (or any future status): the
+            // surface is stale (resize, tab switch); reconfigure and skip the frame.
+            _ => {
                 self.graphics.reconfigure();
                 return Ok(());
             }
-            Err(e) => return Err(JsValue::from_str(&format!("surface error: {e:?}"))),
         };
 
         let view = frame
@@ -160,6 +163,7 @@ impl AppState {
                 label: Some("Particle Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: self.postprocess.scene_view(),
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -174,6 +178,7 @@ impl AppState {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             self.simulation.render_pass(&mut render_pass);
         }

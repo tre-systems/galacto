@@ -4,7 +4,7 @@
 
 use crate::simulation::{Particle, G, HALO_RC, HALO_V0, NUM_PARTICLES};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use std::f32::consts::TAU;
 
 // --- Spiral-disk scenario: a bulge body + a self-gravitating exponential disk
@@ -113,8 +113,8 @@ fn circular_velocity(r: f32) -> f32 {
 
 /// Standard-normal sample (Box–Muller).
 fn gaussian(rng: &mut StdRng) -> f32 {
-    let u1: f32 = rng.gen_range(1e-6_f32..1.0);
-    let u2: f32 = rng.gen_range(0.0_f32..1.0);
+    let u1: f32 = rng.random_range(1e-6_f32..1.0);
+    let u2: f32 = rng.random_range(0.0_f32..1.0);
     (-2.0 * u1.ln()).sqrt() * (TAU * u2).cos()
 }
 
@@ -155,10 +155,10 @@ fn generate_disk(temp: f32) -> Vec<Particle> {
     let disp = dispersion(temp);
     for _ in 1..NUM_PARTICLES {
         // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
-        let u1: f32 = rng.gen_range(1e-4_f32..1.0);
-        let u2: f32 = rng.gen_range(1e-4_f32..1.0);
+        let u1: f32 = rng.random_range(1e-4_f32..1.0);
+        let u2: f32 = rng.random_range(1e-4_f32..1.0);
         let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
-        let theta = rng.gen_range(0.0_f32..TAU);
+        let theta = rng.random_range(0.0_f32..TAU);
         let z = gaussian(&mut rng) * DISK_THICKNESS;
         let vc = circular_velocity(r);
         push_disk_star(
@@ -210,11 +210,11 @@ fn generate_merger(temp: f32) -> Vec<Particle> {
         for _ in 1..per_galaxy {
             // Centrally concentrated disk in the centre's softened point potential
             // (vc ignores the global halo — each disk is balanced in its own frame).
-            let t: f32 = rng.gen_range(0.0_f32..1.0);
+            let t: f32 = rng.random_range(0.0_f32..1.0);
             let r =
                 MERGER_DISK_RMIN + (MERGER_DISK_RMAX - MERGER_DISK_RMIN) * t.powf(MERGER_DISK_EXP);
-            let theta = rng.gen_range(0.0_f32..TAU);
-            let z = rng.gen_range(-MERGER_THICKNESS..MERGER_THICKNESS);
+            let theta = rng.random_range(0.0_f32..TAU);
+            let z = rng.random_range(-MERGER_THICKNESS..MERGER_THICKNESS);
             let vc = sqrt_gm * r / (r * r + MERGER_SOFTENING * MERGER_SOFTENING).powf(0.75);
             push_disk_star(
                 &mut particles,

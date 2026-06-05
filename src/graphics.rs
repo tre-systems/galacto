@@ -13,9 +13,12 @@ impl Graphics {
     pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, AppError> {
         console_log!("Setting up WebGPU...");
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::BROWSER_WEBGPU,
-            ..Default::default()
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            display: None,
         });
 
         let surface = create_canvas_surface(&instance, &canvas)?;
@@ -27,12 +30,12 @@ impl Graphics {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| AppError::Graphics("no appropriate WebGPU adapter".into()))?;
+            .map_err(|e| AppError::Graphics(format!("no appropriate WebGPU adapter: {e:?}")))?;
 
         console_log!("Adapter: {:?}", adapter.get_info());
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .map_err(|e| AppError::Graphics(format!("create device: {e:?}")))?;
 
