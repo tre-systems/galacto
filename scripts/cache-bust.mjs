@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Replace the __CACHE_BUST__ placeholder in pkg/index.html with a per-deploy
-// version, so the galacto.js import is a fresh URL on every deploy. Cloudflare
-// Pages force-caches .js (a max-age that _headers can't override), so a stable
-// filename would let a cached old glue pair with a new wasm; the ?v= query
-// sidesteps that. index.html itself always revalidates (see _headers).
+// Replace the __CACHE_BUST__ placeholders in pkg/index.html with a per-deploy
+// version, so the galacto.js import AND the styles.css link are fresh URLs on
+// every deploy. Cloudflare Pages force-caches static assets (.js, .css) with a
+// max-age that _headers can't override, so a stable filename serves stale glue or
+// styles after a deploy; the ?v= query sidesteps that. index.html itself
+// revalidates each load (see _headers), so the new ?v= is always picked up.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -25,5 +26,5 @@ if (busted === html) {
   console.warn('cache-bust: no __CACHE_BUST__ placeholder found in pkg/index.html');
 } else {
   writeFileSync(indexPath, busted);
-  console.log(`cache-bust: pinned galacto.js import to ?v=${version}`);
+  console.log(`cache-bust: pinned galacto.js + styles.css to ?v=${version}`);
 }
