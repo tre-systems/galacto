@@ -11,15 +11,13 @@ mod utils;
 
 // Import the console_log macro from utils
 #[allow(unused_imports)]
-use utils::console_log;
-
 use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
 use postprocess::PostProcess;
 use scenarios::Scenario;
 use simulation::Simulation;
-use utils::set_panic_hook;
+use utils::{console_log, set_panic_hook};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -38,7 +36,6 @@ const MAX_SPEED: f32 = 8.0;
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
 
-// Global application state
 pub struct AppState {
     graphics: Graphics,
     simulation: Simulation,
@@ -309,11 +306,9 @@ async fn run() -> Result<(), JsValue> {
     canvas.set_width(width);
     canvas.set_height(height);
 
-    // Initialize application state
     let app_state = AppState::new(canvas.clone()).await?;
     let app_state_rc = Rc::new(RefCell::new(app_state));
 
-    // Set up input handlers
     {
         let mut app_state_borrow = app_state_rc.borrow_mut();
         app_state_borrow
@@ -321,7 +316,6 @@ async fn run() -> Result<(), JsValue> {
             .setup_event_listeners(canvas.clone())?;
     }
 
-    // Store global state for the animation loop and resize handler.
     APP_STATE.with(|cell| {
         *cell.borrow_mut() = Some(app_state_rc.clone());
     });
@@ -340,10 +334,11 @@ async fn run() -> Result<(), JsValue> {
             }
         }) as Box<dyn FnMut(web_sys::Event)>);
         window.add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())?;
+        // One forever-listener, so forget() (the app-lifetime variant of the
+        // retained-closures pattern) is intentional rather than the _closures Vec.
         closure.forget();
     }
 
-    // Start the render loop
     request_animation_frame();
 
     Ok(())
@@ -370,6 +365,5 @@ fn animation_frame(time: f32) {
         }
     }
 
-    // Request next frame
     request_animation_frame();
 }

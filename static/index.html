@@ -13,14 +13,14 @@
   </head>
   <body>
     <!-- Loading screen -->
-    <div id="loading" class="loading">
+    <div id="loading" class="loading" aria-live="polite">
       <h2>Initializing Galaxy Simulation...</h2>
       <p>Loading WebGPU and compiling shaders...</p>
       <div class="loader"></div>
     </div>
 
     <!-- Error display -->
-    <div id="error" class="loading error" style="display: none">
+    <div id="error" class="loading error" role="alert" style="display: none">
       <h2>WebGPU Not Supported</h2>
       <p>
         This simulation requires WebGPU support. Please ensure you're using a
@@ -67,7 +67,7 @@
       <div id="controls-body">
         <div class="control">
           <label for="scenario-select">Scenario</label>
-          <select id="scenario-select" aria-label="Scenario">
+          <select id="scenario-select">
             <option value="0">Spiral disk</option>
             <option value="1">Galaxy merger</option>
           </select>
@@ -79,9 +79,8 @@
             type="range"
             min="0"
             max="100"
-            value="71"
+            value="40"
             step="1"
-            aria-label="Simulation speed"
           />
           <span id="speed-readout">1.0×</span>
         </div>
@@ -94,7 +93,7 @@
             max="100"
             value="85"
             step="1"
-            aria-label="Disk temperature (release to apply)"
+            title="Disk temperature — release to apply"
           />
           <span id="temp-readout">1.0</span>
         </div>
@@ -109,10 +108,6 @@
         const adapter = await navigator.gpu.requestAdapter();
         if (!adapter) {
           throw new Error("No WebGPU adapter found");
-        }
-        const device = await adapter.requestDevice();
-        if (!device) {
-          throw new Error("Failed to create WebGPU device");
         }
         return true;
       }

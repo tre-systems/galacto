@@ -13,11 +13,9 @@ impl Graphics {
     pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<Self, AppError> {
         console_log!("Setting up WebGPU...");
 
-        // Create WebGPU instance
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::BROWSER_WEBGPU,
-            flags: wgpu::InstanceFlags::default(),
-            backend_options: wgpu::BackendOptions::default(),
+            ..Default::default()
         });
 
         let surface = create_canvas_surface(&instance, &canvas)?;
@@ -33,15 +31,11 @@ impl Graphics {
 
         console_log!("Adapter: {:?}", adapter.get_info());
 
-        // Try using Default trait to get minimal device descriptor
-        console_log!("Using Default::default() for DeviceDescriptor");
-
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
             .map_err(|e| AppError::Graphics(format!("create device: {e:?}")))?;
 
-        // Configure the surface
         let size = (canvas.width().max(1), canvas.height().max(1));
         let surface_caps = surface.get_capabilities(&adapter);
 
@@ -64,8 +58,6 @@ impl Graphics {
         };
 
         surface.configure(&device, &config);
-
-        console_log!("WebGPU initialized successfully!");
 
         Ok(Self {
             surface,

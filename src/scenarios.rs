@@ -24,6 +24,12 @@ const CENTER_MASS: f32 = 300_000.0;
 /// Larger softening so the two heavy nuclei coalesce into one soft core on
 /// contact rather than locking into a hard, never-merging binary.
 const MERGER_SOFTENING: f32 = 25.0;
+const MERGER_SEP: f32 = 120.0; // each centre's distance from the origin, on x
+const MERGER_APPROACH: f32 = 20.0; // each centre's prograde cross-speed, on y
+const MERGER_DISK_RMIN: f32 = 4.0; // inner edge of each disk
+const MERGER_DISK_RMAX: f32 = 120.0; // outer edge of each disk
+const MERGER_DISK_EXP: f32 = 1.7; // radial concentration: r = rmin + (rmax−rmin)·t^EXP
+const MERGER_THICKNESS: f32 = 4.0; // initial vertical half-extent
 
 /// Disk "temperature": the initial random velocity dispersion as a fraction of
 /// the local circular speed, scaled by the temperature slider. Too cold and the
@@ -32,6 +38,12 @@ const MERGER_SOFTENING: f32 = 25.0;
 /// lands in the spiral sweet spot; the slider then explores either side.
 const DISP_FRAC: f32 = 0.072;
 pub const DEFAULT_TEMP: f32 = 1.0;
+
+/// Initial velocity dispersion (a fraction of the local circular speed) for a
+/// disk temperature; clamped non-negative. The single home for the temp→σ rule.
+fn dispersion(temp: f32) -> f32 {
+    DISP_FRAC * temp.max(0.0)
+}
 
 /// Which initial-condition scenario to seed. Chosen from the page's dropdown.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -140,7 +152,7 @@ fn generate_disk(temp: f32) -> Vec<Particle> {
         vel: [0.0, 0.0, 0.0, 0.0],
     });
 
-    let disp = DISP_FRAC * temp.max(0.0);
+    let disp = dispersion(temp);
     for _ in 1..NUM_PARTICLES {
         // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
         let u1: f32 = rng.gen_range(1e-4_f32..1.0);
@@ -159,7 +171,7 @@ fn generate_disk(temp: f32) -> Vec<Particle> {
                 z,
                 vc,
                 sigma: disp * vc,
-                tint: 0.0, // spiral is coloured by live radius in the shader
+                tint: 0.0,
             },
             &mut rng,
         );
@@ -177,14 +189,14 @@ fn generate_merger(temp: f32) -> Vec<Particle> {
     // (centre position, centre velocity) — deeply bound, so they fall together
     // and merge in a couple of passages; spins and orbit share +z.
     let galaxies = [
-        ([-120.0_f32, 0.0, 0.0], [0.0_f32, -20.0, 0.0]),
-        ([120.0_f32, 0.0, 0.0], [0.0_f32, 20.0, 0.0]),
+        ([-MERGER_SEP, 0.0, 0.0], [0.0, -MERGER_APPROACH, 0.0]),
+        ([MERGER_SEP, 0.0, 0.0], [0.0, MERGER_APPROACH, 0.0]),
     ];
 
     let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
     let per_galaxy = NUM_PARTICLES / 2;
     let sqrt_gm = (G * CENTER_MASS).sqrt();
-    let disp = DISP_FRAC * temp.max(0.0);
+    let disp = dispersion(temp);
 
     for (gi, (center, bulk)) in galaxies.into_iter().enumerate() {
         let tint = gi as f32; // 0 → first galaxy (warm), 1 → second (cool)
@@ -196,11 +208,13 @@ fn generate_merger(temp: f32) -> Vec<Particle> {
         });
 
         for _ in 1..per_galaxy {
-            // Centrally concentrated disk in the centre's softened potential.
+            // Centrally concentrated disk in the centre's softened point potential
+            // (vc ignores the global halo — each disk is balanced in its own frame).
             let t: f32 = rng.gen_range(0.0_f32..1.0);
-            let r = 4.0 + 116.0 * t.powf(1.7);
+            let r =
+                MERGER_DISK_RMIN + (MERGER_DISK_RMAX - MERGER_DISK_RMIN) * t.powf(MERGER_DISK_EXP);
             let theta = rng.gen_range(0.0_f32..TAU);
-            let z = rng.gen_range(-4.0_f32..4.0);
+            let z = rng.gen_range(-MERGER_THICKNESS..MERGER_THICKNESS);
             let vc = sqrt_gm * r / (r * r + MERGER_SOFTENING * MERGER_SOFTENING).powf(0.75);
             push_disk_star(
                 &mut particles,

@@ -1,4 +1,4 @@
-// Utility functions for the application
+//! Panic hook and the `console_log!` bridge to the browser console.
 
 pub fn set_panic_hook() {
     #[cfg(feature = "console_error_panic_hook")]
