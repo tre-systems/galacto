@@ -67,13 +67,14 @@ galacto/
 ├── src/                  # Rust source
 │   ├── lib.rs            # WASM entry: AppState + requestAnimationFrame loop
 │   ├── graphics.rs       # WebGPU initialization
-│   ├── simulation.rs     # Buffers, pipelines, galaxy init, compute/render dispatch
+│   ├── simulation.rs     # Buffers, pipelines, compute/render dispatch
+│   ├── scenarios.rs      # Scenario initial conditions (spiral disk, merger)
 │   ├── camera.rs         # Orbit camera → view-projection matrix
 │   ├── input.rs          # Mouse / touch / keyboard → camera
 │   ├── utils.rs          # Panic hook, console_log!
 │   └── shaders/
 │       ├── update.wgsl   # Compute: tiled all-pairs self-gravity + symplectic integration
-│       └── render.wgsl   # Vertex + fragment: project + radius-based glow
+│       └── render.wgsl   # Vertex + fragment: project + colour + glow
 ├── static/               # Frontend assets (index.html, styles.css, favicon)
 ├── docs/                 # Architecture and diagrams
 ├── scripts/              # Diagram render/check scripts

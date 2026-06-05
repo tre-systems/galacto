@@ -41,24 +41,26 @@ cargo check --target wasm32-unknown-unknown
 - All physics lives in `src/shaders/update.wgsl` (the `compute_accel` and `integrate` kernels). The CPU never touches per-body state — the particle and accel buffers are GPU-resident and never read back.
 - Gravity is all-pairs and self-gravitating (every body attracts every other), evaluated with workgroup-shared tiles. `NUM_PARTICLES` must stay a multiple of `WORKGROUP_SIZE` (the tile size) so the tile loop never reads out of bounds.
 - Each fixed step runs two compute passes — `compute_accel` (all-pairs gravity → accel buffer), then `integrate` (advance in place); the render pass then reads the particle buffer. One draw per frame.
-- Tunable simulation constants live in `src/simulation.rs` (module consts like `G`, `BULGE_MASS`, `STAR_MASS`, `DISK_RD`, `SOFTENING`, the halo's `HALO_V0` / `HALO_RC`, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`, surfaced to the shader via the `SimulationParams` uniform); keep them there rather than scattering magic numbers across the shader.
+- Tunable constants split by concern: the core solver's (`G`, the halo's `HALO_V0` / `HALO_RC`, `FIXED_DT`, surfaced to the shader via the `SimulationParams` uniform) in `src/simulation.rs`; the scenario / initial-condition ones (`BULGE_MASS`, `STAR_MASS`, `DISK_RD`, the per-scenario softenings, the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`) in `src/scenarios.rs`. Keep them there rather than scattering magic numbers across the shaders or generators.
 - Keep modules small and single-purpose. Match the existing split rather than growing `lib.rs`.
 
 ## Code Map
 
 - WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier via `set_speed`, while `set_disk_temperature` and `set_scenario` re-seed the sim).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config → depth texture; `resize`).
-- Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, `Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger` + `reseed`, `compute_pass` / `render_pass`).
+- Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, `reseed`, `compute_pass` / `render_pass`, `update_camera`).
+- Scenarios / initial conditions: `src/scenarios.rs` (`Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger`, the shared `push_disk_star` disk seeder, and `circular_velocity`; consumed by `Simulation::reseed`).
 - Camera: `src/camera.rs` (orbit camera — position, scale, rotation; `build_view_projection_matrix`).
 - Input: `src/input.rs` (mouse, wheel, touch/pinch, keyboard → camera; pause/reset).
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).
 - Core error type: `src/error.rs` (`AppError`); only `lib.rs` converts it to `JsValue` at the wasm-bindgen boundary.
-- Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + symplectic integration, in two kernels), `src/shaders/render.wgsl` (vertex: project + radius-based color; fragment: brightness/glow).
+- Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + symplectic integration, in two kernels), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow).
 - Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, speed-slider wiring), `static/styles.css`.
 
 ## Tests
 
-- There are no tests yet. The crate is `cdylib`-only, which makes native unit tests awkward; `cargo test` runs clean with 0 tests. Adding an `rlib` crate-type to enable testing camera math and particle-init invariants is a [BACKLOG](BACKLOG.md) item.
+- The crate is `cdylib` + `rlib`, so `cargo test` runs native unit tests with no GPU. Coverage: the `Particle` / `SimulationParams` buffer-layout contract and tile-count invariant (`src/simulation.rs`), camera math (zoom/rotation clamps, pan, reset, finite matrix — `src/camera.rs`), and scenario seeding (body count, positive mass, finiteness, determinism, temperature scaling — `src/scenarios.rs`).
+- Pure CPU logic only; the GPU pipeline and DOM wiring are not unit-tested. A headless step mode for the sim is a [BACKLOG](BACKLOG.md) item.
 
 ## Commits
 
