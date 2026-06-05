@@ -31,8 +31,9 @@ pub(crate) const HALO_RC: f32 = 150.0;
 const PARTICLE_SIZE: f32 = 0.02;
 
 /// One body. `pos_mass` packs position in xyz and mass in w; `vel` packs velocity
-/// in xyz and a 0..1 colour tint in w (read by the render shader). vec4 packing
-/// keeps the Rust/WGSL storage layout unambiguous.
+/// in xyz and a 0..1 colour tint in w (read by the render shader). Packing as two
+/// vec4s (not vec3) sidesteps WGSL's 16-byte vec3 stride, keeping the layout
+/// unambiguous.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Particle {
@@ -49,23 +50,23 @@ pub struct SimulationParams {
     pub particle_count: u32,
     pub halo_v0_sq: f32, // dark-matter halo: squared asymptotic circular speed
     pub halo_rc2: f32,   // dark-matter halo: squared core radius
-    pub _pad2: u32,
-    pub _pad3: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
 }
 
 pub struct Simulation {
     // Written at init and re-uploaded on reseed (temperature changes).
     particle_buffer: wgpu::Buffer,
-    #[allow(dead_code)] // held only to keep the GPU resource alive
+    #[expect(dead_code)] // held only to keep the GPU resource alive
     accel_buffer: wgpu::Buffer,
     // Written at init and re-uploaded on reseed (scenario softening changes).
     params_buffer: wgpu::Buffer,
-    pub accel_pipeline: wgpu::ComputePipeline,
-    pub integrate_pipeline: wgpu::ComputePipeline,
-    pub render_pipeline: wgpu::RenderPipeline,
-    pub compute_bind_group: wgpu::BindGroup,
-    pub render_bind_group: wgpu::BindGroup,
-    pub camera_buffer: wgpu::Buffer,
+    accel_pipeline: wgpu::ComputePipeline,
+    integrate_pipeline: wgpu::ComputePipeline,
+    render_pipeline: wgpu::RenderPipeline,
+    compute_bind_group: wgpu::BindGroup,
+    render_bind_group: wgpu::BindGroup,
+    camera_buffer: wgpu::Buffer,
 }
 
 impl Simulation {
@@ -86,8 +87,7 @@ impl Simulation {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Scratch acceleration buffer: written by the accel pass, read by the
-        // integrate pass each step. Contents need no initialization.
+        // Scratch accel buffer, rewritten every step; no initial contents needed.
         let accel_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Accel Buffer"),
             size: (NUM_PARTICLES as u64) * 16, // vec4<f32> per body
@@ -105,7 +105,7 @@ impl Simulation {
 
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
-            size: 80, // mat4 (64) + vec4 params (size, aspect, galaxy_split, pad)
+            size: 80, // mat4 (64) + vec4 params (size, aspect, color_mode, pad)
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -336,8 +336,8 @@ impl Simulation {
             particle_count: NUM_PARTICLES,
             halo_v0_sq: HALO_V0 * HALO_V0,
             halo_rc2: HALO_RC * HALO_RC,
-            _pad2: 0,
-            _pad3: 0,
+            _pad0: 0,
+            _pad1: 0,
         }
     }
 
@@ -393,17 +393,16 @@ impl Simulation {
     ) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
-        // mat4 (16 floats) followed by vec4 params: billboard size, aspect ratio,
-        // and the colour mode (0 = tint by live radius for the spiral, 1 = tint by
-        // each body's vel.w for the merger); the last slot is spare.
-        let mut data = [0f32; 20];
-        data[..16].copy_from_slice(matrix_array);
-        data[16] = PARTICLE_SIZE;
-        data[17] = camera.aspect_ratio;
-        data[18] = match scenario {
+        let color_mode = match scenario {
             Scenario::Merger => 1.0,
             Scenario::Spiral => 0.0,
         };
+        // mat4 (16 floats) then the vec4 of params: billboard size, aspect, colour
+        // mode (0 = radius tint for the spiral, 1 = vel.w tint for the merger), and
+        // one spare slot.
+        let mut data = [0f32; 20];
+        data[..16].copy_from_slice(matrix_array);
+        data[16..].copy_from_slice(&[PARTICLE_SIZE, camera.aspect_ratio, color_mode, 0.0]);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

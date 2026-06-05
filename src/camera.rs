@@ -1,7 +1,6 @@
 use cgmath::{perspective, Deg, EuclideanSpace, Matrix4, Point3, Vector3};
 
 pub struct Camera {
-    pub position: Vector3<f32>,
     pub scale: f32,
     pub aspect_ratio: f32,
     pub rotation_x: f32,
@@ -11,7 +10,6 @@ pub struct Camera {
 impl Camera {
     pub fn new() -> Self {
         Self {
-            position: Vector3::new(0.0, 0.0, 800.0),
             // Zoomed out and face-on (looking down the disk normal) so the
             // whole galactic disk sits in frame.
             scale: 0.7,
@@ -23,12 +21,6 @@ impl Camera {
 
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
         self.aspect_ratio = aspect_ratio;
-    }
-
-    pub fn pan(&mut self, delta_x: f32, delta_y: f32) {
-        let pan_scale = 1.0 / self.scale;
-        self.position.x -= delta_x * pan_scale;
-        self.position.y += delta_y * pan_scale;
     }
 
     pub fn rotate(&mut self, delta_x: f32, delta_y: f32) {
@@ -52,7 +44,6 @@ impl Camera {
     }
 
     pub fn reset(&mut self) {
-        self.position = Vector3::new(0.0, 0.0, 800.0);
         self.scale = 0.7;
         self.rotation_x = 0.0;
         self.rotation_y = 0.0;
@@ -104,25 +95,14 @@ mod tests {
     }
 
     #[test]
-    fn pan_scales_inversely_with_zoom() {
-        let mut c = Camera::new();
-        c.scale = 1.0;
-        c.pan(10.0, 0.0);
-        // pan_scale = 1/scale = 1, so x shifts by -delta_x.
-        assert!((c.position.x + 10.0).abs() < 1e-4);
-    }
-
-    #[test]
     fn reset_restores_defaults() {
         let mut c = Camera::new();
         c.zoom(50.0);
         c.rotate(1.0, 1.0);
-        c.pan(10.0, 10.0);
         c.reset();
         assert_eq!(c.scale, 0.7);
         assert_eq!(c.rotation_x, 0.0);
         assert_eq!(c.rotation_y, 0.0);
-        assert_eq!(c.position, Vector3::new(0.0, 0.0, 800.0));
     }
 
     #[test]

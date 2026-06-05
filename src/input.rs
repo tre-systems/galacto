@@ -4,33 +4,18 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, KeyboardEvent, MouseEvent, TouchEvent, WheelEvent};
 
-pub struct InputState {
-    pub mouse_pos: (f32, f32),
-    pub last_mouse_pos: (f32, f32),
-    pub is_dragging: bool,
-    pub is_rotating: bool,
-    pub zoom_delta: f32,
-    pub pause_pressed: bool,
-    pub reset_pressed: bool,
-    // Touch state
-    pub touch_count: u32,
-    pub last_pinch_distance: f32,
-}
-
-impl InputState {
-    pub fn new() -> Self {
-        Self {
-            mouse_pos: (0.0, 0.0),
-            last_mouse_pos: (0.0, 0.0),
-            is_dragging: false,
-            is_rotating: false,
-            zoom_delta: 0.0,
-            pause_pressed: false,
-            reset_pressed: false,
-            touch_count: 0,
-            last_pinch_distance: 0.0,
-        }
-    }
+/// Per-frame input accumulator: DOM event handlers write here, and the frame
+/// loop drains it once via `update_camera` / `pause_toggled`.
+#[derive(Default)]
+struct InputState {
+    mouse_pos: (f32, f32),
+    last_mouse_pos: (f32, f32),
+    is_rotating: bool,
+    zoom_delta: f32,
+    pause_pressed: bool,
+    reset_pressed: bool,
+    touch_count: u32,
+    last_pinch_distance: f32,
 }
 
 fn get_pinch_distance(event: &TouchEvent) -> f32 {
@@ -46,6 +31,21 @@ fn get_pinch_distance(event: &TouchEvent) -> f32 {
     }
 }
 
+/// Register `handler` as a listener for `event` on `target`, retaining the
+/// closure in `closures` so it is not dropped (dropping it unregisters the
+/// listener). Centralises the wrap/register/retain ceremony for every listener.
+fn register(
+    closures: &mut Vec<Closure<dyn FnMut(web_sys::Event)>>,
+    target: &web_sys::EventTarget,
+    event: &str,
+    handler: impl FnMut(web_sys::Event) + 'static,
+) -> Result<(), JsValue> {
+    let closure = Closure::wrap(Box::new(handler) as Box<dyn FnMut(web_sys::Event)>);
+    target.add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())?;
+    closures.push(closure);
+    Ok(())
+}
+
 pub struct InputHandler {
     state: Rc<RefCell<InputState>>,
     _closures: Vec<Closure<dyn FnMut(web_sys::Event)>>,
@@ -54,7 +54,7 @@ pub struct InputHandler {
 impl InputHandler {
     pub fn new() -> Self {
         Self {
-            state: Rc::new(RefCell::new(InputState::new())),
+            state: Rc::new(RefCell::new(InputState::default())),
             _closures: Vec::new(),
         }
     }
@@ -62,181 +62,105 @@ impl InputHandler {
     pub fn setup_event_listeners(&mut self, canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
+        let closures = &mut self._closures;
 
-        // Mouse down
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                let mouse_event = event.dyn_into::<MouseEvent>().unwrap();
-                let mut state = state.borrow_mut();
-
-                if mouse_event.button() == 0 {
-                    state.is_rotating = true;
-                } else if mouse_event.button() == 2 {
-                    state.is_dragging = true;
-                }
-
-                state.last_mouse_pos =
-                    (mouse_event.client_x() as f32, mouse_event.client_y() as f32);
+        // Left-drag orbits: arm on press, track on move, release anywhere.
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "mousedown", move |event| {
+            let me = event.dyn_into::<MouseEvent>().unwrap();
+            if me.button() == 0 {
+                let mut state = s.borrow_mut();
+                state.is_rotating = true;
+                state.last_mouse_pos = (me.client_x() as f32, me.client_y() as f32);
                 state.mouse_pos = state.last_mouse_pos;
-            }) as Box<dyn FnMut(web_sys::Event)>);
+            }
+        })?;
 
-            canvas
-                .add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "mousemove", move |event| {
+            let me = event.dyn_into::<MouseEvent>().unwrap();
+            s.borrow_mut().mouse_pos = (me.client_x() as f32, me.client_y() as f32);
+        })?;
 
-        // Mouse move
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                let mouse_event = event.dyn_into::<MouseEvent>().unwrap();
-                let mut state = state.borrow_mut();
-                state.mouse_pos = (mouse_event.client_x() as f32, mouse_event.client_y() as f32);
-            }) as Box<dyn FnMut(web_sys::Event)>);
+        let s = self.state.clone();
+        register(closures, document.as_ref(), "mouseup", move |_event| {
+            s.borrow_mut().is_rotating = false;
+        })?;
 
-            canvas
-                .add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "wheel", move |event| {
+            let we = event.dyn_into::<WheelEvent>().unwrap();
+            we.prevent_default();
+            s.borrow_mut().zoom_delta = -we.delta_y() as f32;
+        })?;
 
-        // Mouse up
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |_event: web_sys::Event| {
-                let mut state = state.borrow_mut();
-                state.is_dragging = false;
-                state.is_rotating = false;
-            }) as Box<dyn FnMut(web_sys::Event)>);
+        // One finger orbits; two-finger pinch zooms.
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "touchstart", move |event| {
+            event.prevent_default();
+            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let mut state = s.borrow_mut();
+            let touches = te.touches();
+            state.touch_count = touches.length();
+            if let Some(touch) = touches.get(0) {
+                state.last_mouse_pos = (touch.client_x() as f32, touch.client_y() as f32);
+                state.mouse_pos = state.last_mouse_pos;
+                state.is_rotating = state.touch_count == 1;
+            }
+            if state.touch_count >= 2 {
+                state.last_pinch_distance = get_pinch_distance(&te);
+            }
+        })?;
 
-            document
-                .add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
-
-        // Prevent context menu
-        {
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                event.prevent_default();
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-            canvas.add_event_listener_with_callback(
-                "contextmenu",
-                closure.as_ref().unchecked_ref(),
-            )?;
-            self._closures.push(closure);
-        }
-
-        // Wheel zoom
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                let wheel_event = event.dyn_into::<WheelEvent>().unwrap();
-                wheel_event.prevent_default();
-                let mut state = state.borrow_mut();
-                state.zoom_delta = -wheel_event.delta_y() as f32;
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-            canvas.add_event_listener_with_callback("wheel", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
-
-        // Touch start
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                event.prevent_default();
-                let touch_event = event.dyn_into::<TouchEvent>().unwrap();
-                let mut state = state.borrow_mut();
-                let touches = touch_event.touches();
-                state.touch_count = touches.length();
-
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "touchmove", move |event| {
+            event.prevent_default();
+            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let mut state = s.borrow_mut();
+            let touches = te.touches();
+            if touches.length() == 1 {
                 if let Some(touch) = touches.get(0) {
-                    state.last_mouse_pos = (touch.client_x() as f32, touch.client_y() as f32);
-                    state.mouse_pos = state.last_mouse_pos;
-                    state.is_rotating = state.touch_count == 1;
+                    state.mouse_pos = (touch.client_x() as f32, touch.client_y() as f32);
                 }
-
-                if state.touch_count >= 2 {
-                    state.last_pinch_distance = get_pinch_distance(&touch_event);
+            } else if touches.length() >= 2 {
+                let new_distance = get_pinch_distance(&te);
+                if state.last_pinch_distance > 0.0 {
+                    state.zoom_delta = (new_distance - state.last_pinch_distance) * 5.0;
                 }
-            }) as Box<dyn FnMut(web_sys::Event)>);
+                state.last_pinch_distance = new_distance;
+            }
+        })?;
 
-            canvas
-                .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
+        let s = self.state.clone();
+        register(closures, canvas.as_ref(), "touchend", move |event| {
+            event.prevent_default();
+            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let mut state = s.borrow_mut();
+            state.touch_count = te.touches().length();
+            if state.touch_count == 0 {
+                state.is_rotating = false;
+                state.last_pinch_distance = 0.0;
+            }
+        })?;
 
-        // Touch move
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                event.prevent_default();
-                let touch_event = event.dyn_into::<TouchEvent>().unwrap();
-                let mut state = state.borrow_mut();
-                let touches = touch_event.touches();
-
-                if touches.length() == 1 {
-                    // Single touch: rotate
-                    if let Some(touch) = touches.get(0) {
-                        state.mouse_pos = (touch.client_x() as f32, touch.client_y() as f32);
-                    }
-                } else if touches.length() >= 2 {
-                    // Pinch to zoom
-                    let new_distance = get_pinch_distance(&touch_event);
-                    if state.last_pinch_distance > 0.0 {
-                        let delta = new_distance - state.last_pinch_distance;
-                        state.zoom_delta = delta * 5.0; // Scale for sensitivity
-                    }
-                    state.last_pinch_distance = new_distance;
+        // Space toggles pause, R resets the camera. Ignore OS key-repeat so a
+        // held key doesn't queue repeated toggles.
+        let s = self.state.clone();
+        register(closures, document.as_ref(), "keydown", move |event| {
+            let ke = event.dyn_into::<KeyboardEvent>().unwrap();
+            if ke.repeat() {
+                return;
+            }
+            let mut state = s.borrow_mut();
+            match ke.code().as_str() {
+                "Space" => {
+                    ke.prevent_default();
+                    state.pause_pressed = true;
                 }
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-            canvas
-                .add_event_listener_with_callback("touchmove", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
-
-        // Touch end
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                event.prevent_default();
-                let touch_event = event.dyn_into::<TouchEvent>().unwrap();
-                let mut state = state.borrow_mut();
-                state.touch_count = touch_event.touches().length();
-                if state.touch_count == 0 {
-                    state.is_rotating = false;
-                    state.last_pinch_distance = 0.0;
-                }
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-            canvas
-                .add_event_listener_with_callback("touchend", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
-
-        // Keyboard
-        {
-            let state = self.state.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                let keyboard_event = event.dyn_into::<KeyboardEvent>().unwrap();
-                let mut state = state.borrow_mut();
-
-                match keyboard_event.code().as_str() {
-                    "Space" => {
-                        keyboard_event.prevent_default();
-                        state.pause_pressed = true;
-                    }
-                    "KeyR" => state.reset_pressed = true,
-                    _ => {}
-                }
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-            document
-                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())?;
-            self._closures.push(closure);
-        }
+                "KeyR" => state.reset_pressed = true,
+                _ => {}
+            }
+        })?;
 
         Ok(())
     }
@@ -245,21 +169,10 @@ impl InputHandler {
         let mut state = self.state.borrow_mut();
 
         if state.is_rotating {
-            let delta_x = state.mouse_pos.0 - state.last_mouse_pos.0;
-            let delta_y = state.mouse_pos.1 - state.last_mouse_pos.1;
-
-            if delta_x.abs() > 0.1 || delta_y.abs() > 0.1 {
-                camera.rotate(delta_x * 0.01, delta_y * 0.01);
-                state.last_mouse_pos = state.mouse_pos;
-            }
-        }
-
-        if state.is_dragging {
-            let delta_x = state.mouse_pos.0 - state.last_mouse_pos.0;
-            let delta_y = state.mouse_pos.1 - state.last_mouse_pos.1;
-
-            if delta_x.abs() > 0.1 || delta_y.abs() > 0.1 {
-                camera.pan(delta_x, delta_y);
+            let dx = state.mouse_pos.0 - state.last_mouse_pos.0;
+            let dy = state.mouse_pos.1 - state.last_mouse_pos.1;
+            if dx.abs() > 0.1 || dy.abs() > 0.1 {
+                camera.rotate(dx * 0.01, dy * 0.01);
                 state.last_mouse_pos = state.mouse_pos;
             }
         }

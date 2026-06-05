@@ -24,6 +24,12 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var<storage, read> particles: array<Particle>;
 
+// Appearance tuning (render-only; not mirrored from Rust).
+const TINT_RADIUS: f32 = 90.0;    // disk radius mapped to the cool end of the ramp
+const SPEED_REF: f32 = 260.0;     // speed at which the brightness boost saturates
+const SPEED_BOOST_MAX: f32 = 0.5; // peak extra brightness from speed
+const GLOW_GAIN: f32 = 0.55;      // per-particle additive glow gain
+
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
@@ -52,11 +58,11 @@ fn vs_main(
     // stay distinguishable as they mix.
     var tint = clamp(particle.vel.w, 0.0, 1.0);
     if camera.color_mode < 0.5 {
-        tint = clamp(length(particle.pos_mass.xy) / 90.0, 0.0, 1.0);
+        tint = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
     }
     let base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
     let speed = length(particle.vel.xyz);
-    let boost = 1.0 + min(speed / 260.0, 0.5);
+    let boost = 1.0 + min(speed / SPEED_REF, SPEED_BOOST_MAX);
     let color = base * boost;
 
     var out: VertexOutput;
@@ -76,6 +82,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Additive blending sums these into the framebuffer. With fewer bodies than a
     // test-particle sim, each one carries a bit more glow so dense regions still
     // build into a bright core.
-    let rgb = in.color * intensity * 0.55;
+    let rgb = in.color * intensity * GLOW_GAIN;
     return vec4<f32>(rgb, intensity);
 }
