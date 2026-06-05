@@ -83,7 +83,7 @@ impl AppState {
             accumulator: 0.0,
             steps_this_frame: 0,
             speed: 1.0,
-            scenario: Scenario::Spiral,
+            scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
             halo_kind: HaloKind::Logarithmic,
             gravity: simulation::G,
