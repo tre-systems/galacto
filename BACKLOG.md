@@ -1,16 +1,16 @@
 # Backlog
 
-Forward-looking work, roughly ordered by what unblocks or de-risks the most. Present tense; this is intent, not history.
+Forward-looking work, roughly ordered by what unblocks or de-risks the most — intent, not a changelog.
 
 ## P2 — Headless run mode
 
-The crate is `cdylib` + `rlib`, and `cargo test` covers the pure CPU logic that needs no GPU: camera math (the `scale`/rotation clamps, `pan`/`zoom`, `build_view_projection_matrix`), scenario seeding (body count, positive mass, finiteness, determinism from the fixed `StdRng(42)`, and dispersion scaling with temperature), and the `Particle` / `SimulationParams` buffer-layout contract.
+`cargo test` already covers the pure CPU logic that needs no GPU (camera math, scenario seeding, the `Particle` / `SimulationParams` buffer-layout contract — see [AGENTS § Tests](AGENTS.md#tests)).
 
 The next step is an `examples/headless.rs` that steps the simulation without a browser — for profiling, and (paired with a CPU reference implementation of the gravity step) for validating the GPU integrator: energy behaviour over a run, or regression-checking a scenario. The engine is FFI-free (`graphics` / `simulation` / `camera` / `scenarios` carry no `JsValue`), so a native harness only needs to stand up a headless `wgpu` device, or skip the GPU entirely for a CPU reference path.
 
 ## P3 — Dependency freshness
 
-`wgpu` is pinned at 24 and `rand` at 0.8. Bumping `wgpu` (→ 25+) is mechanical churn in `graphics.rs`/`simulation.rs` (instance/adapter/device descriptor changes, surface-texture and render-pass field renames — the same shape evo's backlog scouts for its own bump). `rand` 0.8 → 0.9 touches `gen_range`. Low urgency: the current versions build clean and the toolchain is stable, not pinned. Note: a transitive `block v0.1.6` future-incompat warning comes from `wgpu`'s macOS Metal backend and only affects native builds, not the WASM deploy — it clears when `wgpu` is bumped.
+`wgpu` is pinned at 24 and `rand` at 0.8. Bumping `wgpu` (→ 25+) is mechanical churn in `graphics.rs`/`simulation.rs` (instance/adapter/device descriptor changes, surface-texture and render-pass field renames — the same shape evo's backlog scouts for its own bump). `rand` 0.8 → 0.9 touches `gen_range`. Low urgency: the current versions build clean and the toolchain tracks stable (`rust-toolchain.toml`), not a pinned version. Note: a transitive `block v0.1.6` future-incompat warning comes from `wgpu`'s macOS Metal backend and only affects native builds, not the WASM deploy — it clears when `wgpu` is bumped.
 
 ## Roadmap — simulation depth
 
@@ -28,6 +28,6 @@ A `Scenario` (`src/scenarios.rs`, on the tiled all-pairs solver in `src/shaders/
 
 A change is done when:
 
-- `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and `cargo check --target wasm32-unknown-unknown` all pass (the pre-commit hook enforces these).
+- The verification gate passes (see [AGENTS § Verification](AGENTS.md#verification)); the pre-commit hook enforces it.
 - Docs describing affected behaviour are updated to match.
 - For user-visible changes: pushed, CI green, and smoke-tested on the live site.

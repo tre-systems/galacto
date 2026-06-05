@@ -8,7 +8,7 @@
 
 | Layer            | Choice                          | Notes                                                          |
 | ---------------- | ------------------------------- | -------------------------------------------------------------- |
-| Language         | Rust (edition 2021)             | ~2,000 lines across `src/`                                     |
+| Language         | Rust (edition 2021)             | ~2,000 lines of Rust (+ 3 WGSL shaders)                        |
 | GPU access       | `wgpu` 24 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
@@ -27,7 +27,7 @@ src/
 ├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface
 ├── simulation.rs        # Buffers, pipelines, bind groups, compute_pass / render_pass, camera uniform
 ├── scenarios.rs         # Scenario (spiral disk / merger): initial conditions + shared disk seeding
-├── camera.rs            # Orbit camera: position, scale, rotation → view-projection matrix
+├── camera.rs            # Orbit camera: scale + rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── utils.rs             # set_panic_hook, console_log! macro
 ├── error.rs             # AppError — the core's domain error (no JsValue)
@@ -36,9 +36,9 @@ src/
     ├── update.wgsl      # Compute: tiled all-pairs self-gravity + symplectic integration
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
-static/                  # Frontend: index.html (WebGPU check + bootstrap + speed slider), styles.css, favicon.svg
+static/                  # Frontend: index.html (WebGPU check + bootstrap + controls), styles.css, favicon.svg, _headers
 pkg/                     # wasm-pack output + copied static assets — the deploy root (git-ignored)
-scripts/                 # render-diagrams.mjs, check-diagrams.mjs
+scripts/                 # cache-bust.mjs (build), render-diagrams.mjs, check-diagrams.mjs
 ```
 
 ## Patterns
@@ -61,7 +61,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Derived visuals in-shader (single source of truth).** Brightness and glow are pure functions of a body's speed and position, computed in the shaders and never stored. Colour is too for the spiral disk (by live galactocentric radius); the merger instead reads a fixed per-body tint from `vel.w` (which galaxy it came from), set once at seed time so the two populations stay distinguishable as they mix — a colour-mode flag in the camera uniform selects which. Position + velocity (+ that static tint) is the only per-body state; the rest of appearance is recomputed each frame, so it can never drift out of sync with the simulation.
 
-**Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating, is-dragging) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
+**Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
 
 **Retained closures keep listeners alive.** Each `add_event_listener` closure is pushed into the handler's `_closures` vector so it is not dropped at the end of setup — dropping it would silently unregister the listener.
 
@@ -69,13 +69,15 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Compile-time-embedded shaders.** WGSL is brought in with `include_str!`, so shaders are compiled into the WASM; there is no runtime fetch or separate asset to deploy.
 
+**Fullscreen-triangle post passes.** Every bloom/composite step (`src/postprocess.rs`) is a single oversized triangle (3 verts, no vertex buffer) run through one shared `pass()` helper and built by one pipeline-factory closure, so the four passes differ only by entry point and bind groups — the standard cheaper-than-a-quad fullscreen idiom.
+
 **Deterministic seeded initialization.** All initial particle state is generated from a fixed RNG seed (`StdRng::seed_from_u64(42)`), so every page load produces an identical starting configuration.
 
 **All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what makes spiral arms real: in a cold disk, self-gravity amplifies small over-densities into recurrent density-wave spirals rather than the structure being painted on.
 
 **Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` with a `MAX_FRAME_DT` clamp so a long stall can't spiral. The speed slider tops out at `MAX_SPEED` (8×); `MAX_SUBSTEPS` is a separate, larger bound that lets a low frame rate still catch up to the requested speed while bounding the catch-up burst (each substep is a full `O(N²)` gravity pass). Step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate — on a given GPU; the massively-parallel all-pairs sum is not bit-reproducible across different hardware, so the long-run trajectory can diverge between machines even though the seeded starting state is identical everywhere.
 
-**Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
+**Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (the `ε²` in the force sum — see Simulation & Physics) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
 **FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The three other exports — `set_speed`, `set_disk_temperature`, and `set_scenario`, called by the page's controls — take a plain scalar and are infallible, as is the per-frame hot path.
 
@@ -85,7 +87,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) does two things on the shared `AppState`:
 
-1. **`update(time)`** — let the `InputHandler` apply pending rotate/pan/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta (scaled by the speed multiplier) to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
+1. **`update(time)`** — let the `InputHandler` apply pending rotate/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta (scaled by the speed multiplier) to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
 2. **`render()`** — open a command encoder, then:
    - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): first `compute_accel` sums the all-pairs gravity into the accel buffer, then `integrate` advances every body in place — each over `16384 / 256 = 64` workgroups;
    - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per body, `draw(0..4, 0..16384)` — additively blended with no depth buffer, into the **HDR scene** target;
@@ -122,7 +124,7 @@ All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` un
 Initial conditions come from a `Scenario` (`src/scenarios.rs`, seeded `StdRng(42)` → reproducible). The same solver runs for both; they differ only in the seeded bodies and the softening, and both build their disks through a shared `push_disk_star` helper:
 
 - **`Scenario::Spiral`** (`generate_disk`) — a heavy central bulge body (`BULGE_MASS`) plus an **exponential disk** of lighter stars (`STAR_MASS`), radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), making it spiral-prone. Each star gets a **prograde circular velocity** (bulge + enclosed disk + halo, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the "temperature" (≈ Toomre Q): too cold fragments into clumps, too hot is a featureless smear, and **spiral arms** (swing amplification) live in between. Softening is small (`SPIRAL_SOFTENING = 12`) so self-gravity stays sharp.
-- **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, on a bound prograde approach (`±120` on x, `±20` along y), so self-gravity and dynamical friction merge them into one spinning remnant. Each galaxy's bodies carry a fixed `vel.w` tint (0 vs 1) so the render shader can colour the two populations differently and you can watch them mix. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
+- **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, placed at `x = ±120` (both at `y = 0`) and given opposite `±20` cross-velocities in `y` — a bound prograde approach, so self-gravity and dynamical friction merge them into one spinning remnant. Each galaxy's bodies carry a fixed `vel.w` tint (0 vs 1) so the render shader can colour the two populations differently and you can watch them mix. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
 
 The scenario dropdown and the disk-temperature slider both call `Simulation::reseed(scenario, temp)`, which regenerates the bodies and re-uploads the particle buffer, *and* rewrites the `SimulationParams` uniform (the two scenarios use different softening). It restarts the galaxy from fresh initial conditions — switch scenarios freely, or sweep the spiral disk clumpy → spiral → smooth.
 
@@ -145,24 +147,12 @@ The pipeline uses `TriangleStrip` topology with **additive** blending and **no d
 
 A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer matched to its displayed size × `devicePixelRatio`, calling `AppState::resize` to reconfigure the surface and update the camera aspect — so the view fills the window at native resolution without stretching.
 
-`InputHandler` (`src/input.rs`) registers DOM listeners and translates them into camera intent, polled once per frame:
-
-| Input                         | Action            |
-| ----------------------------- | ----------------- |
-| Left-drag / one-finger drag   | Rotate (orbit)    |
-| Right-drag                    | Pan               |
-| Wheel / two-finger pinch      | Zoom              |
-| Space                         | Pause / resume    |
-| R                             | Reset camera      |
-| Speed slider (on-screen)      | Scale sim speed (0.25×–8×) |
-| Disk-temp slider (on-screen)  | Set disk temperature; re-seeds the disk on release |
-| Scenario dropdown (on-screen) | Switch initial conditions (spiral disk / galaxy merger); re-seeds |
+`InputHandler` (`src/input.rs`) registers DOM listeners and translates them into camera intent, polled once per frame: it acts on level state (is-rotating) and drains edge state (the pause/reset flags and accumulated zoom delta). The full input → action mapping (mouse, keyboard, touch, the sliders, and the scenario dropdown) lives in the [README § Controls](../README.md#controls).
 
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs`, which stamps the `galacto.js` import in `index.html` with `?v=<git-sha>` so a new deploy always loads fresh glue. Output is `pkg/` (git-ignored, regenerated).
-- `npm run dev` → build, then `serve pkg -l 8000`. Open in a WebGPU-capable browser.
-- `npm run deploy` → build, then `wrangler pages deploy pkg --project-name=galacto`.
+- `npm run dev` serves `pkg/` locally and `npm run deploy` ships it to Cloudflare Pages — see [README § Key Commands](../README.md#key-commands) for the full command table.
 - CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR and deploys `pkg/` to Cloudflare Pages on push to `main`. The Pages project name lives only in the deploy command; there is no `wrangler.toml`.
 
 ## What This Architecture Deliberately Does Not Include
