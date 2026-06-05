@@ -1,0 +1,112 @@
+digraph GpuBuffers {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.55",
+    ranksep="0.9",
+    splines=polyline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>GPU Buffers</B></FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">Body state lives only on the GPU. Two compute passes order the write→read hazards on the Particle and Accel buffers.</FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=plaintext,
+    fontname="Avenir",
+    fontcolor="#14213d"
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=13,
+    fontcolor="#3d4a5c",
+    penwidth=2.0,
+    arrowsize=0.85
+  ];
+
+  // ---- GPU passes (amber = compute, purple = render) ----
+  accel_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>compute_accel</B><BR/><FONT POINT-SIZE="13">tiled all-pairs gravity + halo</FONT>>];
+  integrate_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>integrate</B><BR/><FONT POINT-SIZE="13">symplectic Euler step</FONT>>];
+  render_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#7c3aed", fillcolor="#f5f3ff:#ffffff", gradientangle=270, label=<<B>render · vertex</B><BR/><FONT POINT-SIZE="13">instanced billboard draw</FONT>>];
+
+  // ---- Buffers (teal = storage, blue = uniform) ----
+  subgraph cluster_buffers {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>GPU-RESIDENT BUFFERS</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Mirrored byte-for-byte by the WGSL structs — the layout is a Rust↔WGSL contract.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t,
+      labeljust=l,
+      color="#99d5cf",
+      fillcolor="#f0fdfa",
+      style="rounded,filled",
+      penwidth=1.8,
+      margin=22
+    ];
+
+    particle [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
+        <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Particle buffer</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · 16,384 × 32 B</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>pos_mass</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz position, w mass</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>vel</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz velocity, w colour tint</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    accel [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
+        <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Accel buffer</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · scratch · 16,384 × 16 B</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>accel</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz acceleration</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    params [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#2563eb">
+        <TR><TD COLSPAN="2" BGCOLOR="#2563eb"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Params uniform</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">uniform · 32 B</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">dt · g · softening</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">particle_count</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_v0_sq · halo_rc2</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — dark-matter halo</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">_pad0 · _pad1</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32 — 16-byte align</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    camera [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#2563eb">
+        <TR><TD COLSPAN="2" BGCOLOR="#2563eb"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Camera uniform</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">uniform · 80 B · rewritten each frame</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>transform</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">mat4x4 — view-projection (64 B)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">size · aspect</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — billboard size, viewport ratio</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">color_mode</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — 0 radius, 1 vel.w</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">_spare</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 padding</FONT></TD></TR>
+      </TABLE>
+    >];
+  }
+
+  // ---- Reads (dashed grey) and writes (solid) ----
+  particle -> accel_pass [label="read positions", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  params -> accel_pass [style=dashed, color="#6b7280"];
+  accel_pass -> accel [label="write accel"];
+
+  accel -> integrate_pass [label="read accel"];
+  params -> integrate_pass [style=dashed, color="#6b7280"];
+  integrate_pass -> particle [label="write pos + vel"];
+
+  particle -> render_pass [label="read state", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  camera -> render_pass [style=dashed, color="#6b7280"];
+}
