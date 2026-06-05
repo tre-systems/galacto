@@ -33,6 +33,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Speed slider**     | Scale simulation speed (0.25×–8×) — live |
 | **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
 | **Halo slider**      | Dark-matter halo strength (0–2×) — live; confine or release the bodies |
+| **Halo-model dropdown** | Dark-matter halo profile — **Logarithmic** (flat curve, confines) or **NFW** (rising-then-falling curve, debris can escape); re-seeds |
 | **Star-size slider** | On-screen star size — live |
 | **Disk-temp slider** | Disk velocity dispersion (≈ Toomre Q, 0.02–2.0); staged, applied on **Restart** |
 | **Restart** button   | Re-seed the current scenario from fresh initial conditions |
@@ -99,7 +100,7 @@ One `requestAnimationFrame` callback updates the camera, then per fixed step run
 The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). The same solver drives both scenarios — only the initial conditions differ.
 
 - **All-pairs gravity** — each body's acceleration is the Plummer-softened sum of the pull of every other body.
-- **Dark-matter halo** — a static logarithmic halo adds an inward pull whose potential is unbounded, so the system stays bound (debris orbits back) with a flat outer rotation curve.
+- **Dark-matter halo** — a static halo adds an inward pull, in one of two selectable profiles: a **logarithmic** halo (the default — an unbounded potential that keeps the system bound, with a flat outer rotation curve) or an **NFW** halo (the cold-dark-matter profile — a rotation curve that rises then falls, with a finite potential that lets fast debris escape). The spiral disk is seeded in equilibrium with whichever is active.
 - **Symplectic leapfrog (drift–kick–drift)** — computed in three passes per step (half-drift, gravity at the midpoint, then kick + half-drift): `x += v·dt/2; v += a·dt; x += v·dt/2`. It is 2nd-order and conserves energy far better than plain Euler, so the cold disk and orbits hold their structure over many more rotations.
 - **Spiral disk** — a heavy central bulge plus an exponential disk on near-circular prograde orbits, each given a random thermal kick scaled by the temperature slider (≈ Toomre Q). Cold fragments into clumps, hot stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
 - **Galaxy merger** — two such disks, each anchored by a heavy core, on a bound prograde approach. Self-gravity and dynamical friction pull them together into one spinning remnant.

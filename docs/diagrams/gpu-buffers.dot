@@ -83,7 +83,7 @@ digraph GpuBuffers {
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">dt · g · softening</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">particle_count</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_v0_sq · halo_rc2</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — dark-matter halo</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">_pad0 · _pad1</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32 — 16-byte align</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_kind · _pad1</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32 — halo profile, pad</FONT></TD></TR>
       </TABLE>
     >];
 

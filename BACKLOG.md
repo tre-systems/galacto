@@ -13,7 +13,7 @@ The next step is an `examples/headless.rs` that steps the simulation without a b
 The solver in `src/shaders/update.wgsl` runs the same for every `Scenario` (`src/scenarios.rs`) — only the seeded initial conditions differ, and new setups are cheap to add through the shared `push_disk_star` / `seed_galaxy` helpers. Larger directions, roughly by effort:
 
 - **Grand-design spirals (M51)** — a clean two-armed pattern wants a tidal driver: a scenario with a small companion on a prograde flyby past a cold disk that survives rather than fully merging.
-- **Richer dark-matter halo** — the static logarithmic halo could gain an NFW profile (a rising-then-falling rotation curve), or become a *live* particle halo that responds dynamically (at O(N²) cost on the body budget).
+- **Live particle halo** — the static halo (logarithmic or NFW, selectable) is a fixed background force; making it a *live* population of dark-matter particles would let it respond dynamically to the disk and to mergers, at O(N²) cost on the body budget.
 - **Auto-replay** — periodically re-seed so an unattended demo keeps showing fresh structure (the disk heats and the arms fade over many rotations).
 
 ### Tree gravity — scale past the O(N²) ceiling

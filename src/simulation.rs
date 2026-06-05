@@ -18,13 +18,51 @@ pub const FIXED_DT: f32 = 1.0 / 60.0;
 /// params uniform and by the scenario seeding (`scenarios.rs`) for disk balance.
 pub(crate) const G: f32 = 1.0;
 
-/// Static logarithmic dark-matter halo centred at the origin: `HALO_V0` is its
-/// asymptotic circular speed and `HALO_RC` its core radius. It confines the disk
-/// (nothing escapes) and sets the flat outer rotation curve. Set `HALO_V0 = 0`
-/// to disable. Fed to the kernel via the params uniform and used by the scenario
-/// seeding to set each disk's circular velocity.
+/// Static dark-matter halo centred at the origin. `HALO_V0` is its characteristic
+/// circular speed (the logarithmic halo's asymptote, or the NFW halo's peak) and
+/// `HALO_RC` its core / scale radius. It anchors each disk's rotation curve and,
+/// for the logarithmic profile, confines the system. Set `HALO_V0 = 0` to disable.
+/// Fed to the kernel via the params uniform and used by the scenario seeding to
+/// set each disk's circular velocity.
 pub(crate) const HALO_V0: f32 = 75.0;
 pub(crate) const HALO_RC: f32 = 150.0;
+
+/// The NFW circular-velocity shape `[ln(1+x) − x/(1+x)] / x` peaks at this value
+/// (near `x = r/rs ≈ 2.16`). Dividing by it normalises the NFW halo so `HALO_V0`
+/// is its *peak* circular speed, directly comparable to the logarithmic halo's
+/// asymptote. Mirrored as a literal in `update.wgsl`'s NFW branch.
+pub(crate) const NFW_G_MAX: f32 = 0.2162;
+
+/// Dark-matter halo radial profile. Both are static background forces; they differ
+/// in the rotation curve they impose. Selected live from the page's halo dropdown.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HaloKind {
+    /// Logarithmic potential: a flat outer rotation curve, and a potential that
+    /// grows without bound, so the system stays bound — debris always orbits back.
+    Logarithmic,
+    /// Navarro–Frenk–White, the cold-dark-matter profile: a rotation curve that
+    /// rises to a peak then declines. Its potential is finite, so fast debris can
+    /// escape — tidal tails fly off instead of returning.
+    Nfw,
+}
+
+impl HaloKind {
+    /// Map the dropdown's value (0 = logarithmic, 1 = NFW; default logarithmic).
+    pub fn from_id(id: u32) -> Self {
+        match id {
+            1 => HaloKind::Nfw,
+            _ => HaloKind::Logarithmic,
+        }
+    }
+
+    /// The discriminant written into the params uniform for the shader's branch.
+    fn as_u32(self) -> u32 {
+        match self {
+            HaloKind::Logarithmic => 0,
+            HaloKind::Nfw => 1,
+        }
+    }
+}
 
 /// Default billboard half-extent for each particle, in NDC.y (screen-constant, so
 /// it is independent of zoom and depth). The star-size slider overrides it live.
@@ -48,9 +86,9 @@ pub struct SimulationParams {
     pub g: f32,         // gravitational constant
     pub softening: f32, // Plummer softening length
     pub particle_count: u32,
-    pub halo_v0_sq: f32, // dark-matter halo: squared asymptotic circular speed
-    pub halo_rc2: f32,   // dark-matter halo: squared core radius
-    pub _pad0: u32,
+    pub halo_v0_sq: f32, // dark-matter halo: squared characteristic circular speed
+    pub halo_rc2: f32,   // dark-matter halo: squared core / scale radius
+    pub halo_kind: u32,  // dark-matter halo profile: 0 = logarithmic, 1 = NFW
     pub _pad1: u32,
 }
 
@@ -80,9 +118,10 @@ impl Simulation {
         // tiles with no tail guard, so the count must divide evenly.
         debug_assert_eq!(NUM_PARTICLES % WORKGROUP_SIZE, 0);
 
-        // Start in the spiral-disk scenario at the default temperature.
+        // Start in the spiral-disk scenario at the default temperature, balanced
+        // against the default (logarithmic) halo.
         let scenario = Scenario::Spiral;
-        let particles = scenario.generate(DEFAULT_TEMP);
+        let particles = scenario.generate(DEFAULT_TEMP, HaloKind::Logarithmic);
 
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
@@ -98,7 +137,7 @@ impl Simulation {
             mapped_at_creation: false,
         });
 
-        let params = Self::build_params(scenario.softening(), G, HALO_V0);
+        let params = Self::build_params(scenario.softening(), G, HALO_V0, HaloKind::Logarithmic);
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Params Buffer"),
@@ -343,8 +382,15 @@ impl Simulation {
     }
 
     /// The `SimulationParams` uniform. `softening` varies per scenario; `gravity`
-    /// and `halo_v0` are live knobs driven by their sliders.
-    fn build_params(softening: f32, gravity: f32, halo_v0: f32) -> SimulationParams {
+    /// and `halo_v0` are live knobs driven by their sliders; `halo_kind` selects
+    /// the halo profile (and is mirrored by the spiral seeding so the disk stays in
+    /// equilibrium).
+    fn build_params(
+        softening: f32,
+        gravity: f32,
+        halo_v0: f32,
+        halo_kind: HaloKind,
+    ) -> SimulationParams {
         SimulationParams {
             dt: FIXED_DT,
             g: gravity,
@@ -352,7 +398,7 @@ impl Simulation {
             particle_count: NUM_PARTICLES,
             halo_v0_sq: halo_v0 * halo_v0,
             halo_rc2: HALO_RC * HALO_RC,
-            _pad0: 0,
+            halo_kind: halo_kind.as_u32(),
             _pad1: 0,
         }
     }
@@ -367,16 +413,26 @@ impl Simulation {
         temp: f32,
         gravity: f32,
         halo_v0: f32,
+        halo_kind: HaloKind,
     ) {
-        let particles = scenario.generate(temp);
+        // The spiral disk balances its circular velocities against the active halo,
+        // so seeding takes `halo_kind` too — the disk is born in equilibrium.
+        let particles = scenario.generate(temp, halo_kind);
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
-        self.set_physics(queue, scenario.softening(), gravity, halo_v0);
+        self.set_physics(queue, scenario.softening(), gravity, halo_v0, halo_kind);
     }
 
     /// Rewrite only the params uniform (live gravity / halo changes), leaving the
     /// running bodies untouched.
-    pub fn set_physics(&self, queue: &wgpu::Queue, softening: f32, gravity: f32, halo_v0: f32) {
-        let params = Self::build_params(softening, gravity, halo_v0);
+    pub fn set_physics(
+        &self,
+        queue: &wgpu::Queue,
+        softening: f32,
+        gravity: f32,
+        halo_v0: f32,
+        halo_kind: HaloKind,
+    ) {
+        let params = Self::build_params(softening, gravity, halo_v0, halo_kind);
         queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[params]));
     }
 

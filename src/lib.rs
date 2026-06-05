@@ -14,7 +14,7 @@ use graphics::Graphics;
 use input::InputHandler;
 use postprocess::PostProcess;
 use scenarios::Scenario;
-use simulation::Simulation;
+use simulation::{HaloKind, Simulation};
 use utils::{console_log, set_panic_hook};
 
 use std::cell::RefCell;
@@ -49,6 +49,8 @@ pub struct AppState {
     /// Current scenario and the disk temperature staged for the next (re)seed.
     scenario: Scenario,
     disk_temp: f32,
+    /// Dark-matter halo profile; switching it re-seeds so the disk stays balanced.
+    halo_kind: HaloKind,
     /// Live physics/visual knobs (no re-seed): gravity, halo speed, star size.
     gravity: f32,
     halo_v0: f32,
@@ -83,6 +85,7 @@ impl AppState {
             speed: 1.0,
             scenario: Scenario::Spiral,
             disk_temp: scenarios::DEFAULT_TEMP,
+            halo_kind: HaloKind::Logarithmic,
             gravity: simulation::G,
             halo_v0: simulation::HALO_V0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
@@ -236,6 +239,7 @@ impl AppState {
             self.disk_temp,
             self.gravity,
             self.halo_v0,
+            self.halo_kind,
         );
     }
 
@@ -258,7 +262,15 @@ impl AppState {
             self.scenario.softening(),
             self.gravity,
             self.halo_v0,
+            self.halo_kind,
         );
+    }
+
+    /// Switch the dark-matter halo profile (the halo-model dropdown) and re-seed,
+    /// so the disk is born balanced against the new halo rather than drifting.
+    pub fn set_halo_profile(&mut self, id: u32) {
+        self.halo_kind = HaloKind::from_id(id);
+        self.reseed();
     }
 
     /// Live on-screen star size (the star-size slider); applied each frame in
@@ -353,6 +365,18 @@ pub fn set_halo(halo_v0: f32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_halo(halo_v0);
+        }
+    });
+}
+
+/// Switch the dark-matter halo profile (0 = logarithmic, 1 = NFW), re-seeding so
+/// the disk starts in equilibrium with it. Called by the halo-model dropdown.
+/// No-ops until ready.
+#[wasm_bindgen]
+pub fn set_halo_profile(id: u32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_halo_profile(id);
         }
     });
 }
