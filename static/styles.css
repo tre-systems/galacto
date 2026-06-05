@@ -109,23 +109,32 @@ body {
   background: none;
   border: none;
   margin: 0;
-  padding: 0 2px 2px;
-  width: 100%;
+  padding: 2px 4px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
   color: inherit;
   font: inherit;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.7;
-  cursor: pointer;
+  opacity: 0.75;
+  cursor: grab; /* the panel drags by this handle */
+  touch-action: none; /* let pointer-drag work on touch */
+  user-select: none;
 }
 
 #controls-toggle:hover {
   opacity: 1;
+}
+
+#controls-toggle:active {
+  cursor: grabbing;
+}
+
+#controls-icon {
+  font-size: 16px;
+  line-height: 1;
 }
 
 #controls-body {
@@ -134,13 +143,28 @@ body {
   gap: 8px;
 }
 
-/* Collapsed: hide the controls, leaving just the toggle as a small pill. */
-#controls.collapsed #controls-body {
+/* Collapsed: a discreet circular ⚙ button only — no panel chrome or body. */
+#controls.collapsed {
+  padding: 0;
+  background: none;
+  border-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#controls.collapsed #controls-body,
+#controls.collapsed #controls-label {
   display: none;
 }
 
 #controls.collapsed #controls-toggle {
-  padding-bottom: 0;
+  padding: 7px;
+  border-radius: 999px;
+  background: rgba(10, 14, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.85;
 }
 
 .control {
