@@ -186,12 +186,10 @@ body {
   color: #fff;
 }
 
-/* Buy Me a Coffee (Ko-fi) badge */
+/* Buy Me a Coffee (Ko-fi) badge — sits at the bottom of the controls panel */
 #kofi {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
+  align-self: center;
+  margin-top: 2px;
   opacity: 0.92;
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
@@ -203,6 +201,6 @@ body {
 
 #kofi img {
   display: block;
-  height: 36px;
+  height: 30px;
   width: auto;
 }
