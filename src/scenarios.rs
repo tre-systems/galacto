@@ -35,8 +35,9 @@ const HEADON_SPEED: f32 = 26.0; // closing speed for the head-on collision
 /// Disk "temperature": the initial random velocity dispersion as a fraction of
 /// the local circular speed, scaled by the temperature slider. Too cold and the
 /// disk fragments into clumps; too hot and it stays a featureless smear; spiral
-/// arms live in between. `DISP_FRAC` is tuned so the default temperature (1.0)
-/// lands in the spiral sweet spot; the slider then explores either side.
+/// arms live in between. `DISP_FRAC` is tuned so temperature ≈ 1.0 sits in the
+/// spiral sweet spot; the default (0.5) runs a touch colder for more structure,
+/// and the slider explores either side.
 const DISP_FRAC: f32 = 0.072;
 pub const DEFAULT_TEMP: f32 = 0.5;
 

@@ -10,9 +10,9 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 
 - **GPU compute physics** — the all-pairs gravity for every body runs in a WebGPU compute shader (workgroup-tiled); the CPU never touches per-body state.
 - **Self-gravity N-body** — every body attracts every other, so structure forms for real rather than being scripted.
-- **Selectable scenarios** — a dropdown switches the initial conditions: **Spiral disk** (single cold disk → spiral arms) or **Galaxy merger** (two galaxies fall together and coalesce).
-- **Live disk-temperature slider** — sets the disk's velocity dispersion (≈ Toomre Q) and re-seeds on release; sweep it from clumpy through spiral to smooth.
-- **Dark-matter halo** — a static halo confines the disk so nothing drifts off-screen.
+- **Selectable scenarios** — a dropdown switches the initial conditions: a **spiral disk** that grows arms, plus five multi-galaxy setups — **merger**, **head-on collision**, **retrograde merger**, **minor merger** (a shredded satellite), and a **three-galaxy group**.
+- **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
+- **Disk temperature** — sets the disk's velocity dispersion (≈ Toomre Q). It's a seed-time property, so it's *staged* and applied on **Restart** rather than disturbing the running sim.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
 - **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent.
@@ -25,13 +25,17 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 
 | Input              | Action                              |
 | ------------------ | ----------------------------------- |
-| **Left-drag**      | Rotate (orbit) the camera           |
-| **Mouse wheel**    | Zoom in and out                     |
-| **Spacebar**       | Pause / resume the simulation       |
-| **R**              | Reset the camera                    |
-| **Speed slider**   | Scale simulation speed (0.25×–8×)   |
-| **Disk-temp slider** | Set disk temperature; re-seeds on release (0.02 cold/clumpy → 2.0 hot/smooth) |
-| **Scenario dropdown** | Switch initial conditions: spiral disk or galaxy merger (re-seeds) |
+| **Left-drag**        | Rotate (orbit) the camera           |
+| **Mouse wheel**      | Zoom in and out                     |
+| **Spacebar**         | Pause / resume the simulation       |
+| **R**                | Reset the camera                    |
+| **Scenario dropdown**| Choose the setup (spiral disk, or a merger / head-on / retrograde / minor / group collision) — re-seeds |
+| **Speed slider**     | Scale simulation speed (0.25×–8×) — live |
+| **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
+| **Halo slider**      | Dark-matter halo strength (0–2×) — live; confine or release the bodies |
+| **Star-size slider** | On-screen star size — live |
+| **Disk-temp slider** | Disk velocity dispersion (≈ Toomre Q, 0.02–2.0); staged, applied on **Restart** |
+| **Restart** button   | Re-seed the current scenario from fresh initial conditions |
 
 ### Touch
 
