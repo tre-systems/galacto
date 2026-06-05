@@ -30,6 +30,7 @@ const MERGER_DISK_RMIN: f32 = 4.0; // inner edge of each disk
 const MERGER_DISK_RMAX: f32 = 120.0; // outer edge of each disk
 const MERGER_DISK_EXP: f32 = 1.7; // radial concentration: r = rmin + (rmax−rmin)·t^EXP
 const MERGER_THICKNESS: f32 = 4.0; // initial vertical half-extent
+const HEADON_SPEED: f32 = 26.0; // closing speed for the head-on collision
 
 /// Disk "temperature": the initial random velocity dispersion as a fraction of
 /// the local circular speed, scaled by the temperature slider. Too cold and the
@@ -50,23 +51,36 @@ fn dispersion(temp: f32) -> f32 {
 pub enum Scenario {
     /// A single self-gravitating disk that grows spiral arms.
     Spiral,
-    /// Two galaxies on a bound approach that merge into one spinning remnant.
+    /// Two equal galaxies on a bound prograde approach that merge.
     Merger,
+    /// Two equal galaxies aimed straight at each other (no orbital spin).
+    HeadOn,
+    /// A merger whose second disk spins retrograde.
+    Retrograde,
+    /// A massive primary shredding an infalling quarter-mass satellite.
+    MinorMerger,
+    /// A small group of three galaxies that fall together.
+    Group,
 }
 
 impl Scenario {
     pub fn from_id(id: u32) -> Self {
         match id {
             1 => Scenario::Merger,
+            2 => Scenario::HeadOn,
+            3 => Scenario::Retrograde,
+            4 => Scenario::MinorMerger,
+            5 => Scenario::Group,
             _ => Scenario::Spiral,
         }
     }
 
-    /// Plummer softening length to use for this scenario.
+    /// Plummer softening length to use for this scenario. Every multi-galaxy
+    /// setup uses the larger merger softening so heavy cores coalesce cleanly.
     pub fn softening(self) -> f32 {
         match self {
             Scenario::Spiral => SPIRAL_SOFTENING,
-            Scenario::Merger => MERGER_SOFTENING,
+            _ => MERGER_SOFTENING,
         }
     }
 
@@ -75,6 +89,10 @@ impl Scenario {
         match self {
             Scenario::Spiral => generate_disk(temp),
             Scenario::Merger => generate_merger(temp),
+            Scenario::HeadOn => generate_head_on(temp),
+            Scenario::Retrograde => generate_retrograde(temp),
+            Scenario::MinorMerger => generate_minor(temp),
+            Scenario::Group => generate_group(temp),
         }
     }
 }
@@ -180,60 +198,205 @@ fn generate_disk(temp: f32) -> Vec<Particle> {
     particles
 }
 
-/// Build two galaxies (a heavy central body + a disk each) on a bound, prograde
-/// approach about the origin, so self-gravity merges them into one spinning
-/// remnant. `temp` sets each disk's initial dispersion; each galaxy gets a fixed
-/// tint (warm vs cool) so the two populations stay distinguishable as they mix.
-fn generate_merger(temp: f32) -> Vec<Particle> {
-    let mut rng = StdRng::seed_from_u64(42);
-    // (centre position, centre velocity) — deeply bound, so they fall together
-    // and merge in a couple of passages; spins and orbit share +z.
-    let galaxies = [
-        ([-MERGER_SEP, 0.0, 0.0], [0.0, -MERGER_APPROACH, 0.0]),
-        ([MERGER_SEP, 0.0, 0.0], [0.0, MERGER_APPROACH, 0.0]),
-    ];
+/// One galaxy in a multi-galaxy scenario: a heavy core plus a centrally-
+/// concentrated disk in its own rest frame `bulk`, spinning prograde (`spin = 1`)
+/// or retrograde (`spin = -1`). `count` is its body budget (core + disk); the
+/// per-scenario counts must sum to `NUM_PARTICLES` so the buffer fills exactly.
+struct Galaxy {
+    center: [f32; 3],
+    bulk: [f32; 3],
+    core_mass: f32,
+    radius: f32,
+    count: u32,
+    spin: f32,
+    tint: f32,
+}
 
-    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
-    let per_galaxy = NUM_PARTICLES / 2;
-    let sqrt_gm = (G * CENTER_MASS).sqrt();
-    let disp = dispersion(temp);
-
-    for (gi, (center, bulk)) in galaxies.into_iter().enumerate() {
-        let tint = gi as f32; // 0 → first galaxy (warm), 1 → second (cool)
-
-        // Heavy central body, tinted with its galaxy.
-        particles.push(Particle {
-            pos_mass: [center[0], center[1], center[2], CENTER_MASS],
-            vel: [bulk[0], bulk[1], bulk[2], tint],
-        });
-
-        for _ in 1..per_galaxy {
-            // Centrally concentrated disk in the centre's softened point potential
-            // (vc ignores the global halo — each disk is balanced in its own frame).
-            let t: f32 = rng.random_range(0.0_f32..1.0);
-            let r =
-                MERGER_DISK_RMIN + (MERGER_DISK_RMAX - MERGER_DISK_RMIN) * t.powf(MERGER_DISK_EXP);
-            let theta = rng.random_range(0.0_f32..TAU);
-            let z = rng.random_range(-MERGER_THICKNESS..MERGER_THICKNESS);
-            let vc = sqrt_gm * r / (r * r + MERGER_SOFTENING * MERGER_SOFTENING).powf(0.75);
-            push_disk_star(
-                &mut particles,
-                &DiskStar {
-                    center,
-                    bulk,
-                    r,
-                    theta,
-                    z,
-                    vc,
-                    sigma: disp * vc,
-                    tint,
-                },
-                &mut rng,
-            );
+impl Default for Galaxy {
+    /// A prograde, equal-mass, full-radius, half-the-bodies galaxy at the origin.
+    /// Scenarios override only the fields that differ.
+    fn default() -> Self {
+        Self {
+            center: [0.0, 0.0, 0.0],
+            bulk: [0.0, 0.0, 0.0],
+            core_mass: CENTER_MASS,
+            radius: MERGER_DISK_RMAX,
+            count: NUM_PARTICLES / 2,
+            spin: 1.0,
+            tint: 0.0,
         }
     }
+}
 
+/// Seed one `Galaxy` — a heavy core plus a disk on near-circular orbits in the
+/// core's softened point potential (the global halo is ignored; each disk is
+/// balanced in its own frame) — into `out`.
+fn seed_galaxy(out: &mut Vec<Particle>, g: &Galaxy, disp: f32, rng: &mut StdRng) {
+    out.push(Particle {
+        pos_mass: [g.center[0], g.center[1], g.center[2], g.core_mass],
+        vel: [g.bulk[0], g.bulk[1], g.bulk[2], g.tint],
+    });
+    let sqrt_gm = (G * g.core_mass).sqrt();
+    for _ in 1..g.count {
+        let t: f32 = rng.random_range(0.0_f32..1.0);
+        let r = MERGER_DISK_RMIN + (g.radius - MERGER_DISK_RMIN) * t.powf(MERGER_DISK_EXP);
+        let theta = rng.random_range(0.0_f32..TAU);
+        let z = rng.random_range(-MERGER_THICKNESS..MERGER_THICKNESS);
+        // `spin` flips the orbital sense for retrograde galaxies.
+        let vc = g.spin * sqrt_gm * r / (r * r + MERGER_SOFTENING * MERGER_SOFTENING).powf(0.75);
+        push_disk_star(
+            out,
+            &DiskStar {
+                center: g.center,
+                bulk: g.bulk,
+                r,
+                theta,
+                z,
+                vc,
+                sigma: disp * vc.abs(),
+                tint: g.tint,
+            },
+            rng,
+        );
+    }
+}
+
+/// Seed a set of galaxies (the multi-galaxy scenarios). Their `count`s must sum
+/// to `NUM_PARTICLES` so the body buffer is filled exactly.
+fn generate_galaxies(galaxies: &[Galaxy], temp: f32) -> Vec<Particle> {
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
+    let disp = dispersion(temp);
+    for g in galaxies {
+        seed_galaxy(&mut particles, g, disp, &mut rng);
+    }
+    debug_assert_eq!(particles.len(), NUM_PARTICLES as usize);
     particles
+}
+
+/// Two equal galaxies on a bound, prograde approach about the origin, so
+/// self-gravity merges them into one spinning remnant. The two populations carry
+/// distinct tints so you can watch them mix.
+fn generate_merger(temp: f32) -> Vec<Particle> {
+    generate_galaxies(
+        &[
+            Galaxy {
+                center: [-MERGER_SEP, 0.0, 0.0],
+                bulk: [0.0, -MERGER_APPROACH, 0.0],
+                ..Default::default()
+            },
+            Galaxy {
+                center: [MERGER_SEP, 0.0, 0.0],
+                bulk: [0.0, MERGER_APPROACH, 0.0],
+                tint: 1.0,
+                ..Default::default()
+            },
+        ],
+        temp,
+    )
+}
+
+/// Two equal galaxies aimed straight at each other (no orbital angular momentum):
+/// they interpenetrate and violently relax into one remnant.
+fn generate_head_on(temp: f32) -> Vec<Particle> {
+    generate_galaxies(
+        &[
+            Galaxy {
+                center: [-MERGER_SEP, 0.0, 0.0],
+                bulk: [HEADON_SPEED, 0.0, 0.0],
+                ..Default::default()
+            },
+            Galaxy {
+                center: [MERGER_SEP, 0.0, 0.0],
+                bulk: [-HEADON_SPEED, 0.0, 0.0],
+                tint: 1.0,
+                ..Default::default()
+            },
+        ],
+        temp,
+    )
+}
+
+/// Like the merger, but the second disk spins retrograde — which suppresses the
+/// long tidal bridge and tails a prograde pair throws off.
+fn generate_retrograde(temp: f32) -> Vec<Particle> {
+    generate_galaxies(
+        &[
+            Galaxy {
+                center: [-MERGER_SEP, 0.0, 0.0],
+                bulk: [0.0, -MERGER_APPROACH, 0.0],
+                ..Default::default()
+            },
+            Galaxy {
+                center: [MERGER_SEP, 0.0, 0.0],
+                bulk: [0.0, MERGER_APPROACH, 0.0],
+                spin: -1.0,
+                tint: 1.0,
+                ..Default::default()
+            },
+        ],
+        temp,
+    )
+}
+
+/// A minor merger: a massive primary and a quarter-mass satellite on an infalling
+/// orbit. The satellite is tidally shredded into a stream around the primary.
+fn generate_minor(temp: f32) -> Vec<Particle> {
+    let satellite = NUM_PARTICLES / 4;
+    generate_galaxies(
+        &[
+            Galaxy {
+                center: [-30.0, 0.0, 0.0],
+                bulk: [0.0, -8.0, 0.0],
+                count: NUM_PARTICLES - satellite,
+                ..Default::default()
+            },
+            Galaxy {
+                center: [130.0, 0.0, 0.0],
+                bulk: [0.0, 34.0, 0.0],
+                core_mass: CENTER_MASS / 4.0,
+                radius: 45.0,
+                count: satellite,
+                tint: 1.0,
+                ..Default::default()
+            },
+        ],
+        temp,
+    )
+}
+
+/// A small group of three equal galaxies set rotating about their common centre,
+/// which fall together and merge into a single system.
+fn generate_group(temp: f32) -> Vec<Particle> {
+    let a = NUM_PARTICLES / 3;
+    generate_galaxies(
+        &[
+            Galaxy {
+                center: [0.0, 105.0, 0.0],
+                bulk: [-14.0, 0.0, 0.0],
+                radius: 70.0,
+                count: a,
+                ..Default::default()
+            },
+            Galaxy {
+                center: [-91.0, -52.0, 0.0],
+                bulk: [7.0, -12.0, 0.0],
+                radius: 70.0,
+                count: a,
+                tint: 0.5,
+                ..Default::default()
+            },
+            Galaxy {
+                center: [91.0, -52.0, 0.0],
+                bulk: [7.0, 12.0, 0.0],
+                radius: 70.0,
+                count: NUM_PARTICLES - 2 * a,
+                tint: 1.0,
+                ..Default::default()
+            },
+        ],
+        temp,
+    )
 }
 
 #[cfg(test)]
@@ -244,6 +407,10 @@ mod tests {
     fn from_id_maps_known_ids_and_defaults() {
         assert_eq!(Scenario::from_id(0), Scenario::Spiral);
         assert_eq!(Scenario::from_id(1), Scenario::Merger);
+        assert_eq!(Scenario::from_id(2), Scenario::HeadOn);
+        assert_eq!(Scenario::from_id(3), Scenario::Retrograde);
+        assert_eq!(Scenario::from_id(4), Scenario::MinorMerger);
+        assert_eq!(Scenario::from_id(5), Scenario::Group);
         // Unknown ids fall back to the spiral disk.
         assert_eq!(Scenario::from_id(99), Scenario::Spiral);
     }
@@ -280,9 +447,20 @@ mod tests {
         assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP));
     }
 
+    /// Every scenario must fill the buffer exactly (galaxy counts summing to
+    /// NUM_PARTICLES) with finite, positively-massed, in-range bodies.
     #[test]
-    fn merger_seeds_valid_bodies() {
-        assert_valid_bodies(&Scenario::Merger.generate(DEFAULT_TEMP));
+    fn all_scenarios_seed_valid_bodies() {
+        for s in [
+            Scenario::Spiral,
+            Scenario::Merger,
+            Scenario::HeadOn,
+            Scenario::Retrograde,
+            Scenario::MinorMerger,
+            Scenario::Group,
+        ] {
+            assert_valid_bodies(&s.generate(DEFAULT_TEMP));
+        }
     }
 
     #[test]

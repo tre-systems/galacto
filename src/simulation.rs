@@ -393,9 +393,11 @@ impl Simulation {
     ) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
+        // Spiral colours by live galactocentric radius; every multi-galaxy
+        // scenario colours by each body's vel.w (galaxy of origin).
         let color_mode = match scenario {
-            Scenario::Merger => 1.0,
             Scenario::Spiral => 0.0,
+            _ => 1.0,
         };
         // mat4 (16 floats) then the vec4 of params: billboard size, aspect, colour
         // mode (0 = radius tint for the spiral, 1 = vel.w tint for the merger), and
