@@ -4,14 +4,14 @@
 
 struct Particle {
     pos_mass: vec4<f32>, // xyz = position, w = mass
-    vel: vec4<f32>,      // xyz = velocity, w unused
+    vel: vec4<f32>,      // xyz = velocity, w = colour tint in [0, 1]
 }
 
 struct Camera {
     transform: mat4x4<f32>,
-    size: f32,    // billboard half-extent in NDC.y (screen-constant)
-    aspect: f32,  // viewport width / height (keeps quads square)
-    _spare0: f32,
+    size: f32,        // billboard half-extent in NDC.y (screen-constant)
+    aspect: f32,      // viewport width / height (keeps quads square)
+    color_mode: f32,  // 0 = tint by live radius (spiral), 1 = tint by vel.w (merger)
     _spare1: f32,
 }
 
@@ -46,11 +46,15 @@ fn vs_main(
     clip.x += corner.x * camera.size * clip.w / camera.aspect;
     clip.y += corner.y * camera.size * clip.w;
 
-    // Tint by galactocentric radius: a warm yellow-white bulge in the centre
-    // fading to cool blue in the disk and arms, like a real spiral galaxy.
-    let radius = length(particle.pos_mass.xy);
-    let t = clamp(radius / 90.0, 0.0, 1.0);
-    let base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), t);
+    // Warm yellow-white core fading to cool blue. The spiral disk tints by live
+    // galactocentric radius (a warm bulge → blue arms, like a real spiral); the
+    // merger tints by each body's vel.w (galaxy of origin) so the two populations
+    // stay distinguishable as they mix.
+    var tint = clamp(particle.vel.w, 0.0, 1.0);
+    if camera.color_mode < 0.5 {
+        tint = clamp(length(particle.pos_mass.xy) / 90.0, 0.0, 1.0);
+    }
+    let base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
     let speed = length(particle.vel.xyz);
     let boost = 1.0 + min(speed / 260.0, 0.5);
     let color = base * boost;

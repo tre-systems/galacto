@@ -5,6 +5,7 @@ mod error;
 mod graphics;
 mod input;
 mod postprocess;
+mod scenarios;
 mod simulation;
 mod utils;
 
@@ -16,7 +17,8 @@ use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
 use postprocess::PostProcess;
-use simulation::{Scenario, Simulation};
+use scenarios::Scenario;
+use simulation::Simulation;
 use utils::set_panic_hook;
 
 use std::cell::RefCell;
@@ -25,9 +27,13 @@ use wasm_bindgen_futures::spawn_local;
 
 /// Cap on simulation substeps run in a single frame, bounding a long-stall
 /// catch-up burst (each substep is an all-pairs O(N²) gravity pass, so a frame
-/// shouldn't run too many). The speed slider tops out at 8×, well under this;
-/// the headroom lets a low frame rate still catch up to the requested speed.
+/// shouldn't run too many). Sits well above `MAX_SPEED` so the headroom lets a
+/// low frame rate still catch up to the requested speed.
 const MAX_SUBSTEPS: u32 = 32;
+
+/// Maximum speed multiplier the UI may request; the page's speed slider tops out
+/// here. Separate from `MAX_SUBSTEPS` (a per-frame catch-up bound).
+const MAX_SPEED: f32 = 8.0;
 
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
@@ -77,7 +83,7 @@ impl AppState {
             steps_this_frame: 0,
             speed: 1.0,
             scenario: Scenario::Spiral,
-            disk_temp: simulation::DEFAULT_TEMP,
+            disk_temp: scenarios::DEFAULT_TEMP,
         })
     }
 
@@ -151,7 +157,7 @@ impl AppState {
 
         // Render the particles additively into the HDR scene target.
         self.simulation
-            .update_camera(&self.graphics.queue, &self.camera);
+            .update_camera(&self.graphics.queue, &self.camera, self.scenario);
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Particle Pass"),
@@ -233,7 +239,7 @@ pub fn start() -> Result<(), JsValue> {
 /// speed slider. No-ops until `AppState` has finished async initialization.
 #[wasm_bindgen]
 pub fn set_speed(speed: f32) {
-    let speed = speed.clamp(0.0, MAX_SUBSTEPS as f32);
+    let speed = speed.clamp(0.0, MAX_SPEED);
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().speed = speed;
