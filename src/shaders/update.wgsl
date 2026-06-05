@@ -1,9 +1,9 @@
-// Compute shaders for a self-gravitating N-body galaxy merger.
+// Compute shaders for a self-gravitating N-body galaxy sandbox.
 //
-// Every particle has mass and attracts every other, so two galaxies merge under
-// their own gravity (and dynamical friction) and violently relax into a single
-// bound, rotating remnant rather than dispersing. Gravity is the all-pairs sum,
-// evaluated with workgroup-shared "tiles" to amortise global memory reads.
+// Every particle has mass and attracts every other, so structure forms for real:
+// a cold disk swing-amplifies into spiral arms, and two galaxies fall together
+// and violently relax into a single rotating remnant. Gravity is the all-pairs
+// sum, evaluated with workgroup-shared "tiles" to amortise global memory reads.
 //
 // Two passes per step avoid a read-while-write race across the all-pairs sum:
 // `compute_accel` reads positions and writes accelerations; `integrate` then
@@ -11,7 +11,7 @@
 
 struct Particle {
     pos_mass: vec4<f32>, // xyz = position, w = mass
-    vel: vec4<f32>,      // xyz = velocity, w unused
+    vel: vec4<f32>,      // xyz = velocity, w = colour tint (preserved, not integrated)
 }
 
 struct Params {
@@ -83,8 +83,9 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let p = particles[i];
-    // Symplectic Euler: kick, then drift.
+    // Symplectic Euler: kick, then drift. vel.w carries the colour tint, so carry
+    // it through unchanged rather than overwriting it.
     let v = p.vel.xyz + accel[i].xyz * params.dt;
     let x = p.pos_mass.xyz + v * params.dt;
-    particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), vec4<f32>(v, 0.0));
+    particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), vec4<f32>(v, p.vel.w));
 }

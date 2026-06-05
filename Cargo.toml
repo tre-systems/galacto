@@ -10,8 +10,10 @@ repository = "https://github.com/tre-systems/galacto"
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ['-O2']
 
+# cdylib for the wasm-pack build; rlib so the crate links as a normal library
+# for native `cargo test` (camera math, scenario seeding, buffer-layout checks).
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wgpu = "24.0"

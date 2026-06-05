@@ -76,3 +76,61 @@ impl Camera {
         proj * view
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zoom_clamps_to_range() {
+        let mut c = Camera::new();
+        for _ in 0..200 {
+            c.zoom(-1000.0); // zoom out hard
+        }
+        assert!(c.scale >= 0.001 - f32::EPSILON, "scale floor not honoured");
+        for _ in 0..200 {
+            c.zoom(1000.0); // zoom in hard
+        }
+        assert!(c.scale <= 5.0 + f32::EPSILON, "scale ceiling not honoured");
+    }
+
+    #[test]
+    fn rotation_x_is_clamped() {
+        let mut c = Camera::new();
+        c.rotate(0.0, 100.0);
+        assert!(c.rotation_x <= 1.5);
+        c.rotate(0.0, -100.0);
+        assert!(c.rotation_x >= -1.5);
+    }
+
+    #[test]
+    fn pan_scales_inversely_with_zoom() {
+        let mut c = Camera::new();
+        c.scale = 1.0;
+        c.pan(10.0, 0.0);
+        // pan_scale = 1/scale = 1, so x shifts by -delta_x.
+        assert!((c.position.x + 10.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn reset_restores_defaults() {
+        let mut c = Camera::new();
+        c.zoom(50.0);
+        c.rotate(1.0, 1.0);
+        c.pan(10.0, 10.0);
+        c.reset();
+        assert_eq!(c.scale, 0.7);
+        assert_eq!(c.rotation_x, 0.0);
+        assert_eq!(c.rotation_y, 0.0);
+        assert_eq!(c.position, Vector3::new(0.0, 0.0, 800.0));
+    }
+
+    #[test]
+    fn view_projection_is_finite() {
+        let mut c = Camera::new();
+        c.set_aspect_ratio(16.0 / 9.0);
+        let matrix = c.build_view_projection_matrix();
+        let m: &[f32; 16] = matrix.as_ref();
+        assert!(m.iter().all(|v| v.is_finite()));
+    }
+}
