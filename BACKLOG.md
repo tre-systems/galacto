@@ -2,14 +2,11 @@
 
 Forward-looking work, roughly ordered by what unblocks or de-risks the most. Present tense; this is intent, not history.
 
-## P2 — Tests + headless run mode
+## P2 — Headless run mode
 
-The crate is `cdylib`-only, so there is no native way to unit-test or profile, and `cargo test` runs zero tests today. Add `"rlib"` to `crate-type` and cover the pure logic that does not need a GPU:
+The crate is `cdylib` + `rlib`, and `cargo test` covers the pure CPU logic that needs no GPU: camera math (the `scale`/rotation clamps, `pan`/`zoom`, `build_view_projection_matrix`), scenario seeding (body count, positive mass, finiteness, determinism from the fixed `StdRng(42)`, and dispersion scaling with temperature), and the `Particle` / `SimulationParams` buffer-layout contract.
 
-- Camera math — `build_view_projection_matrix`, the `scale`/rotation clamps, `pan`/`zoom` behaviour.
-- Disk initialization invariants — body count equals `NUM_PARTICLES` (a multiple of `WORKGROUP_SIZE`), every body has positive mass, disk radii stay within `DISK_RMAX`, the velocity dispersion scales with the temperature argument, and generation is deterministic (it seeds `StdRng` from a fixed `42`, so a given temperature is reproducible).
-
-This also unlocks a future `examples/headless.rs` for stepping the sim without a browser, if a CPU reference path is ever wanted. The engine is now FFI-free (`graphics`/`simulation`/`camera` carry no `JsValue`), so the only thing between here and native tests is the `rlib` crate-type.
+The next step is an `examples/headless.rs` that steps the simulation without a browser — for profiling, and (paired with a CPU reference implementation of the gravity step) for validating the GPU integrator: energy behaviour over a run, or regression-checking a scenario. The engine is FFI-free (`graphics` / `simulation` / `camera` / `scenarios` carry no `JsValue`), so a native harness only needs to stand up a headless `wgpu` device, or skip the GPU entirely for a CPU reference path.
 
 ## P3 — Dependency freshness
 
@@ -17,7 +14,7 @@ This also unlocks a future `examples/headless.rs` for stepping the sim without a
 
 ## Roadmap — simulation depth
 
-A `Scenario` (`src/simulation.rs`, on the tiled all-pairs solver in `src/shaders/update.wgsl`) selects the initial conditions: a self-gravitating cold disk that swing-amplifies into flocculent spiral arms (with a disk-temperature slider for the Toomre-Q regime), or a two-galaxy merger. Richer behaviour to consider, roughly by effort:
+A `Scenario` (`src/scenarios.rs`, on the tiled all-pairs solver in `src/shaders/update.wgsl`) selects the initial conditions: a self-gravitating cold disk that swing-amplifies into flocculent spiral arms (with a disk-temperature slider for the Toomre-Q regime), or a two-galaxy merger. New setups are cheap to add — both scenarios build their disks through the shared `push_disk_star` helper. Richer behaviour to consider, roughly by effort:
 
 - **Scale up the body count** — the all-pairs sum is O(N²), which caps the count around ~16k for interactive speed; the spiral arms are flocculent and a bit grainy at that count. A Barnes-Hut tree or a particle-mesh/FFT solver would allow far more bodies (cleaner, sharper arms) at the cost of a much larger implementation.
 - **Sustain the arms** — flocculent spirals self-heat the disk (Q rises), so the pattern fades over many rotations until a re-seed. A dissipative (gas) component that cools/circularizes a fraction of bodies would keep the disk cold and the arms alive.

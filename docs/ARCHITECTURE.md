@@ -1,6 +1,6 @@
 # galacto — Architecture
 
-> Scope: how the code is organized and how one rendered frame is produced. The simulation is small — 8 Rust modules and 3 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
+> Scope: how the code is organized and how one rendered frame is produced. The simulation is small — 9 Rust modules and 3 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
 
 ![System overview](diagrams/system-overview.png)
 
@@ -8,7 +8,7 @@
 
 | Layer            | Choice                          | Notes                                                          |
 | ---------------- | ------------------------------- | -------------------------------------------------------------- |
-| Language         | Rust (edition 2021)             | ~1,600 lines across `src/`                                     |
+| Language         | Rust (edition 2021)             | ~2,000 lines across `src/`                                     |
 | GPU access       | `wgpu` 24 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
@@ -25,7 +25,8 @@ The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no `buil
 src/
 ├── lib.rs               # WASM entry: AppState owns graphics/sim/camera/input; rAF loop
 ├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface
-├── simulation.rs        # Buffers, pipelines, bind groups, two-galaxy init, compute_pass / render_pass
+├── simulation.rs        # Buffers, pipelines, bind groups, compute_pass / render_pass, camera uniform
+├── scenarios.rs         # Scenario (spiral disk / merger): initial conditions + shared disk seeding
 ├── camera.rs            # Orbit camera: position, scale, rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── utils.rs             # set_panic_hook, console_log! macro
@@ -52,13 +53,13 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer. The loop and the resize handler reach the app through a `thread_local!` `RefCell<Option<Rc<RefCell<AppState>>>>` — the safe single-threaded-WASM global, no `static mut`.
 
-**POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. `Particle` packs position+mass and velocity into two `vec4`s (`pos_mass`, `vel` = 32 bytes); using `vec4` rather than `vec3` sidesteps WGSL's 16-byte `vec3` alignment, so the Rust and WGSL layouts are unambiguous. Trailing `u32` pads keep `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
+**POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. `Particle` packs position+mass and velocity into two `vec4`s (`pos_mass`, `vel` = 32 bytes; `vel.w` carries a per-body colour tint, see Rendering); using `vec4` rather than `vec3` sidesteps WGSL's 16-byte `vec3` alignment, so the Rust and WGSL layouts are unambiguous. A native unit test asserts both structs are 32 bytes so the contract can't silently drift. Trailing `u32` pads keep `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
 **Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `accel` buffer is GPU-only scratch. The exception is the scenario dropdown and disk-temperature slider: they regenerate the bodies on the CPU and re-upload the particle buffer (and rewrite the `SimulationParams` uniform, since scenarios differ in softening) via `Simulation::reseed` — an explicit, occasional event, not a per-frame upload. The only true per-frame write is the camera matrix.
 
 **Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
 
-**Derived visuals in-shader (single source of truth).** Color, brightness, and glow are pure functions of a star's galactocentric radius and its speed, computed in the shaders and never stored. Position + velocity is the only per-body state; appearance is recomputed each frame, so it can never drift out of sync with the simulation.
+**Derived visuals in-shader (single source of truth).** Brightness and glow are pure functions of a body's speed and position, computed in the shaders and never stored. Colour is too for the spiral disk (by live galactocentric radius); the merger instead reads a fixed per-body tint from `vel.w` (which galaxy it came from), set once at seed time so the two populations stay distinguishable as they mix — a colour-mode flag in the camera uniform selects which. Position + velocity (+ that static tint) is the only per-body state; the rest of appearance is recomputed each frame, so it can never drift out of sync with the simulation.
 
 **Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating, is-dragging) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
 
@@ -72,7 +73,7 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **All-pairs self-gravity, tiled.** Every body has mass and attracts every other: each body's acceleration is the softened sum over all `N` bodies — `O(N²)` per step. The kernel amortises global-memory reads by staging the bodies in workgroup-shared "tiles": each workgroup loads a tile of positions/masses into shared memory behind a `workgroupBarrier`, then every thread accumulates that tile's pull on its own body. This `O(N²)` cost is why `N` is ~16k, not the hundreds of thousands a test-particle sim allows — but it is also what makes spiral arms real: in a cold disk, self-gravity amplifies small over-densities into recurrent density-wave spirals rather than the structure being painted on.
 
-**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` with a `MAX_FRAME_DT` clamp so a long stall can't spiral. The speed slider tops out at 8×; `MAX_SUBSTEPS` sits above that so a low frame rate can still catch up to the requested speed, and it bounds the catch-up burst (each substep is a full `O(N²)` gravity pass). Step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate.
+**Fixed-timestep accumulator.** The render loop runs at the display's refresh rate, but physics advances in whole `FIXED_DT` (1/60 s) steps: each frame adds the real elapsed time — scaled by the speed-slider multiplier — to an accumulator and runs as many fixed steps as have accumulated, clamped to `MAX_SUBSTEPS` with a `MAX_FRAME_DT` clamp so a long stall can't spiral. The speed slider tops out at `MAX_SPEED` (8×); `MAX_SUBSTEPS` is a separate, larger bound that lets a low frame rate still catch up to the requested speed while bounding the catch-up burst (each substep is a full `O(N²)` gravity pass). Step size never changes, so integration accuracy is unaffected and the same seed evolves identically regardless of frame rate — on a given GPU; the massively-parallel all-pairs sum is not bit-reproducible across different hardware, so the long-run trajectory can diverge between machines even though the seeded starting state is identical everywhere.
 
 **Symplectic integration with softening.** The integrate kernel uses symplectic (semi-implicit) Euler — `velocity += a · dt`, then `position += velocity · dt` — which conserves energy far better than explicit Euler, so the disk stays coherent over many orbits. A Plummer softening length (`a = Σ G·mⱼ·dⱼ / (|dⱼ|² + ε²)^{3/2}`) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
@@ -102,7 +103,7 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 | Particle buffer   | `16384 × Particle` (`pos_mass: vec4`, `vel: vec4` — 32 B each, ~0.5 MB) | `STORAGE \| COPY_DST` |
 | Accel buffer      | `16384 × vec4<f32>` scratch accelerations         | `STORAGE` |
 | Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², _pad×2 }` | `UNIFORM \| COPY_DST` |
-| Camera buffer     | view-projection matrix + billboard size / aspect (+ 2 spare) (80 B) | `UNIFORM \| COPY_DST`              |
+| Camera buffer     | view-projection matrix + billboard size / aspect / colour-mode (+1 spare) (80 B) | `UNIFORM \| COPY_DST`              |
 
 - **Compute bind group** (`@compute` visibility), shared by both compute pipelines: binding 0 = particle buffer as `storage, read_write`; binding 1 = params as `uniform`; binding 2 = accel buffer as `storage, read_write`. `compute_accel` reads particles and writes accel; `integrate` reads accel and writes particles.
 - **Render bind group** (`@vertex` visibility): binding 0 = camera as `uniform`; binding 1 = the *same* particle buffer as `storage, read`.
@@ -114,14 +115,14 @@ The particle buffer is written by the compute stage and read by the vertex stage
 All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` uniform (`dt`, `g`, `softening`, `particle_count`). Two kernels run per step, each in its own pass so the second sees the first's writes:
 
 - **`compute_accel`.** Each body sums the softened gravitational pull of *every* body, `a = Σ G · mⱼ · dⱼ / (|dⱼ|² + ε²)^{3/2}` (where `dⱼ` is body_j − body_i), and writes it to the accel buffer. The sum is tiled through workgroup-shared memory: each workgroup loads `WORKGROUP_SIZE` bodies into a shared array behind a `workgroupBarrier`, every thread accumulates that tile, then the next tile loads. The self term (`dⱼ = 0`) contributes nothing, so it needs no special case. Finally a static **dark-matter halo** term is added: `a -= v₀² · pos / (|pos|² + r_c²)`, a logarithmic potential centred at the origin whose inward pull keeps the system bound (debris orbits back rather than escaping) and gives a flat outer rotation curve.
-- **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place.
+- **`integrate`.** Reads the acceleration and takes a symplectic-Euler step (`velocity += a · dt`; `position += velocity · dt`), writing the body back in place and carrying its `vel.w` colour tint through unchanged.
 
-`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer. Constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP`, and per-scenario params (below).
+`NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer — a `debug_assert` at init and a native test guard it. Core solver constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, the halo `HALO_V0 = 75` / `HALO_RC = 150`, and `FIXED_DT`. The scenario/disk constants — masses, the disk profile, the per-scenario softenings, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP` — live with the initial conditions in `src/scenarios.rs`.
 
-Initial conditions come from a `Scenario` (seeded `StdRng(42)` → reproducible). The same solver runs for both; they differ only in the seeded bodies and the softening:
+Initial conditions come from a `Scenario` (`src/scenarios.rs`, seeded `StdRng(42)` → reproducible). The same solver runs for both; they differ only in the seeded bodies and the softening, and both build their disks through a shared `push_disk_star` helper:
 
 - **`Scenario::Spiral`** (`generate_disk`) — a heavy central bulge body (`BULGE_MASS`) plus an **exponential disk** of lighter stars (`STAR_MASS`), radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), making it spiral-prone. Each star gets a **prograde circular velocity** (bulge + enclosed disk + halo, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the "temperature" (≈ Toomre Q): too cold fragments into clumps, too hot is a featureless smear, and **spiral arms** (swing amplification) live in between. Softening is small (`SPIRAL_SOFTENING = 12`) so self-gravity stays sharp.
-- **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, on a bound prograde approach (`±120` on x, `±20` along y), so self-gravity and dynamical friction merge them into one spinning remnant. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
+- **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, on a bound prograde approach (`±120` on x, `±20` along y), so self-gravity and dynamical friction merge them into one spinning remnant. Each galaxy's bodies carry a fixed `vel.w` tint (0 vs 1) so the render shader can colour the two populations differently and you can watch them mix. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
 
 The scenario dropdown and the disk-temperature slider both call `Simulation::reseed(scenario, temp)`, which regenerates the bodies and re-uploads the particle buffer, *and* rewrites the `SimulationParams` uniform (the two scenarios use different softening). It restarts the galaxy from fresh initial conditions — switch scenarios freely, or sweep the spiral disk clumpy → spiral → smooth.
 
@@ -129,7 +130,7 @@ The scenario dropdown and the disk-temperature slider both call `Simulation::res
 
 `src/shaders/render.wgsl` draws each particle as a camera-facing **billboard quad** (instanced: 4 verts × N particles):
 
-- **Vertex** — transform the body's position (`pos_mass.xyz`) by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Color is set by galactocentric radius — a warm yellow-white bulge in the centre fading to cool blue in the disk and arms — with a slight speed-driven brightness boost.
+- **Vertex** — transform the body's position (`pos_mass.xyz`) by the camera matrix, then offset the four quad corners in clip space to a screen-constant size (divided by aspect so they stay square). Colour comes from a warm-to-cool ramp: the spiral disk maps it from live galactocentric radius (warm yellow-white bulge → cool blue arms), while the merger maps it from each body's `vel.w` (galaxy of origin) so the two populations read distinctly — the camera uniform's colour-mode flag picks which. A slight speed-driven brightness boost is added on top.
 - **Fragment** — a soft radial falloff from the quad center (`(1 − d)²`) makes each particle a round glow, scaled down so its per-particle contribution stays modest.
 
 The pipeline uses `TriangleStrip` topology with **additive** blending and **no depth buffer** — additive glow is order-independent and there is no opaque geometry — so overlapping particles accumulate brightness. It renders into an offscreen **HDR** (`rgba16float`) target (cleared to a near-black blue `(0.01, 0.01, 0.05)`) so dense regions can exceed 1.0 before tonemapping.
