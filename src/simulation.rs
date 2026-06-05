@@ -19,13 +19,18 @@ pub const FIXED_DT: f32 = 1.0 / 60.0;
 pub(crate) const G: f32 = 1.0;
 
 /// Static dark-matter halo centred at the origin. `HALO_V0` is its characteristic
-/// circular speed (the logarithmic halo's asymptote, or the NFW halo's peak) and
-/// `HALO_RC` its core / scale radius. It anchors each disk's rotation curve and,
-/// for the logarithmic profile, confines the system. Set `HALO_V0 = 0` to disable.
-/// Fed to the kernel via the params uniform and used by the scenario seeding to
-/// set each disk's circular velocity.
+/// circular speed — the logarithmic halo's asymptote, or the NFW halo's peak. It
+/// anchors each disk's rotation curve and, for the logarithmic profile, confines
+/// the system. Set `HALO_V0 = 0` to disable. Fed to the kernel via the params
+/// uniform and used by the scenario seeding to set each disk's circular velocity.
 pub(crate) const HALO_V0: f32 = 75.0;
+/// Logarithmic-halo core radius (the rotation curve flattens beyond it).
 pub(crate) const HALO_RC: f32 = 150.0;
+/// NFW scale radius — deliberately smaller than `HALO_RC` so the NFW peak (at
+/// `r ≈ 2.16·rs`) and its subsequent decline fall inside the disk / merger field
+/// of view, and so the outer potential is shallow enough that fast merger debris
+/// escapes (the visible contrast with the confining logarithmic halo).
+pub(crate) const NFW_RS: f32 = 70.0;
 
 /// The NFW circular-velocity shape `[ln(1+x) − x/(1+x)] / x` peaks at this value
 /// (near `x = r/rs ≈ 2.16`). Dividing by it normalises the NFW halo so `HALO_V0`
@@ -397,7 +402,12 @@ impl Simulation {
             softening,
             particle_count: NUM_PARTICLES,
             halo_v0_sq: halo_v0 * halo_v0,
-            halo_rc2: HALO_RC * HALO_RC,
+            // The shader reads halo_rc2 as the active profile's squared radius: the
+            // log core radius, or the (smaller) NFW scale radius.
+            halo_rc2: match halo_kind {
+                HaloKind::Logarithmic => HALO_RC * HALO_RC,
+                HaloKind::Nfw => NFW_RS * NFW_RS,
+            },
             halo_kind: halo_kind.as_u32(),
             _pad1: 0,
         }

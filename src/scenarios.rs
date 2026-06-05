@@ -2,7 +2,9 @@
 //! galaxy/disk construction they have in common. The GPU solver in `simulation`
 //! is identical for every scenario — only these initial conditions differ.
 
-use crate::simulation::{HaloKind, Particle, G, HALO_RC, HALO_V0, NFW_G_MAX, NUM_PARTICLES};
+use crate::simulation::{
+    HaloKind, Particle, G, HALO_RC, HALO_V0, NFW_G_MAX, NFW_RS, NUM_PARTICLES,
+};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::f32::consts::TAU;
@@ -140,9 +142,9 @@ fn halo_velocity_sq(r: f32, halo_kind: HaloKind) -> f32 {
         // Logarithmic: v_halo² = v0²·r² / (r² + rc²).
         HaloKind::Logarithmic => HALO_V0 * HALO_V0 * r * r / (r * r + HALO_RC * HALO_RC),
         // NFW: v_halo² = v0²·[ln(1+x) − x/(1+x)] / (x·NFW_G_MAX), with x = r/rs and
-        // rs = HALO_RC; normalised so v0 is the halo's peak circular speed.
+        // rs = NFW_RS; normalised so v0 is the halo's peak circular speed.
         HaloKind::Nfw => {
-            let x = r / HALO_RC;
+            let x = r / NFW_RS;
             let mass_factor = (1.0 + x).ln() - x / (1.0 + x);
             HALO_V0 * HALO_V0 * mass_factor / (x * NFW_G_MAX)
         }
