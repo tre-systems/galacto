@@ -27,7 +27,7 @@ digraph FrameLoop {
     width=3.2,
     height=0.7,
     fontname="Avenir",
-    fontsize=17,
+    fontsize=18,
     penwidth=2.4,
     fontcolor="#14213d",
     color="#2264c7",
@@ -52,7 +52,7 @@ digraph FrameLoop {
   U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt × speed → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase
-  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step: compute_accel → integrate (64 wg)<BR/>tiled all-pairs self-gravity → symplectic step</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step: compute_accel → integrate (64 groups × 256)<BR/>tiled all-pairs self-gravity → symplectic step</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
   RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">16,384 billboard quads (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];

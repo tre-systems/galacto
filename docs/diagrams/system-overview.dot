@@ -85,7 +85,7 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1e6b43"><B>WASM APP CORE (RUST)</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, and input.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, input, and post-processing.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
@@ -111,7 +111,8 @@ digraph SystemOverview {
     ];
     G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · all-pairs gravity → integrate</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
     G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">16,384 self-gravitating bodies</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · project + radius glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · billboard project + glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G4 [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · composite</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }
 
   // ---- Output ----
@@ -128,8 +129,9 @@ digraph SystemOverview {
   C3 -> G1 [lhead=cluster_gpu, label="dispatch: accel + integrate"];
 
   G1 -> G2 [label="advance in place"];
-  G2 -> G3 [label="read as storage"];
+  G2 -> G3 [label="instanced billboard draw"];
   C2 -> G3 [label="view-proj uniform", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  G3 -> G4 [label="HDR scene"];
 
-  G3 -> CANVAS [ltail=cluster_gpu, label="instanced billboard draw"];
+  G4 -> CANVAS [ltail=cluster_gpu, label="composite to swapchain"];
 }
