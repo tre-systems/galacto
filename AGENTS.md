@@ -45,7 +45,7 @@ cargo check --target wasm32-unknown-unknown
 
 ## Code Map
 
-- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales by a `speed` multiplier via `set_speed`, while `set_disk_temperature` and `set_scenario` re-seed the sim).
+- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales via `set_speed`; `set_gravity` / `set_halo` / `set_particle_size` tweak the running sim live (rewrite the uniform, no re-seed); `set_scenario` and `restart` re-seed; `set_disk_temperature` stages the next seed).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config; `resize`, `reconfigure`). No depth buffer — the renderer is additive and order-independent.
 - Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, accel + integrate compute pipelines and the render pipeline, bind groups, `reseed`, `compute_pass` / `render_pass`, `update_camera`).
 - Scenarios / initial conditions: `src/scenarios.rs` (`Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger`, the shared `push_disk_star` disk seeder, and `circular_velocity`; consumed by `Simulation::reseed`).
@@ -55,7 +55,7 @@ cargo check --target wasm32-unknown-unknown
 - Core error type: `src/error.rs` (`AppError`); only `lib.rs` converts it to `JsValue` at the wasm-bindgen boundary.
 - Post-processing: `src/postprocess.rs` (HDR `rgba16float` scene target + bloom — bright-pass, separable blur, tonemapped composite; rebuilt on resize). Owned by `AppState`, run after the particle pass each frame.
 - Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + symplectic integration, in two kernels), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow), `src/shaders/post.wgsl` (fullscreen bright-pass / separable blur / tonemap composite).
-- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario / speed / disk-temp / panel toggle), `static/styles.css`.
+- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario / speed / disk-temp / gravity / halo / star-size sliders + restart + panel toggle), `static/styles.css`.
 
 ## Tests
 
