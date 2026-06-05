@@ -4,7 +4,7 @@ Operational guidance for Claude Code and other repo agents.
 
 ## Project
 
-galacto is a browser-based **self-gravitating N-body** galaxy sandbox: ~16,000 bodies attract each other through an all-pairs gravity sum that runs entirely on the GPU (WebGPU **compute** shaders, workgroup-tiled), drawn with one instanced **billboard** draw. Rust → WebAssembly (single-threaded), `wgpu`/WebGPU, deployed to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/). See the [README](README.md) for features and the two scenarios.
+galacto is a browser-based **self-gravitating N-body** galaxy sandbox: ~16,000 bodies attract each other through an all-pairs gravity sum that runs entirely on the GPU (WebGPU **compute** shaders, workgroup-tiled), drawn with one instanced **billboard** draw. Rust → WebAssembly (single-threaded), `wgpu`/WebGPU, deployed to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/). See the [README](README.md) for features and the scenarios.
 
 Read these before substantial work:
 
@@ -48,7 +48,7 @@ cargo check --target wasm32-unknown-unknown
 - WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `render`; the fixed-step accumulator scales via `set_speed`; `set_gravity` / `set_halo` / `set_particle_size` tweak the running sim live (rewrite the uniform, no re-seed); `set_scenario` / `set_halo_profile` / `restart` re-seed; `set_disk_temperature` stages the next seed).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config; `resize`, `reconfigure`). No depth buffer — the renderer is additive and order-independent.
 - Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, the accel + drift + kick compute pipelines and the render pipeline, bind groups, `reseed`, `compute_pass` / `render_pass`, `update_camera`).
-- Scenarios / initial conditions: `src/scenarios.rs` (`Scenario` (Spiral / Merger) with `generate_disk` / `generate_merger`, the shared `push_disk_star` disk seeder, and `circular_velocity`; consumed by `Simulation::reseed`).
+- Scenarios / initial conditions: `src/scenarios.rs` (the `Scenario` enum — spiral disk, the multi-galaxy collisions, and the M51 grand-design flyby — built from `seed_spiral_disk` (a halo-supported exponential disk) and `seed_galaxy` (a compact self-bound galaxy) via the shared `push_disk_star`; `circular_velocity` balances disks against the active halo; consumed by `Simulation::reseed`).
 - Camera: `src/camera.rs` (orbit camera — scale + rotation; `build_view_projection_matrix`).
 - Input: `src/input.rs` (mouse, wheel, touch/pinch, keyboard → camera; pause/reset).
 - Helpers: `src/utils.rs` (`set_panic_hook`, `console_log!`).

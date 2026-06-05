@@ -492,7 +492,10 @@ impl Simulation {
         // Spiral colours by live galactocentric radius; every multi-galaxy
         // scenario colours by each body's vel.w (galaxy of origin).
         let color_mode = match scenario {
-            Scenario::Spiral => 0.0,
+            // The spiral and the M51 flyby colour by live galactocentric radius
+            // (warm core → cool arms); the multi-galaxy collisions colour by vel.w
+            // (galaxy of origin).
+            Scenario::Spiral | Scenario::GrandDesign => 0.0,
             _ => 1.0,
         };
         // mat4 (16 floats) then the vec4 of params: billboard size, aspect, colour

@@ -26,7 +26,7 @@ src/
 ├── lib.rs               # WASM entry: AppState owns graphics/sim/camera/input; rAF loop
 ├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface
 ├── simulation.rs        # Buffers, pipelines, bind groups, compute_pass / render_pass, camera uniform
-├── scenarios.rs         # Scenario (spiral disk / merger): initial conditions + shared disk seeding
+├── scenarios.rs         # Scenario (spiral disk, multi-galaxy collisions, M51 flyby): initial conditions + shared disk seeding
 ├── camera.rs            # Orbit camera: scale + rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── utils.rs             # set_panic_hook, console_log! macro
@@ -122,12 +122,13 @@ All physics is in `src/shaders/update.wgsl`, driven by the `SimulationParams` un
 
 `NUM_PARTICLES` must be a multiple of `WORKGROUP_SIZE` (the tile size, 256) so the tile loop never reads past the buffer — a `debug_assert` at init and a native test guard it. Core solver constants live in `src/simulation.rs`, in the sim's arbitrary unit system: `G = 1`, the halo `HALO_V0 = 75` / `HALO_RC = 150` (plus `NFW_RS = 70` and `NFW_G_MAX` for the NFW profile), and `FIXED_DT`. The scenario/disk constants — masses, the disk profile, the per-scenario softenings, and the disk-temperature `DISP_FRAC` / `DEFAULT_TEMP` — live with the initial conditions in `src/scenarios.rs`.
 
-Initial conditions come from a `Scenario` (`src/scenarios.rs`, seeded `StdRng(42)` → reproducible). The same solver runs for both; they differ only in the seeded bodies and the softening, and both build their disks through a shared `push_disk_star` helper:
+Initial conditions come from a `Scenario` (`src/scenarios.rs`, seeded `StdRng(42)` → reproducible). The same solver runs for every scenario; they differ only in the seeded bodies and the softening, and all build their disks through the shared `push_disk_star` helper — a single halo-supported spiral disk via `seed_spiral_disk`, or compact self-bound galaxies via `seed_galaxy`. A few representative scenarios:
 
 - **`Scenario::Spiral`** (`generate_disk`) — a heavy central bulge body (`BULGE_MASS`) plus an **exponential disk** of lighter stars (`STAR_MASS`), radii sampled so surface density ∝ e^(−r/`DISK_RD`), thin in `z`. The disk's summed mass dominates its own region (a "maximal disk"), making it spiral-prone. Each star gets a **prograde circular velocity** (bulge + enclosed disk + the active halo profile, via `circular_velocity`) plus a **random thermal kick** with dispersion `σ = DISP_FRAC · temp · v_circ`. That dispersion is the "temperature" (≈ Toomre Q): too cold fragments into clumps, too hot is a featureless smear, and **spiral arms** (swing amplification) live in between. Softening is small (`SPIRAL_SOFTENING = 12`) so self-gravity stays sharp.
 - **`Scenario::Merger`** (`generate_merger`) — two galaxies, each a heavy core (`CENTER_MASS`) plus a centrally-concentrated disk, placed at `x = ±120` (both at `y = 0`) and given opposite `±20` cross-velocities in `y` — a bound prograde approach, so self-gravity and dynamical friction merge them into one spinning remnant. Each galaxy's bodies carry a fixed `vel.w` tint (0 vs 1) so the render shader can colour the two populations differently and you can watch them mix. Softening is larger (`MERGER_SOFTENING = 25`) so the two heavy cores coalesce instead of locking into a hard binary.
+- **`Scenario::GrandDesign`** (`generate_grand_design`) — the M51 setup: a cold `seed_spiral_disk` main galaxy at the origin plus a compact `seed_galaxy` companion (`FLYBY_COMPANION_*`) on a close prograde flyby. The companion's tide draws out a bridge toward it and amplifies a grand-design two-arm pattern, surviving the pass rather than immediately merging. It keeps the sharp `SPIRAL_SOFTENING` so the disk still swing-amplifies.
 
-The scenario dropdown and the disk-temperature slider both call `Simulation::reseed(scenario, temp)`, which regenerates the bodies and re-uploads the particle buffer, *and* rewrites the `SimulationParams` uniform (the two scenarios use different softening). It restarts the galaxy from fresh initial conditions — switch scenarios freely, or sweep the spiral disk clumpy → spiral → smooth.
+The scenario dropdown and the disk-temperature slider both call `Simulation::reseed(scenario, temp)`, which regenerates the bodies and re-uploads the particle buffer, *and* rewrites the `SimulationParams` uniform (scenarios use different softening). It restarts the galaxy from fresh initial conditions — switch scenarios freely, or sweep the spiral disk clumpy → spiral → smooth.
 
 ## Rendering
 

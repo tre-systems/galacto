@@ -10,7 +10,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 
 - **GPU compute physics** — the all-pairs gravity for every body runs in a WebGPU compute shader (workgroup-tiled); the CPU never touches per-body state.
 - **Self-gravity N-body** — every body attracts every other, so structure forms for real rather than being scripted.
-- **Selectable scenarios** — a dropdown switches the initial conditions: a **spiral disk** that grows arms, plus five multi-galaxy setups — **merger**, **head-on collision**, **retrograde merger**, **minor merger** (a shredded satellite), and a **three-galaxy group**.
+- **Selectable scenarios** — a dropdown switches the initial conditions: a **spiral disk** that grows arms, plus six multi-galaxy setups — **merger**, **head-on collision**, **retrograde merger**, **minor merger** (a shredded satellite), a **three-galaxy group**, and a **grand-design (M51)** flyby whose companion tidally draws out a bridge and two-armed structure.
 - **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
 - **Disk temperature** — sets the disk's velocity dispersion (≈ Toomre Q). It's a seed-time property, so it's *staged* and applied on **Restart** rather than disturbing the running sim.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
@@ -29,7 +29,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Mouse wheel**      | Zoom in and out                     |
 | **Spacebar**         | Pause / resume the simulation       |
 | **R**                | Reset the camera                    |
-| **Scenario dropdown**| Choose the setup (spiral disk, or a merger / head-on / retrograde / minor / group collision) — re-seeds |
+| **Scenario dropdown**| Choose the setup (spiral disk; a merger / head-on / retrograde / minor / group collision; or the grand-design M51 flyby) — re-seeds |
 | **Speed slider**     | Scale simulation speed (0.25×–8×) — live |
 | **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
 | **Halo slider**      | Dark-matter halo strength (0–2×) — live; confine or release the bodies |

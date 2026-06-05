@@ -34,6 +34,15 @@ const MERGER_DISK_EXP: f32 = 1.7; // radial concentration: r = rmin + (rmax−rm
 const MERGER_THICKNESS: f32 = 4.0; // initial vertical half-extent
 const HEADON_SPEED: f32 = 26.0; // closing speed for the head-on collision
 
+// --- Grand-design (M51) flyby: a cold main spiral disk (halo-supported, at the
+// origin) perturbed by a compact companion on a close prograde passage, which
+// drives a tidal two-arm pattern. The companion is self-bound (seeded in its own
+// core's softened potential) and takes about an eighth of the bodies.
+const FLYBY_COMPANION_MASS: f32 = 90_000.0;
+const FLYBY_COMPANION_RADIUS: f32 = 36.0;
+const FLYBY_COMPANION_CENTER: [f32; 3] = [210.0, 150.0, 25.0];
+const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
+
 /// Disk "temperature": the initial random velocity dispersion as a fraction of
 /// the local circular speed, scaled by the temperature slider. Too cold and the
 /// disk fragments into clumps; too hot and it stays a featureless smear; spiral
@@ -64,6 +73,9 @@ pub enum Scenario {
     MinorMerger,
     /// A small group of three galaxies that fall together.
     Group,
+    /// A cold spiral disk perturbed by a companion on a close prograde flyby
+    /// (M51-like), driving a tidal grand-design two-arm pattern.
+    GrandDesign,
 }
 
 impl Scenario {
@@ -74,6 +86,7 @@ impl Scenario {
             3 => Scenario::Retrograde,
             4 => Scenario::MinorMerger,
             5 => Scenario::Group,
+            6 => Scenario::GrandDesign,
             _ => Scenario::Spiral,
         }
     }
@@ -82,7 +95,10 @@ impl Scenario {
     /// setup uses the larger merger softening so heavy cores coalesce cleanly.
     pub fn softening(self) -> f32 {
         match self {
-            Scenario::Spiral => SPIRAL_SOFTENING,
+            // The grand-design flyby keeps the sharp spiral softening so the main
+            // disk still swing-amplifies; its companion is a lone core, not a second
+            // heavy nucleus that would need the larger merger softening.
+            Scenario::Spiral | Scenario::GrandDesign => SPIRAL_SOFTENING,
             _ => MERGER_SOFTENING,
         }
     }
@@ -99,6 +115,7 @@ impl Scenario {
             Scenario::Retrograde => generate_retrograde(temp),
             Scenario::MinorMerger => generate_minor(temp),
             Scenario::Group => generate_group(temp),
+            Scenario::GrandDesign => generate_grand_design(temp, halo_kind),
         }
     }
 }
@@ -178,31 +195,45 @@ fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, rng: &mut StdRng) {
     });
 }
 
-/// Build a single galaxy: a heavy central bulge body plus a self-gravitating
-/// exponential disk on near-circular prograde (+z) orbits, with a random thermal
-/// velocity dispersion scaled by `temp` (the disk-temperature slider). The render
-/// shader colours the disk by live galactocentric radius (warm core → blue arms).
+/// The spiral-disk scenario: one self-gravitating exponential disk at the origin,
+/// balanced against the global halo, which swing-amplifies into spiral arms.
 fn generate_disk(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
     let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
+    seed_spiral_disk(&mut particles, NUM_PARTICLES, temp, halo_kind, &mut rng);
+    particles
+}
 
+/// Seed a halo-supported exponential spiral disk into `out`: a central bulge body
+/// plus `count - 1` disk stars on near-circular prograde (+z) orbits, balanced
+/// against the global halo (`circular_velocity`), with a random thermal dispersion
+/// scaled by `temp`. Centred at the origin, at rest — shared by the spiral scenario
+/// and the M51 flyby's main galaxy. The render shader colours it by live
+/// galactocentric radius (warm core → blue arms).
+fn seed_spiral_disk(
+    out: &mut Vec<Particle>,
+    count: u32,
+    temp: f32,
+    halo_kind: HaloKind,
+    rng: &mut StdRng,
+) {
     // Central bulge body, at rest at the origin (tint 0 → warm nucleus).
-    particles.push(Particle {
+    out.push(Particle {
         pos_mass: [0.0, 0.0, 0.0, BULGE_MASS],
         vel: [0.0, 0.0, 0.0, 0.0],
     });
 
     let disp = dispersion(temp);
-    for _ in 1..NUM_PARTICLES {
+    for _ in 1..count {
         // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
         let u1: f32 = rng.random_range(1e-4_f32..1.0);
         let u2: f32 = rng.random_range(1e-4_f32..1.0);
         let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
         let theta = rng.random_range(0.0_f32..TAU);
-        let z = gaussian(&mut rng) * DISK_THICKNESS;
+        let z = gaussian(rng) * DISK_THICKNESS;
         let vc = circular_velocity(r, halo_kind);
         push_disk_star(
-            &mut particles,
+            out,
             &DiskStar {
                 center: [0.0, 0.0, 0.0],
                 bulk: [0.0, 0.0, 0.0],
@@ -213,11 +244,9 @@ fn generate_disk(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
                 sigma: disp * vc,
                 tint: 0.0,
             },
-            &mut rng,
+            rng,
         );
     }
-
-    particles
 }
 
 /// One galaxy in a multi-galaxy scenario: a heavy core plus a centrally-
@@ -421,6 +450,39 @@ fn generate_group(temp: f32) -> Vec<Particle> {
     )
 }
 
+/// A cold main spiral disk perturbed by a compact companion on a close prograde
+/// flyby — the M51 mechanism for a grand-design two-arm pattern. The main disk is
+/// halo-supported (like the spiral scenario); the companion is a small self-bound
+/// galaxy that sweeps past rather than immediately merging.
+fn generate_grand_design(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
+    let companion = NUM_PARTICLES / 8;
+    seed_spiral_disk(
+        &mut particles,
+        NUM_PARTICLES - companion,
+        temp,
+        halo_kind,
+        &mut rng,
+    );
+    seed_galaxy(
+        &mut particles,
+        &Galaxy {
+            center: FLYBY_COMPANION_CENTER,
+            bulk: FLYBY_COMPANION_BULK,
+            core_mass: FLYBY_COMPANION_MASS,
+            radius: FLYBY_COMPANION_RADIUS,
+            count: companion,
+            tint: 1.0,
+            ..Default::default()
+        },
+        dispersion(temp),
+        &mut rng,
+    );
+    debug_assert_eq!(particles.len(), NUM_PARTICLES as usize);
+    particles
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,6 +495,7 @@ mod tests {
         assert_eq!(Scenario::from_id(3), Scenario::Retrograde);
         assert_eq!(Scenario::from_id(4), Scenario::MinorMerger);
         assert_eq!(Scenario::from_id(5), Scenario::Group);
+        assert_eq!(Scenario::from_id(6), Scenario::GrandDesign);
         // Unknown ids fall back to the spiral disk.
         assert_eq!(Scenario::from_id(99), Scenario::Spiral);
     }
@@ -484,6 +547,7 @@ mod tests {
             Scenario::Retrograde,
             Scenario::MinorMerger,
             Scenario::Group,
+            Scenario::GrandDesign,
         ] {
             for halo in [HaloKind::Logarithmic, HaloKind::Nfw] {
                 assert_valid_bodies(&s.generate(DEFAULT_TEMP, halo));
