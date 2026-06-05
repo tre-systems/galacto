@@ -29,5 +29,14 @@ if ! cargo test; then
 fi
 echo "✅ All tests passed"
 
+# 4. Check the WASM build (mirrors CI; the deploy target is wasm32)
+echo ""
+echo "📦 Checking WASM build..."
+if ! cargo check --target wasm32-unknown-unknown; then
+    echo "❌ WASM build check failed."
+    exit 1
+fi
+echo "✅ WASM build check passed"
+
 echo ""
 echo "✅ All pre-commit checks passed!"
