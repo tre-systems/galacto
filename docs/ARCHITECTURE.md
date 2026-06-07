@@ -164,7 +164,7 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 
 **How the visuals drive it.** Each frame `update_audio` ramps the graph toward the engine's targets with `set_target_at_time` (so changes glide, never click): camera **zoom** sets the master brightness filter and the reverb mix (close = bright and dry; far = dark and cavernous), camera **rotation speed** stirs the delay and detune, **scenario** swaps the scale and pad chord, **speed** and the **substep count** set the note grid rate and density, and **gravity** bends the pad's pitch. The coupling is one-way — visuals → audio — so the renderer and the no-readback rule are untouched.
 
-**Lifecycle.** Browsers block an `AudioContext` until a user gesture, so the engine is built lazily: the page's 🔊 button calls the `set_sound_enabled` export, and the first enable constructs the `AudioEngine` inside that click so the context is allowed to start. It is stored as an `Option` on `AppState` (absent until enabled, or if the browser denies a context — in which case the sim simply runs silent), and enable/disable ramps the master gain rather than tearing the graph down.
+**Lifecycle.** Browsers block an `AudioContext` until a user gesture, so the soundscape starts on the visitor's first interaction: the page arms a one-shot pointer/key/touch/wheel listener that calls the `set_sound_enabled` export, and that first enable constructs the `AudioEngine` inside the gesture so the context is allowed to start (true on-load autoplay is not possible). It is stored as an `Option` on `AppState` (absent until then, or if the browser denies a context — in which case the sim simply runs silent), and enabling ramps the master gain up rather than cutting it in.
 
 ## Build & Deploy
 

@@ -6,7 +6,7 @@
     <title>Galaxy Sandbox - WebGPU</title>
     <meta
       name="description"
-      content="A GPU-accelerated self-gravitating N-body galaxy sandbox: a spiral disk and galaxy collisions (merger, head-on, retrograde, minor merger, a galaxy group, a grand-design M51 flyby), with live speed and disk-temperature controls and an optional generative soundscape driven by the simulation. Built with Rust, WebAssembly, and WebGPU."
+      content="A GPU-accelerated self-gravitating N-body galaxy sandbox: a spiral disk and galaxy collisions (merger, head-on, retrograde, minor merger, a galaxy group, a grand-design M51 flyby), with live speed and disk-temperature controls and a generative soundscape driven by the simulation. Built with Rust, WebAssembly, and WebGPU."
     />
     <link rel="stylesheet" href="styles.css?v=__CACHE_BUST__" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -36,20 +36,6 @@
 
     <!-- Main canvas -->
     <canvas id="gpu-canvas"></canvas>
-
-    <!-- Sound toggle: a generative soundscape driven by the simulation. Off by
-         default (browsers require a gesture before audio can start); the first
-         click boots the audio engine and turns it on. -->
-    <button
-      id="sound-toggle"
-      type="button"
-      class="off"
-      aria-pressed="false"
-      aria-label="Toggle sound"
-      title="Play sound"
-    >
-      <span id="sound-icon" aria-hidden="true">🔇</span>
-    </button>
 
     <!-- On-screen controls (the Buy Me a Coffee link sits at the bottom) -->
     <div id="controls" class="collapsed">
@@ -167,7 +153,7 @@
           setupHaloProfileControl(mod);
           setupStarSizeControl(mod);
           setupRestartButton(mod);
-          setupSoundControl(mod);
+          setupAutoSound(mod);
           setupControlPanel();
         } catch (error) {
           console.error("Failed to initialize application:", error);
@@ -381,22 +367,31 @@
           .addEventListener("click", () => mod.restart());
       }
 
-      // Sound toggle: a generative soundscape synthesized in the WASM (no audio
-      // files) and driven by the visuals — scenario, zoom, rotation, and the sim
-      // knobs. The click is the user gesture that lets the AudioContext start.
-      function setupSoundControl(mod) {
-        const btn = document.getElementById("sound-toggle");
-        const icon = document.getElementById("sound-icon");
-        let on = false;
-        btn.addEventListener("click", () => {
-          on = !on;
-          mod.set_sound_enabled(on);
-          btn.classList.toggle("on", on);
-          btn.classList.toggle("off", !on);
-          btn.setAttribute("aria-pressed", String(on));
-          icon.textContent = on ? "🔊" : "🔇";
-          btn.title = on ? "Mute sound" : "Play sound";
-        });
+      // Start the generative soundscape automatically. It's synthesized in the
+      // WASM (no audio files) and driven by the visuals — scenario, zoom,
+      // rotation, and the sim knobs. Browsers block audio until a user gesture,
+      // so we arm a one-shot listener for the visitor's first interaction
+      // (pointer / key / touch / wheel) — which, with a galaxy there to be
+      // dragged and zoomed, happens within moments — and boot the audio engine
+      // inside that gesture so the AudioContext is allowed to start.
+      function setupAutoSound(mod) {
+        const events = [
+          "pointerdown",
+          "mousedown",
+          "click",
+          "keydown",
+          "touchstart",
+          "wheel",
+        ];
+        const start = () => {
+          events.forEach((e) =>
+            window.removeEventListener(e, start, { capture: true })
+          );
+          mod.set_sound_enabled(true);
+        };
+        events.forEach((e) =>
+          window.addEventListener(e, start, { capture: true, passive: true })
+        );
       }
 
       init().catch(console.error);

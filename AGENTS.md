@@ -46,7 +46,7 @@ cargo check --target wasm32-unknown-unknown
 
 ## Code Map
 
-- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `update_audio` then `render`; the fixed-step accumulator scales via `set_speed`; `set_gravity` / `set_halo` / `set_particle_size` tweak the running sim live (rewrite the uniform, no re-seed); `set_scenario` / `set_halo_profile` / `restart` re-seed; `set_disk_temperature` stages the next seed; `set_sound_enabled` toggles the soundscape).
+- WASM entry + render loop: `src/lib.rs` (`AppState` owns everything; `#[wasm_bindgen(start)]`; `requestAnimationFrame` drives `update` then `update_audio` then `render`; the fixed-step accumulator scales via `set_speed`; `set_gravity` / `set_halo` / `set_particle_size` tweak the running sim live (rewrite the uniform, no re-seed); `set_scenario` / `set_halo_profile` / `restart` re-seed; `set_disk_temperature` stages the next seed; `set_sound_enabled` switches the soundscape on (the page calls it on first interaction)).
 - WebGPU setup: `src/graphics.rs` (instance → adapter → device/queue → surface config; `resize`, `reconfigure`). No depth buffer — the renderer is additive and order-independent.
 - Simulation: `src/simulation.rs` (particle/accel/params/camera buffers, the accel + drift + kick compute pipelines and the render pipeline, bind groups, `reseed`, `compute_pass` / `render_pass`, `update_camera`).
 - Scenarios / initial conditions: `src/scenarios.rs` (the `Scenario` enum — spiral disk, the multi-galaxy collisions, and the M51 grand-design flyby — built from `seed_spiral_disk` (a halo-supported exponential disk) and `seed_galaxy` (a compact self-bound galaxy) via the shared `push_disk_star`; `circular_velocity` balances disks against the active halo; consumed by `Simulation::reseed`).
@@ -58,7 +58,7 @@ cargo check --target wasm32-unknown-unknown
 - Music (pure): `src/music.rs` (`MusicEngine` + the `GalaxyState` snapshot → a `DroneTarget` pad and a stream of `NoteEvent`s; maps the visuals to a cosmic ambient soundscape; no web/audio deps, so it unit-tests natively like `scenarios.rs`).
 - Audio (Web Audio): `src/audio.rs` (`AudioEngine` — the synthesized node graph: a detuned drone pad + per-note oscillators, a procedurally-generated reverb impulse, a feedback delay, and a compressor, plus a look-ahead scheduler on the AudioContext clock. No sample files. Owned by `AppState` as an `Option`, built lazily on first enable so the context starts inside the user gesture).
 - Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + leapfrog integration, in three kernels — `drift_half`, `compute_accel`, `kick_drift_half`), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow), `src/shaders/post.wgsl` (fullscreen bright-pass / separable blur / tonemap composite).
-- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario and halo-model dropdowns, speed / disk-temp / gravity / halo / star-size sliders, restart + panel toggle, and the 🔊 sound toggle), `static/styles.css`.
+- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario and halo-model dropdowns, speed / disk-temp / gravity / halo / star-size sliders, restart + panel toggle; the soundscape auto-starts on the visitor's first interaction), `static/styles.css`.
 
 ## Tests
 
