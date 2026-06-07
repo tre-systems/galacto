@@ -32,8 +32,9 @@ const LOOKAHEAD_SEC: f64 = 0.25;
 /// Cap on grid steps scheduled in one frame, bounding the catch-up burst after a
 /// stall (e.g. a backgrounded, throttled tab).
 const MAX_STEPS_PER_FRAME: u32 = 12;
-/// Master level when sound is on. Conservative; the compressor catches peaks.
-const MASTER_LEVEL: f32 = 0.5;
+/// Master level when sound is on. Kept gentle — the soundscape sits under the
+/// visuals rather than over them; the compressor catches peaks.
+const MASTER_LEVEL: f32 = 0.32;
 
 /// Owns the AudioContext, the persistent node graph, and the generative engine.
 pub struct AudioEngine {
@@ -76,10 +77,10 @@ impl AudioEngine {
         let reverb_in = gain(&ctx, 1.0)?;
         let convolver = ConvolverNode::new(&ctx).ok()?;
         convolver.set_normalize(true);
-        if let Some(ir) = make_impulse_response(&ctx, 3.4) {
+        if let Some(ir) = make_impulse_response(&ctx, 4.5) {
             convolver.set_buffer(Some(&ir));
         }
-        let reverb_wet = gain(&ctx, 0.4)?;
+        let reverb_wet = gain(&ctx, 0.6)?;
         connect(&reverb_in, &convolver);
         let _ = convolver.connect_with_audio_node(&reverb_wet);
         connect(&reverb_wet, &master_gain);
@@ -149,7 +150,8 @@ impl AudioEngine {
             let _ = self.ctx.resume();
         }
         let target = if on { MASTER_LEVEL } else { 0.0 };
-        let _ = self.master_gain.gain().set_target_at_time(target, now, 0.4);
+        // A slow fade in/out, so sound arrives and leaves gently.
+        let _ = self.master_gain.gain().set_target_at_time(target, now, 0.8);
     }
 
     /// Apply this frame's visual state: glide the drone and global FX toward the
@@ -164,7 +166,11 @@ impl AudioEngine {
         // Whole-mix brightness from zoom (close = bright, far = muffled), and
         // reverb/delay that open up as you pull back and stir with motion.
         ramp(&self.master_lp.frequency(), d.cutoff_hz, now);
-        let reverb = (0.25 + 0.5 * (1.0 - state.zoom) + 0.15 * state.motion).clamp(0.0, 0.9);
+        // Generous, washy reverb — deeper still when pulled back, and opening with
+        // core churn so collapses bloom.
+        let reverb =
+            (0.5 + 0.4 * (1.0 - state.zoom) + 0.2 * state.core_activity + 0.1 * state.motion)
+                .clamp(0.0, 1.1);
         ramp(&self.reverb_wet.gain(), reverb, now);
         let delay = (0.12 + 0.3 * state.motion).clamp(0.0, 0.55);
         ramp(&self.delay_wet.gain(), delay, now);
@@ -185,7 +191,7 @@ impl AudioEngine {
             ramp(&osc.frequency(), d.freqs[i], now);
             let _ = osc
                 .detune()
-                .set_target_at_time((i as f32 - 1.0) * d.detune_cents, now, 0.3);
+                .set_target_at_time((i as f32 - 1.0) * d.detune_cents, now, 0.6);
         }
         ramp(
             &self.drone_lp.frequency(),
@@ -193,7 +199,7 @@ impl AudioEngine {
             now,
         );
         let gain = if self.enabled { d.gain } else { 0.0 };
-        let _ = self.drone_gain.gain().set_target_at_time(gain, now, 0.4);
+        let _ = self.drone_gain.gain().set_target_at_time(gain, now, 0.6);
     }
 
     /// Generate and fire every grid step inside the look-ahead window, advancing
@@ -240,8 +246,9 @@ impl AudioEngine {
         pan.pan().set_value(ev.pan.clamp(-1.0, 1.0));
 
         let dur = ev.duration as f64;
-        let attack = (dur * 0.3).min(0.18);
-        let peak = (ev.velocity * 0.5).max(0.0008);
+        // A soft, swelling attack so notes fade in rather than pluck.
+        let attack = (dur * 0.4).min(0.35);
+        let peak = (ev.velocity * 0.4).max(0.0008);
         let g = env.gain();
         let _ = g.set_value_at_time(0.0001, t0);
         let _ = g.linear_ramp_to_value_at_time(peak, t0 + attack);
@@ -295,7 +302,9 @@ fn compressor(ctx: &AudioContext) -> Option<DynamicsCompressorNode> {
 /// Smoothly chase an `AudioParam` toward `value` with `set_target_at_time`
 /// instead of stepping it each frame (which zippers). `now` is the audio clock.
 fn ramp(param: &web_sys::AudioParam, value: f32, now: f64) {
-    let _ = param.set_target_at_time(value, now, 0.25);
+    // A long time constant so every modulation glides — the soundscape eases
+    // between states rather than snapping, for a cinematic feel.
+    let _ = param.set_target_at_time(value, now, 0.6);
 }
 
 /// Build a short, bright stereo reverb impulse procedurally: per-channel

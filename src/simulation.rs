@@ -1,6 +1,8 @@
 use crate::scenarios::{Scenario, DEFAULT_TEMP};
 use crate::utils::console_log;
 use bytemuck::{Pod, Zeroable};
+use std::cell::RefCell;
+use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
 /// Total bodies in the simulation. Self-gravity is all-pairs (O(N²)), so this is
@@ -9,6 +11,11 @@ use wgpu::util::DeviceExt;
 pub(crate) const NUM_PARTICLES: u32 = 16384;
 /// Compute workgroup size, equal to `TILE` in `update.wgsl`.
 const WORKGROUP_SIZE: u32 = 256;
+/// Workgroups dispatched per kernel (one tile each). Also the number of partial
+/// sums the core-statistics reduction (`reduce_core`) writes for the audio.
+const NUM_WORKGROUPS: u32 = NUM_PARTICLES / WORKGROUP_SIZE;
+/// Bytes read back per core-statistics readback: one `vec4<f32>` per workgroup.
+const REDUCTION_BYTES: u64 = NUM_WORKGROUPS as u64 * 16;
 
 /// Fixed simulation timestep (seconds). Physics advances in whole steps of this
 /// size regardless of display refresh rate; see the accumulator in `lib.rs`.
@@ -97,6 +104,28 @@ pub struct SimulationParams {
     pub _pad1: u32,
 }
 
+/// Aggregate core statistics read back from the GPU on a throttled, async cadence
+/// to drive the audio (`src/audio.rs`) — never consumed by the simulation itself.
+/// `mass` is window-weighted mass near the origin (how much sits at the centre);
+/// `flux` is window-weighted mass × signed radial velocity (+ outward, so the sign
+/// is matter moving out of vs into the centre); `activity` uses |radial velocity|
+/// (core churn). The CPU sums the per-workgroup partials in [`Simulation::map_core_readback`].
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CoreStats {
+    pub mass: f32,
+    pub flux: f32,
+    pub activity: f32,
+}
+
+/// Async-readback bookkeeping. `in_flight` is true while the staging buffer is
+/// mapped, so we never copy into it or re-map until the previous read completes —
+/// which naturally throttles readbacks to roughly the GPU round-trip rate.
+#[derive(Default)]
+struct ReduceState {
+    in_flight: bool,
+    stats: CoreStats,
+}
+
 pub struct Simulation {
     // Written at init and re-uploaded on reseed (temperature changes).
     particle_buffer: wgpu::Buffer,
@@ -113,6 +142,12 @@ pub struct Simulation {
     compute_bind_group: wgpu::BindGroup,
     render_bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
+    // Core-statistics reduction for the audio: a compute pass writes per-workgroup
+    // partials, copied to a mappable staging buffer and read back asynchronously.
+    reduce_pipeline: wgpu::ComputePipeline,
+    reductions_buffer: wgpu::Buffer,
+    reduction_staging: wgpu::Buffer,
+    reduce_state: Rc<RefCell<ReduceState>>,
 }
 
 impl Simulation {
@@ -140,6 +175,21 @@ impl Simulation {
             label: Some("Accel Buffer"),
             size: (NUM_PARTICLES as u64) * 16, // vec4<f32> per body
             usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        // Core-statistics reduction output (one vec4 per workgroup) plus a mappable
+        // staging copy for the async readback that feeds the audio.
+        let reductions_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Core Reduction Buffer"),
+            size: REDUCTION_BYTES,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let reduction_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Core Reduction Staging"),
+            size: REDUCTION_BYTES,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
@@ -197,6 +247,18 @@ impl Simulation {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // Binding 3: core-statistics partials, written only by
+                    // `reduce_core`; the gravity/integrate kernels ignore it.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -269,6 +331,18 @@ impl Simulation {
             layout: Some(&compute_pipeline_layout),
             module: &compute_shader,
             entry_point: Some("kick_drift_half"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
+
+        // Core-statistics reduction (drives the audio): reads bodies, writes the
+        // per-workgroup partials. Shares the compute layout (binding 3 unused by
+        // the other kernels).
+        let reduce_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Core Reduce Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("reduce_core"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
@@ -349,6 +423,10 @@ impl Simulation {
                     binding: 2,
                     resource: accel_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: reductions_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -384,6 +462,10 @@ impl Simulation {
             compute_bind_group,
             render_bind_group,
             camera_buffer,
+            reduce_pipeline,
+            reductions_buffer,
+            reduction_staging,
+            reduce_state: Rc::new(RefCell::new(ReduceState::default())),
         }
     }
 
@@ -456,6 +538,82 @@ impl Simulation {
         self.dispatch(encoder, &self.drift_pipeline, "Drift Pass");
         self.dispatch(encoder, &self.accel_pipeline, "Accel Pass");
         self.dispatch(encoder, &self.kick_pipeline, "Kick Pass");
+    }
+
+    /// Record the core-statistics reduction for the audio: a compute pass that
+    /// writes per-workgroup partials, then a copy into the mappable staging buffer.
+    /// Skipped (returns `false`) while a previous readback is still mapped, which
+    /// throttles it to roughly the GPU round-trip rate. Reads bodies only, so it is
+    /// safe alongside the render pass. Pair with [`map_core_readback`] after submit.
+    pub fn record_core_reduction(&self, encoder: &mut wgpu::CommandEncoder) -> bool {
+        if self.reduce_state.borrow().in_flight {
+            return false;
+        }
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Core Reduce Pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.reduce_pipeline);
+            pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            pass.dispatch_workgroups(NUM_WORKGROUPS, 1, 1);
+        }
+        encoder.copy_buffer_to_buffer(
+            &self.reductions_buffer,
+            0,
+            &self.reduction_staging,
+            0,
+            REDUCTION_BYTES,
+        );
+        true
+    }
+
+    /// Kick off the async map of the staging buffer (call after the queue submit
+    /// that ran [`record_core_reduction`]). The map callback sums the per-workgroup
+    /// partials into `CoreStats` and clears the in-flight flag; in the browser the
+    /// runtime drives the map to completion, so no manual device poll is needed.
+    ///
+    /// Only the wasm target maps: the callback captures an `Rc` (not `Send`), which
+    /// the browser's single-threaded `map_async` allows but the native build's
+    /// `Send` bound forbids. Native is test-only and never runs this GPU path, so
+    /// it is a no-op there.
+    #[cfg(target_arch = "wasm32")]
+    pub fn map_core_readback(&self) {
+        let staging = self.reduction_staging.clone();
+        let state = self.reduce_state.clone();
+        self.reduce_state.borrow_mut().in_flight = true;
+        self.reduction_staging
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |res| {
+                let mut st = state.borrow_mut();
+                if res.is_ok() {
+                    let (mut mass, mut flux, mut activity) = (0.0_f32, 0.0_f32, 0.0_f32);
+                    {
+                        let data = staging.slice(..).get_mapped_range();
+                        for p in bytemuck::cast_slice::<u8, f32>(&data[..]).chunks_exact(4) {
+                            mass += p[0];
+                            flux += p[1];
+                            activity += p[2];
+                        }
+                    }
+                    staging.unmap();
+                    st.stats = CoreStats {
+                        mass,
+                        flux,
+                        activity,
+                    };
+                }
+                st.in_flight = false;
+            });
+    }
+
+    /// No-op on non-wasm (native test) builds — see the wasm variant above.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn map_core_readback(&self) {}
+
+    /// The most recent core statistics read back from the GPU (see [`CoreStats`]).
+    pub fn core_stats(&self) -> CoreStats {
+        self.reduce_state.borrow().stats
     }
 
     /// Run one compute kernel over every body, one workgroup per tile.

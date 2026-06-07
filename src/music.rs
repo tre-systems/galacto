@@ -1,10 +1,10 @@
 //! Generative, visuals-driven music engine for the galaxy soundscape.
 //!
 //! Pure CPU logic with no web/audio dependencies, so it unit-tests natively
-//! (like `scenarios.rs`). It turns a per-frame [`GalaxyState`] — derived entirely
-//! from CPU-side visuals (the camera, the active scenario, the live sim knobs),
-//! since the GPU body state is never read back — into two things `audio.rs`
-//! renders with Web Audio oscillators:
+//! (like `scenarios.rs`). It turns a per-frame [`GalaxyState`] — the camera and
+//! the live sim knobs, plus the galaxy's own core dynamics (central mass and the
+//! radial flux in and out of the centre) read back from the GPU — into two things
+//! `audio.rs` renders with Web Audio oscillators:
 //!
 //! * a [`DroneTarget`]: the slow sustained pad (its voice pitches, brightness,
 //!   level, and detune beating), and
@@ -59,7 +59,8 @@ pub struct DroneTarget {
 
 /// A per-frame snapshot of the visuals, all normalised to 0..1 (except the
 /// categorical `scenario` and the `paused` gate). Built by `AppState` from the
-/// camera and the live simulation knobs and fed to the engine each frame.
+/// camera, the live simulation knobs, and the GPU core-statistics readback, fed to
+/// the engine each frame.
 #[derive(Clone, Copy, Debug)]
 pub struct GalaxyState {
     pub scenario: Scenario,
@@ -77,6 +78,17 @@ pub struct GalaxyState {
     pub halo: f32,
     /// On-screen star size, normalised — feeds the pad/bell brightness.
     pub glow: f32,
+    /// Central-mass concentration (0..1, adaptive): how much mass sits at the
+    /// centre right now relative to its recent norm. Swells the pad's body and
+    /// lifts note density.
+    pub core_mass: f32,
+    /// Signed radial flux of core matter: -1 = collapsing inward, +1 = dispersing
+    /// outward — the galaxy "breathing" in and out of the centre. Drives the pad's
+    /// pitch and brightness so a collapse rises into tension and a dispersal settles.
+    pub core_flux: f32,
+    /// Core churn (0..1): how fast central matter is moving radially. The main
+    /// driver of note density and shimmer.
+    pub core_activity: f32,
     pub paused: bool,
 }
 
@@ -184,22 +196,31 @@ impl MusicEngine {
     /// detune spread that widens with camera motion.
     pub fn drone(&self, state: &GalaxyState) -> DroneTarget {
         let c = character(state.scenario);
-        // Gravity gently bends the whole pad: about -1 .. +1.5 semitones.
-        let bend = (state.gravity - 0.4) * 2.5;
+        let inflow = (-state.core_flux).max(0.0); // collapse strength, 0..1
+                                                  // Pitch: gravity gives a slow ~-1..+1.5 st lean; the radial flux makes the
+                                                  // pad breathe — collapsing inward (flux < 0) lifts it into tension, matter
+                                                  // streaming back out (flux > 0) lets it settle.
+        let bend = (state.gravity - 0.4) * 2.5 - 3.0 * state.core_flux;
         let mut freqs = [0.0_f32; DRONE_VOICES];
         for (f, interval) in freqs.iter_mut().zip(c.drone.iter()) {
             *f = midi_to_hz(c.root_midi + interval + bend);
         }
-        // Brightness in octaves above a low base: the scenario's own tilt plus
-        // how far in you've zoomed and how glowy the stars are.
-        let octaves = c.brightness * 1.6 + state.zoom * 2.0 + state.glow * 0.8;
+        // Brightness in octaves above a low base: the scenario's tilt, the zoom and
+        // glow, the core's churn, and an extra lift while it collapses inward.
+        let octaves = c.brightness * 1.4
+            + state.zoom * 1.6
+            + state.glow * 0.5
+            + state.core_activity * 0.9
+            + inflow * 0.6;
         let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 8000.0);
+        // Quieter pad than before; its body swells with the mass gathered at the
+        // centre (with a touch of halo fullness).
         let gain = if state.paused {
-            0.16
+            0.12
         } else {
-            (0.42 + 0.22 * state.halo).clamp(0.0, 0.7)
+            (0.20 + 0.16 * state.core_mass + 0.05 * state.halo).clamp(0.0, 0.5)
         };
-        let detune_cents = 4.0 + 12.0 * state.motion + 6.0 * (1.0 - c.brightness);
+        let detune_cents = 4.0 + 10.0 * state.core_activity + 8.0 * state.motion;
         DroneTarget {
             freqs,
             cutoff_hz,
@@ -215,17 +236,24 @@ impl MusicEngine {
     }
 
     /// Generate the notes for one grid step, pushing any into `out`. Density and
-    /// loudness rise with on-screen activity (substeps + camera motion + speed)
-    /// and the scenario's base liveliness; register rises as you zoom in. Returns
-    /// nothing while paused — only the drone carries the paused sim.
+    /// loudness rise with the core's churn and how much mass has gathered there
+    /// (with the sim speed and camera motion on top) and the scenario's base
+    /// liveliness; register rises as you zoom in. Returns nothing while paused —
+    /// only the drone carries the paused sim.
     pub fn generate_step(&mut self, state: &GalaxyState, out: &mut Vec<NoteEvent>) {
         self.step = self.step.wrapping_add(1);
         if state.paused {
             return;
         }
         let c = character(state.scenario);
-        let energy =
-            (0.16 + 0.5 * state.intensity + 0.3 * state.motion + 0.12 * state.speed) * c.activity;
+        // Note density follows the core: how fast central matter churns and how much
+        // has gathered there, with the sim speed and a little camera motion on top.
+        let energy = (0.10
+            + 0.52 * state.core_activity
+            + 0.22 * state.core_mass
+            + 0.12 * state.intensity
+            + 0.08 * state.motion)
+            * c.activity;
         if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.95) {
             return;
         }
@@ -242,9 +270,9 @@ impl MusicEngine {
         let midi = (c.root_midi + (c.scale[within] + 12 * octave + register) as f32)
             .clamp(c.root_midi - 18.0, c.root_midi + 42.0);
 
-        let velocity = (0.16
-            + 0.45 * state.intensity
-            + 0.22 * state.motion
+        let velocity = (0.14
+            + 0.42 * state.core_activity
+            + 0.18 * state.core_mass
             + 0.12 * self.rng.random_range(0.0_f32..1.0))
         .clamp(0.05, 0.8);
         // Slower sims breathe with longer notes.
@@ -293,6 +321,11 @@ mod tests {
             gravity: 0.5,
             halo: 0.5,
             glow: 0.5,
+            core_mass: 0.5,
+            core_flux: 0.0,
+            // Tie the test "activity" knob to the core, the primary density driver,
+            // so the existing density/determinism tests exercise it.
+            core_activity: intensity,
             paused,
         }
     }
@@ -386,6 +419,19 @@ mod tests {
             );
             assert!(d.gain > 0.0 && d.gain <= 1.0);
         }
+    }
+
+    #[test]
+    fn collapse_lifts_the_pad_above_dispersal() {
+        let eng = MusicEngine::new(0);
+        let mut inflow = state(0.5, 0.0, false);
+        inflow.core_flux = -1.0; // matter falling into the centre
+        let mut outflow = state(0.5, 0.0, false);
+        outflow.core_flux = 1.0; // matter streaming back out
+        assert!(
+            eng.drone(&inflow).freqs[0] > eng.drone(&outflow).freqs[0],
+            "a collapse should lift the pad into tension above a dispersal"
+        );
     }
 
     #[test]
