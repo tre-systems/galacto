@@ -163,16 +163,32 @@ impl AudioEngine {
         let d = self.engine.drone(state);
         self.apply_drone(&d, now);
 
-        // Whole-mix brightness from zoom (close = bright, far = muffled), and
-        // reverb/delay that open up as you pull back and stir with motion.
+        // Whole-mix brightness from zoom (close = bright, far = muffled).
         ramp(&self.master_lp.frequency(), d.cutoff_hz, now);
-        // Generous, washy reverb — deeper still when pulled back, and opening with
-        // core churn so collapses bloom.
-        let reverb =
-            (0.5 + 0.4 * (1.0 - state.zoom) + 0.2 * state.core_activity + 0.1 * state.motion)
-                .clamp(0.0, 1.1);
+
+        // Slow, free-running LFOs on independent periods, so the space keeps
+        // drifting even when the galaxy is momentarily still — reverb and resonance
+        // that vary on their own.
+        let t = now as f32;
+        let lfo_a = 0.5 + 0.5 * (t * 0.085).sin(); // ~12 s period
+        let lfo_b = 0.5 + 0.5 * (t * 0.047 + 1.7).sin(); // ~21 s, offset
+        let inflow = (-state.core_flux).max(0.0);
+
+        // Resonant pad filter: the Q breathes on the slow LFO and peaks as the core
+        // collapses inward, giving the low pad a moving, vocal formant.
+        let resonance = (1.0 + 4.0 * lfo_a + 3.0 * inflow).clamp(0.7, 8.0);
+        ramp(&self.drone_lp.q(), resonance, now);
+
+        // Generous, washy reverb: deeper when pulled back, opening with core churn,
+        // and slowly swelling and ebbing on its own LFO.
+        let reverb = (0.4
+            + 0.35 * (1.0 - state.zoom)
+            + 0.2 * state.core_activity
+            + 0.25 * lfo_b
+            + 0.08 * state.motion)
+            .clamp(0.0, 1.15);
         ramp(&self.reverb_wet.gain(), reverb, now);
-        let delay = (0.12 + 0.3 * state.motion).clamp(0.0, 0.55);
+        let delay = (0.12 + 0.3 * state.motion + 0.08 * lfo_a).clamp(0.0, 0.6);
         ramp(&self.delay_wet.gain(), delay, now);
         let feedback = (0.3 + 0.35 * state.motion).clamp(0.0, 0.7);
         ramp(&self.delay_feedback.gain(), feedback, now);
