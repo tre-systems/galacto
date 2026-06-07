@@ -36,6 +36,13 @@ Neighbour-search crux (the genuinely hard part on WebGPU): reuse the existing ti
 
 Data layout: `Particle` is full — `pos_mass.w` is mass and `vel.w` is the colour tint (32 B, asserted by a layout test), so gas needs either a sign trick on `pos_mass.w` for the type flag or, cleaner, a parallel `aux` storage buffer (one `vec4`/body: type, density, scratch) plus a new compute bind-group entry. **Effort: M** for the hack (one extra pass, an aux buffer, a seed tweak, one slider); full SPH is a separate **XL**, with the spatial-hash grid an **L** prerequisite of its own.
 
+## Audio — deeper coupling
+
+The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven one-way by CPU-side visual state — camera, scenario, and the live sim knobs (see [ARCHITECTURE § Audio](docs/ARCHITECTURE.md#audio)). Two directions would tighten the link between what you see and what you hear:
+
+- **Sound from the bodies' actual dynamics.** Today the audio reacts to the camera and the knobs, not to the galaxy's real motion (the body buffer is never read back). A tiny GPU **reduction** — total kinetic energy, velocity dispersion, core concentration, net angular momentum, maybe a coarse radial histogram — mapped down to a handful of scalars and read back asynchronously at a *low* rate (a few times a second, not per frame) could drive the pad/brightness/density from the live structure: a merger's violent relaxation would actually swell the sound. This is the only place that would touch the no-readback rule, so keep it to a small aggregate on a throttled async map, well away from the per-frame hot path. **Effort: M** (a reduction pass + async readback plumbing).
+- **Audio-reactive visuals.** The reverse of the current coupling — let note onsets or the pad's energy feed a subtle visual response (a bloom/exposure pulse, or a brightness nudge) so the two reinforce each other, as in the sibling `geno` projects. Cheap once an audio energy signal exists; the care is in keeping it tasteful and not fighting the existing star-size / bloom look. **Effort: S–M.**
+
 ## Definition of Done
 
 A change is done when:

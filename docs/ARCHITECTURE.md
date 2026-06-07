@@ -1,6 +1,6 @@
 # galacto — Architecture
 
-> Scope: how the code is organized and how one rendered frame is produced. The simulation is small — 9 Rust modules and 3 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
+> Scope: how the code is organized and how one rendered frame is produced. The simulation is small — 11 Rust modules and 3 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
 
 ![System overview](diagrams/system-overview.png)
 
@@ -8,11 +8,12 @@
 
 | Layer            | Choice                          | Notes                                                          |
 | ---------------- | ------------------------------- | -------------------------------------------------------------- |
-| Language         | Rust (edition 2021)             | ~2,000 lines of Rust (+ 3 WGSL shaders)                        |
+| Language         | Rust (edition 2021)             | ~3,200 lines of Rust (+ 3 WGSL shaders)                        |
 | GPU access       | `wgpu` 29 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
 | WASM bindings    | `wasm-bindgen` + `web-sys`      | Canvas, events, `requestAnimationFrame`, console               |
+| Audio            | Web Audio (`web-sys`)           | Synthesized soundscape — oscillators, a procedural reverb impulse, delay, compressor (no sample files) |
 | Build            | `wasm-pack` (`--target web`)    | Emits `pkg/galacto.js` + `galacto_bg.wasm`                     |
 | Host             | Cloudflare Pages                | Serves the static `pkg/` directory                             |
 | Scale            | 16,384 self-gravitating bodies  | Three compute passes per step (leapfrog: half-drift, all-pairs gravity, kick + half-drift) + one instanced draw |
@@ -29,6 +30,8 @@ src/
 ├── scenarios.rs         # Scenario (spiral disk, multi-galaxy collisions, M51 flyby): initial conditions + shared disk seeding
 ├── camera.rs            # Orbit camera: scale + rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
+├── music.rs             # Pure generative engine: GalaxyState → drone pad + note events
+├── audio.rs             # Web Audio graph + scheduler that renders the soundscape
 ├── utils.rs             # set_panic_hook, console_log! macro
 ├── error.rs             # AppError — the core's domain error (no JsValue)
 ├── postprocess.rs       # HDR scene target + bloom (bright-pass, blur, tonemap composite)
@@ -85,10 +88,11 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 ![Frame loop: update then render](diagrams/frame-loop.png)
 
-A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) does two things on the shared `AppState`:
+A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) does three things on the shared `AppState`:
 
 1. **`update(time)`** — let the `InputHandler` apply pending rotate/zoom/reset to the `Camera`, toggle pause if Space was pressed, then add the real frame delta (scaled by the speed multiplier) to the fixed-timestep accumulator and compute how many `FIXED_DT` steps to run this frame (0 when paused).
-2. **`render()`** — open a command encoder, then:
+2. **`update_audio()`** — assemble a `GalaxyState` snapshot from CPU-side visuals (camera zoom/rotation, scenario, the live sim knobs, the substep count) and let the `AudioEngine` glide the drone + effects toward it and schedule any due notes (a no-op until sound is enabled). See [Audio](#audio).
+3. **`render()`** — open a command encoder, then:
    - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): a half-drift advances positions to the step midpoint, `compute_accel` sums the all-pairs gravity there into the accel buffer, then the kick + second half-drift advances every body in place — each over `16384 / 256 = 64` workgroups;
    - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per body, `draw(0..4, 0..16384)` — additively blended with no depth buffer, into the **HDR scene** target;
    - run the **bloom passes** (`postprocess`): bright-pass + downsample, separable blur (H, V), then a tonemapped composite of scene + bloom into the swapchain;
@@ -151,6 +155,17 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 
 `InputHandler` (`src/input.rs`) registers DOM listeners and translates them into camera intent, polled once per frame: it acts on level state (is-rotating) and drains edge state (the pause/reset flags and accumulated zoom delta). The full input → action mapping (mouse, keyboard, touch, the sliders, and the scenario dropdown) lives in the [README § Controls](../README.md#controls).
 
+## Audio
+
+The optional soundscape is a **cosmic ambient** generator, entirely synthesized — no sample or wave files — and **driven by the visuals**. It splits the same way the rest of the engine does: a pure logic module and a thin platform module.
+
+- **`music.rs` (pure, native-tested).** A `MusicEngine` turns a per-frame `GalaxyState` — assembled by `AppState` from CPU-side state only (camera zoom + rotation speed, the active `Scenario`, the live speed / gravity / halo / star-size knobs, and the substep count), since the GPU body buffer is never read back — into a `DroneTarget` (the sustained pad's voice pitches, brightness, level, and detune) and a stream of `NoteEvent`s (sparse, scale-quantised "starlight" notes). It maps each scenario to a musical character (a serene major/Lydian for the lone disks; darker, busier Dorian/Phrygian/Aeolian for the collisions), wanders a random walk over that scale for the melody, and scales note density, register, and loudness with how much is happening on screen. It carries no web/audio dependency, so it unit-tests natively like `scenarios.rs`.
+- **`audio.rs` (Web Audio).** An `AudioEngine` owns the `AudioContext` and a fixed node graph: a small set of detuned drone oscillators through a low-pass filter, a master gain → brightness low-pass → compressor → output chain, plus two effect buses — a convolver reverb whose impulse response is **generated in code** (decaying xorshift noise, no file) and a band-limited feedback delay. Per note it spins up a fresh oscillator + ADSR envelope + stereo panner, routes it to the master and the two sends, and lets the browser reclaim the nodes when the envelope ends. A **look-ahead scheduler** queues notes on the AudioContext clock (not the frame clock), so timing is sample-accurate and frame-rate-independent, with a per-frame cap bounding catch-up after a stall.
+
+**How the visuals drive it.** Each frame `update_audio` ramps the graph toward the engine's targets with `set_target_at_time` (so changes glide, never click): camera **zoom** sets the master brightness filter and the reverb mix (close = bright and dry; far = dark and cavernous), camera **rotation speed** stirs the delay and detune, **scenario** swaps the scale and pad chord, **speed** and the **substep count** set the note grid rate and density, and **gravity** bends the pad's pitch. The coupling is one-way — visuals → audio — so the renderer and the no-readback rule are untouched.
+
+**Lifecycle.** Browsers block an `AudioContext` until a user gesture, so the engine is built lazily: the page's 🔊 button calls the `set_sound_enabled` export, and the first enable constructs the `AudioEngine` inside that click so the context is allowed to start. It is stored as an `Option` on `AppState` (absent until enabled, or if the browser denies a context — in which case the sim simply runs silent), and enable/disable ramps the master gain rather than tearing the graph down.
+
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs`, which stamps the `galacto.js` import in `index.html` with `?v=<git-sha>` so a new deploy always loads fresh glue. Output is `pkg/` (git-ignored, regenerated).
@@ -165,3 +180,4 @@ A `resize` listener on the window (`src/lib.rs`) keeps the canvas drawing buffer
 - **No force approximation (yet).** Gravity is the exact all-pairs sum, `O(N²)`. That is what caps the body count near ~16k for interactive speed; a Barnes-Hut tree or particle-mesh/FFT solver would scale to far more bodies but is a much larger change (see the [backlog](../BACKLOG.md)).
 - **No dissipation.** The bodies are collisionless (no gas), so the spiral arms self-heat the disk and fade over many rotations (until a re-seed), and the arms are flocculent rather than a clean grand design. A dissipative (gas) component would keep the disk cold and the arms alive; a companion flyby would drive a grand-design two-arm pattern. Both are in the [backlog](../BACKLOG.md).
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it up front and shows a "WebGPU not supported" message rather than degrading.
+- **One-way audio coupling.** The soundscape is driven by the visuals, but the visuals are not (yet) driven by the audio, and the audio is driven by camera/scenario/knobs rather than the bodies' actual GPU-side dynamics (which are never read back). Both deeper-coupling directions are in the [backlog](../BACKLOG.md).
