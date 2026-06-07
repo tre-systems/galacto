@@ -1,14 +1,17 @@
 use wasm_bindgen::prelude::*;
 
+mod audio;
 mod camera;
 mod error;
 mod graphics;
 mod input;
+mod music;
 mod postprocess;
 mod scenarios;
 mod simulation;
 mod utils;
 
+use audio::AudioEngine;
 use camera::Camera;
 use graphics::Graphics;
 use input::InputHandler;
@@ -55,6 +58,13 @@ pub struct AppState {
     gravity: f32,
     halo_v0: f32,
     particle_size: f32,
+    /// Generative soundscape, lazily created on first enable (so the AudioContext
+    /// starts inside a user gesture). None until then, or if audio is unavailable.
+    audio: Option<AudioEngine>,
+    /// Camera rotation last frame and a smoothed rotation speed, so the audio can
+    /// react to how fast the view is being stirred.
+    prev_rotation: (f32, f32),
+    motion: f32,
 }
 
 impl AppState {
@@ -89,6 +99,9 @@ impl AppState {
             gravity: simulation::G,
             halo_v0: simulation::HALO_V0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
+            audio: None,
+            prev_rotation: (0.0, 0.0),
+            motion: 0.0,
         })
     }
 
@@ -278,6 +291,60 @@ impl AppState {
     pub fn set_particle_size(&mut self, size: f32) {
         self.particle_size = size;
     }
+
+    /// Build the per-frame visual snapshot that drives the soundscape, entirely
+    /// from CPU-side state (the camera and the live sim knobs) — the GPU body
+    /// state is never read back. Also advances the smoothed camera-motion estimate.
+    fn galaxy_state(&mut self) -> music::GalaxyState {
+        // Zoom: log-map the camera scale (0.001..5.0) to 0 (far) .. 1 (close).
+        let (lo, hi) = (0.001_f32.ln(), 5.0_f32.ln());
+        let zoom = ((self.camera.scale.ln() - lo) / (hi - lo)).clamp(0.0, 1.0);
+
+        // Camera rotation speed this frame, smoothed so it lingers musically.
+        let (rx, ry) = (self.camera.rotation_x, self.camera.rotation_y);
+        let delta =
+            ((rx - self.prev_rotation.0).powi(2) + (ry - self.prev_rotation.1).powi(2)).sqrt();
+        self.prev_rotation = (rx, ry);
+        let raw_motion = (delta / 0.06).clamp(0.0, 1.0);
+        self.motion = self.motion * 0.85 + raw_motion * 0.15;
+
+        music::GalaxyState {
+            scenario: self.scenario,
+            zoom,
+            motion: self.motion,
+            speed: ((self.speed - 0.25) / (MAX_SPEED - 0.25)).clamp(0.0, 1.0),
+            intensity: (self.steps_this_frame as f32 / 8.0).clamp(0.0, 1.0),
+            gravity: ((self.gravity - 0.25) / (4.0 - 0.25)).clamp(0.0, 1.0),
+            halo: (self.halo_v0 / 150.0).clamp(0.0, 1.0),
+            glow: ((self.particle_size - 0.006) / (0.026 - 0.006)).clamp(0.0, 1.0),
+            paused: self.paused,
+        }
+    }
+
+    /// Drive the soundscape for this frame (a no-op until sound is enabled).
+    pub fn update_audio(&mut self) {
+        if self.audio.is_none() {
+            return;
+        }
+        let state = self.galaxy_state();
+        if let Some(audio) = &mut self.audio {
+            audio.update(&state);
+        }
+    }
+
+    /// Toggle the soundscape (the page's 🔊 button). The first enable builds the
+    /// audio engine inside the click's user gesture, so the AudioContext may start.
+    pub fn set_sound(&mut self, on: bool) {
+        if on && self.audio.is_none() {
+            self.audio = AudioEngine::new();
+            if self.audio.is_none() {
+                console_log!("Audio unavailable in this browser/context.");
+            }
+        }
+        if let Some(audio) = &mut self.audio {
+            audio.set_enabled(on);
+        }
+    }
 }
 
 thread_local! {
@@ -377,6 +444,18 @@ pub fn set_halo_profile(id: u32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_halo_profile(id);
+        }
+    });
+}
+
+/// Toggle the generative soundscape on or off (the page's 🔊 button). The first
+/// call builds the audio engine within the click gesture so the browser allows
+/// the AudioContext to start. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_sound_enabled(on: bool) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_sound(on);
         }
     });
 }
@@ -486,6 +565,7 @@ fn animation_frame(time: f32) {
     if let Some(app_state) = app_state {
         let mut app = app_state.borrow_mut();
         app.update(time);
+        app.update_audio();
         if let Err(e) = app.render() {
             console_log!("Render error: {:?}", e);
         }

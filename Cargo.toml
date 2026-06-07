@@ -34,6 +34,22 @@ web-sys = { version = "0.3", features = [
     "Touch",
     "console",
     "CssStyleDeclaration",
+    # Web Audio: the generative soundscape (src/audio.rs). All synthesized — no
+    # sample files — so only oscillator/filter/effect nodes are needed.
+    "AudioContext",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "AudioBuffer",
+    "GainNode",
+    "OscillatorNode",
+    "OscillatorType",
+    "BiquadFilterNode",
+    "BiquadFilterType",
+    "ConvolverNode",
+    "DelayNode",
+    "DynamicsCompressorNode",
+    "StereoPannerNode",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = { version = "0.1", optional = true }
