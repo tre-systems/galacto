@@ -32,6 +32,11 @@ struct Params {
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> params: Params;
 @group(0) @binding(2) var<storage, read_write> accel: array<vec4<f32>>;
+// One vec4 per workgroup of partial sums for the core-statistics reduction
+// (`reduce_core`): x = windowed mass, y = windowed mass·radial-velocity (signed
+// flux, + outward), z = windowed mass·|radial velocity|. Summed on the CPU after
+// an async readback to drive the audio — the sim itself never reads it.
+@group(0) @binding(3) var<storage, read_write> reductions: array<vec4<f32>>;
 
 // Tile size == workgroup size. `particle_count` must be a multiple of TILE so
 // the tile loop never reads out of bounds (see NUM_PARTICLES / WORKGROUP_SIZE).
@@ -124,4 +129,64 @@ fn kick_drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
     let v = p.vel.xyz + accel[i].xyz * params.dt;
     let x = p.pos_mass.xyz + v * (0.5 * params.dt);
     particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), vec4<f32>(v, p.vel.w));
+}
+
+// Soft window (Gaussian) radius defining "the centre" for the audio reduction.
+// Bodies within ~this distance of the origin count toward the core statistics.
+const CORE_R: f32 = 60.0;
+
+var<workgroup> sh_mass: array<f32, 256>;
+var<workgroup> sh_flux: array<f32, 256>;
+var<workgroup> sh_act: array<f32, 256>;
+
+// Core-statistics reduction: per workgroup, sum each body's window-weighted mass,
+// signed radial flux, and radial speed into shared memory, then write the
+// workgroup's partial sums to `reductions[workgroup]`. The CPU sums the (few)
+// partials after an async readback and maps them to sound — how much mass sits at
+// the centre and how fast it is moving in or out. Read-only on the bodies, so it
+// is safe to run alongside the render pass.
+@compute @workgroup_size(256)
+fn reduce_core(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_index) lidx: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
+    let i = gid.x;
+    var m = 0.0;
+    var f = 0.0;
+    var a = 0.0;
+    if i < params.particle_count {
+        let p = particles[i].pos_mass.xyz;
+        let mass = particles[i].pos_mass.w;
+        let v = particles[i].vel.xyz;
+        let r = length(p);
+        let w = exp(-(r * r) / (2.0 * CORE_R * CORE_R));
+        let vr = dot(v, p) / max(r, 1e-3); // radial velocity, + outward
+        m = w * mass;
+        f = w * mass * vr;
+        a = w * mass * abs(vr);
+    }
+    sh_mass[lidx] = m;
+    sh_flux[lidx] = f;
+    sh_act[lidx] = a;
+    workgroupBarrier();
+
+    // Tree reduction over the workgroup.
+    var stride = TILE / 2u;
+    loop {
+        if stride == 0u {
+            break;
+        }
+        if lidx < stride {
+            sh_mass[lidx] = sh_mass[lidx] + sh_mass[lidx + stride];
+            sh_flux[lidx] = sh_flux[lidx] + sh_flux[lidx + stride];
+            sh_act[lidx] = sh_act[lidx] + sh_act[lidx + stride];
+        }
+        workgroupBarrier();
+        stride = stride / 2u;
+    }
+
+    if lidx == 0u {
+        reductions[wid.x] = vec4<f32>(sh_mass[0], sh_flux[0], sh_act[0], 0.0);
+    }
 }

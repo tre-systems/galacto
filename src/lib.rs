@@ -37,6 +37,22 @@ const MAX_SPEED: f32 = 8.0;
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
 
+/// Characteristic radial speed (sim units) that normalises the core flux/activity
+/// signals to ~0..1: ordinary disk churn sits low (~0.4), while a merger infall or
+/// a close flyby pushes it toward the top. Tunable.
+const CORE_V_SCALE: f32 = 110.0;
+
+/// Frame-rate-independent eased follow with a hard slew cap: the value glides
+/// toward `target` (exponential, time-constant `tau`) but can move no faster than
+/// `max_rate` per second, so a sudden jump in the simulation can never make the
+/// sound lurch — it always eases, for a cinematic feel.
+fn ease_slew(current: f32, target: f32, dt: f32, tau: f32, max_rate: f32) -> f32 {
+    let alpha = 1.0 - (-dt / tau.max(1e-3)).exp();
+    let eased = current + (target - current) * alpha;
+    let max_step = max_rate * dt;
+    current + (eased - current).clamp(-max_step, max_step)
+}
+
 pub struct AppState {
     graphics: Graphics,
     simulation: Simulation,
@@ -47,6 +63,9 @@ pub struct AppState {
     last_time: f32,
     accumulator: f32,
     steps_this_frame: u32,
+    /// Clamped real seconds elapsed last frame, reused for frame-rate-independent
+    /// audio smoothing.
+    frame_dt: f32,
     /// Simulation speed multiplier (1.0 = real time); driven by the page's speed slider.
     speed: f32,
     /// Current scenario and the disk temperature staged for the next (re)seed.
@@ -65,6 +84,17 @@ pub struct AppState {
     /// react to how fast the view is being stirred.
     prev_rotation: (f32, f32),
     motion: f32,
+    /// Smoothed, normalised core signals derived from the GPU readback
+    /// (`CoreStats`): central-mass concentration, signed radial flux (matter
+    /// moving out of / into the centre), and core churn — the soundscape's primary
+    /// drivers. `core_mass_ref` / `core_mass_dev` are the slow adaptive baseline
+    /// the concentration is measured against.
+    core_initialized: bool,
+    core_mass_ref: f32,
+    core_mass_dev: f32,
+    core_mass_s: f32,
+    core_flux_s: f32,
+    core_activity_s: f32,
 }
 
 impl AppState {
@@ -92,6 +122,7 @@ impl AppState {
             last_time: 0.0,
             accumulator: 0.0,
             steps_this_frame: 0,
+            frame_dt: simulation::FIXED_DT,
             speed: 1.0,
             scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
@@ -102,6 +133,12 @@ impl AppState {
             audio: None,
             prev_rotation: (0.0, 0.0),
             motion: 0.0,
+            core_initialized: false,
+            core_mass_ref: 0.0,
+            core_mass_dev: 0.0,
+            core_mass_s: 0.0,
+            core_flux_s: 0.0,
+            core_activity_s: 0.0,
         })
     }
 
@@ -113,6 +150,7 @@ impl AppState {
             simulation::FIXED_DT
         };
         self.last_time = current_time;
+        self.frame_dt = frame_dt.clamp(0.0, MAX_FRAME_DT);
 
         self.input_handler.update_camera(&mut self.camera);
 
@@ -176,6 +214,11 @@ impl AppState {
             self.simulation.compute_pass(&mut encoder);
         }
 
+        // Record the throttled core-statistics reduction (drives the audio) on the
+        // post-step positions; whether it actually ran (not already in flight)
+        // gates the async map after submit below.
+        let did_reduce = self.simulation.record_core_reduction(&mut encoder);
+
         // Render the particles additively into the HDR scene target.
         self.simulation.update_camera(
             &self.graphics.queue,
@@ -215,6 +258,12 @@ impl AppState {
             .queue
             .submit(std::iter::once(encoder.finish()));
         frame.present();
+
+        // Map the core-statistics readback (async; resolves a few frames later and
+        // updates the CoreStats the audio reads).
+        if did_reduce {
+            self.simulation.map_core_readback();
+        }
 
         Ok(())
     }
@@ -292,9 +341,10 @@ impl AppState {
         self.particle_size = size;
     }
 
-    /// Build the per-frame visual snapshot that drives the soundscape, entirely
-    /// from CPU-side state (the camera and the live sim knobs) — the GPU body
-    /// state is never read back. Also advances the smoothed camera-motion estimate.
+    /// Build the per-frame snapshot that drives the soundscape — the camera and
+    /// live sim knobs plus the galaxy's core dynamics (central mass + radial flux)
+    /// from the GPU readback. Advances the smoothed motion estimate and slew-limits
+    /// the core signals so the sound eases between states rather than jumping.
     fn galaxy_state(&mut self) -> music::GalaxyState {
         // Zoom: log-map the camera scale (0.001..5.0) to 0 (far) .. 1 (close).
         let (lo, hi) = (0.001_f32.ln(), 5.0_f32.ln());
@@ -308,6 +358,37 @@ impl AppState {
         let raw_motion = (delta / 0.06).clamp(0.0, 1.0);
         self.motion = self.motion * 0.85 + raw_motion * 0.15;
 
+        // Core dynamics read back from the GPU — how much mass sits at the centre
+        // and how fast it is moving in or out. These are the primary drivers, so
+        // the sound reacts to the galaxy itself, not just the camera.
+        let stats = self.simulation.core_stats();
+        if !self.core_initialized {
+            self.core_mass_ref = stats.mass;
+            self.core_mass_dev = stats.mass.abs().max(1.0) * 0.1;
+            self.core_initialized = true;
+        }
+        // Slow adaptive baseline (a few seconds): the absolute mass sum is bulge-/
+        // scenario-dominated, so concentration tracks mass building up or draining
+        // relative to its recent norm — which is what the eye actually registers.
+        let dt = self.frame_dt;
+        let ref_alpha = 1.0 - (-dt / 4.0).exp();
+        self.core_mass_ref += (stats.mass - self.core_mass_ref) * ref_alpha;
+        self.core_mass_dev +=
+            ((stats.mass - self.core_mass_ref).abs() - self.core_mass_dev) * ref_alpha;
+        let concentration = (0.5
+            + 0.5 * (stats.mass - self.core_mass_ref) / (3.0 * self.core_mass_dev + 1.0))
+            .clamp(0.0, 1.0);
+        // Mass-weighted mean radial velocity → signed flux (+ outward) and unsigned
+        // churn, normalised by a characteristic speed.
+        let inv_mass = 1.0 / stats.mass.max(1.0);
+        let flux = (stats.flux * inv_mass / CORE_V_SCALE).clamp(-1.0, 1.0);
+        let activity = (stats.activity * inv_mass / CORE_V_SCALE).clamp(0.0, 1.0);
+        // Glide toward the targets with a hard slew cap, so a sudden event (a
+        // collision spike) eases in over ~2 s rather than snapping — cinematic.
+        self.core_mass_s = ease_slew(self.core_mass_s, concentration, dt, 0.7, 0.5);
+        self.core_activity_s = ease_slew(self.core_activity_s, activity, dt, 0.7, 0.5);
+        self.core_flux_s = ease_slew(self.core_flux_s, flux, dt, 0.9, 0.6);
+
         music::GalaxyState {
             scenario: self.scenario,
             zoom,
@@ -317,6 +398,9 @@ impl AppState {
             gravity: ((self.gravity - 0.25) / (4.0 - 0.25)).clamp(0.0, 1.0),
             halo: (self.halo_v0 / 150.0).clamp(0.0, 1.0),
             glow: ((self.particle_size - 0.006) / (0.026 - 0.006)).clamp(0.0, 1.0),
+            core_mass: self.core_mass_s,
+            core_flux: self.core_flux_s,
+            core_activity: self.core_activity_s,
             paused: self.paused,
         }
     }
