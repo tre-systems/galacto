@@ -19,6 +19,10 @@ use rand::{RngExt, SeedableRng};
 /// oscillators running and retunes them each frame from [`DroneTarget::freqs`].
 pub const DRONE_VOICES: usize = 3;
 
+/// The pad sits this many semitones below the scenario's root — a deep, low
+/// foundation well under the melodic notes (which stay at the root).
+const PAD_OCTAVE_DOWN: f32 = 12.0;
+
 /// A soft oscillator shape. The soundscape stays gentle — no saws — so the pad
 /// and the bells never get harsh against the slow visuals.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -190,10 +194,11 @@ impl MusicEngine {
         }
     }
 
-    /// The sustained pad's target for this frame: pitches from the scenario's
-    /// chord (nudged up as gravity tightens the system), brightness from zoom +
-    /// glow, level hushed when paused and fuller with a stronger halo, and a
-    /// detune spread that widens with camera motion.
+    /// The sustained pad's target for this frame: a deep, low chord (an octave
+    /// below the scenario root) that breathes — gravity leans it and radial flux
+    /// lifts it as the core collapses inward; brightness from zoom, glow, and core
+    /// churn; level hushed when paused and swelling with the mass gathered at the
+    /// centre; a detune spread that widens with core churn and camera motion.
     pub fn drone(&self, state: &GalaxyState) -> DroneTarget {
         let c = character(state.scenario);
         let inflow = (-state.core_flux).max(0.0); // collapse strength, 0..1
@@ -203,7 +208,7 @@ impl MusicEngine {
         let bend = (state.gravity - 0.4) * 2.5 - 3.0 * state.core_flux;
         let mut freqs = [0.0_f32; DRONE_VOICES];
         for (f, interval) in freqs.iter_mut().zip(c.drone.iter()) {
-            *f = midi_to_hz(c.root_midi + interval + bend);
+            *f = midi_to_hz(c.root_midi - PAD_OCTAVE_DOWN + interval + bend);
         }
         // Brightness in octaves above a low base: the scenario's tilt, the zoom and
         // glow, the core's churn, and an extra lift while it collapses inward.
