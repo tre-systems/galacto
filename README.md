@@ -14,7 +14,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 - **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
 - **Disk temperature** — sets the disk's velocity dispersion (≈ Toomre Q). It's a seed-time property, so it's *staged* and applied on **Restart** rather than disturbing the running sim.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
-- **Generative soundscape** — an optional 🔊 toggle starts a cosmic ambient bed, entirely synthesized in the browser (Web Audio oscillators, a code-generated reverb, a feedback delay — no sample files). It's driven by the visuals: each **scenario** sets the scale and mood (serene for the lone disks, tense and dissonant for the collisions), **zoom** opens it up (close = bright and dry, far = dark and cavernous), and camera **rotation**, **speed**, and the physics knobs shape its density, register, and movement.
+- **Generative soundscape** — a cosmic ambient bed that starts on your first interaction (browsers block audio until then), entirely synthesized in the browser (Web Audio oscillators, a code-generated reverb, a feedback delay — no sample files). It's driven by the visuals: each **scenario** sets the scale and mood (serene for the lone disks, tense and dissonant for the collisions), **zoom** opens it up (close = bright and dry, far = dark and cavernous), and camera **rotation**, **speed**, and the physics knobs shape its density, register, and movement.
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
 - **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent.
 - **Collapsible controls** — the control panel folds away to a small "Controls" tab so it stays out of the view.
@@ -38,7 +38,6 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Star-size slider** | On-screen star size — live |
 | **Disk-temp slider** | Disk velocity dispersion (≈ Toomre Q, 0.02–2.0); staged, applied on **Restart** |
 | **Restart** button   | Re-seed the current scenario from fresh initial conditions |
-| **🔊 toggle** (top-left) | Start / mute the generative soundscape, driven by the visuals |
 
 ### Touch
 
