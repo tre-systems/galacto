@@ -10,6 +10,7 @@ import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 
 const indexPath = join(process.cwd(), 'pkg', 'index.html');
+const sentryConfigPath = join(process.cwd(), 'pkg', 'sentry-config.js');
 
 let version;
 try {
@@ -28,3 +29,17 @@ if (busted === html) {
   writeFileSync(indexPath, busted);
   console.log(`cache-bust: pinned galacto.js + styles.css to ?v=${version}`);
 }
+
+writeFileSync(
+  sentryConfigPath,
+  `window.TRE_STATIC_SENTRY_CONFIG = ${JSON.stringify(
+    {
+      app: 'galacto',
+      dsn: process.env.SENTRY_DSN || '',
+      environment: process.env.SENTRY_ENVIRONMENT || 'production',
+      release: process.env.SENTRY_RELEASE || process.env.GITHUB_SHA || version,
+    },
+    null,
+    2,
+  )};\n`,
+);
