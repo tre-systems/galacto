@@ -80,6 +80,10 @@ pub struct AppState {
     /// Generative soundscape, lazily created on first enable (so the AudioContext
     /// starts inside a user gesture). None until then, or if audio is unavailable.
     audio: Option<AudioEngine>,
+    /// User volume (0..1) and mute, held here so they survive until the engine is
+    /// built (on first interaction) and are re-applied to it then.
+    sound_volume: f32,
+    sound_muted: bool,
     /// Camera rotation last frame and a smoothed rotation speed, so the audio can
     /// react to how fast the view is being stirred.
     prev_rotation: (f32, f32),
@@ -131,6 +135,10 @@ impl AppState {
             halo_v0: simulation::HALO_V0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
             audio: None,
+            // Default below full so the soundscape starts gently; matches the
+            // page's volume slider default (70% → 0.49 on its perceptual taper).
+            sound_volume: 0.49,
+            sound_muted: false,
             prev_rotation: (0.0, 0.0),
             motion: 0.0,
             core_initialized: false,
@@ -421,12 +429,36 @@ impl AppState {
     pub fn set_sound(&mut self, on: bool) {
         if on && self.audio.is_none() {
             self.audio = AudioEngine::new();
-            if self.audio.is_none() {
-                console_log!("Audio unavailable in this browser/context.");
+            match &mut self.audio {
+                Some(audio) => {
+                    // Carry the user's volume/mute (set before the engine existed)
+                    // into the freshly built engine.
+                    audio.set_volume(self.sound_volume);
+                    audio.set_muted(self.sound_muted);
+                }
+                None => {
+                    console_log!("Audio unavailable in this browser/context.");
+                }
             }
         }
         if let Some(audio) = &mut self.audio {
             audio.set_enabled(on);
+        }
+    }
+
+    /// Set the user volume (0..1). Remembered even before the audio engine exists.
+    pub fn set_volume(&mut self, volume: f32) {
+        self.sound_volume = volume.clamp(0.0, 1.0);
+        if let Some(audio) = &mut self.audio {
+            audio.set_volume(self.sound_volume);
+        }
+    }
+
+    /// Mute or unmute the soundscape. Remembered even before the engine exists.
+    pub fn set_muted(&mut self, muted: bool) {
+        self.sound_muted = muted;
+        if let Some(audio) = &mut self.audio {
+            audio.set_muted(muted);
         }
     }
 }
@@ -540,6 +572,27 @@ pub fn set_sound_enabled(on: bool) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_sound(on);
+        }
+    });
+}
+
+/// Set the soundscape volume (0..1) from the page's volume slider. Remembered
+/// until the audio engine is built, then applied live. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_volume(volume: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_volume(volume);
+        }
+    });
+}
+
+/// Mute or unmute the soundscape (the page's mute button). No-ops until ready.
+#[wasm_bindgen]
+pub fn set_muted(muted: bool) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_muted(muted);
         }
     });
 }

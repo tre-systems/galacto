@@ -32,8 +32,9 @@ const LOOKAHEAD_SEC: f64 = 0.25;
 /// Cap on grid steps scheduled in one frame, bounding the catch-up burst after a
 /// stall (e.g. a backgrounded, throttled tab).
 const MAX_STEPS_PER_FRAME: u32 = 12;
-/// Master level when sound is on. Kept gentle — the soundscape sits under the
-/// visuals rather than over them; the compressor catches peaks.
+/// Master level at full volume. Kept gentle — the soundscape sits under the
+/// visuals rather than over them; the compressor catches peaks. The user's
+/// volume control scales this, and the page defaults that control below full.
 const MASTER_LEVEL: f32 = 0.32;
 
 /// Owns the AudioContext, the persistent node graph, and the generative engine.
@@ -54,6 +55,10 @@ pub struct AudioEngine {
     /// Next grid-step time on the audio clock — the scheduler's cursor.
     next_note_time: f64,
     enabled: bool,
+    /// User volume in 0..1, scaling [`MASTER_LEVEL`]; driven by the volume slider.
+    volume: f32,
+    /// User mute, independent of `volume` and `enabled`; driven by the mute button.
+    muted: bool,
 }
 
 impl AudioEngine {
@@ -138,7 +143,20 @@ impl AudioEngine {
             engine: MusicEngine::new(0x6A1AC701),
             next_note_time,
             enabled: false,
+            volume: 1.0,
+            muted: false,
         })
+    }
+
+    /// Target master gain: the full level scaled by the user volume, but silent
+    /// while disabled or muted. Everything routes through `master_gain`, so this
+    /// governs the whole mix.
+    fn target_level(&self) -> f32 {
+        if self.enabled && !self.muted {
+            MASTER_LEVEL * self.volume
+        } else {
+            0.0
+        }
     }
 
     /// Turn sound on or off. Ramps the master level rather than cutting, and
@@ -149,9 +167,32 @@ impl AudioEngine {
         if on {
             let _ = self.ctx.resume();
         }
-        let target = if on { MASTER_LEVEL } else { 0.0 };
         // A slow fade in/out, so sound arrives and leaves gently.
-        let _ = self.master_gain.gain().set_target_at_time(target, now, 0.8);
+        let _ = self
+            .master_gain
+            .gain()
+            .set_target_at_time(self.target_level(), now, 0.8);
+    }
+
+    /// Set the user volume (0..1), scaling the master level. Eased quickly so a
+    /// slider drag feels responsive without zippering.
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0.0, 1.0);
+        let now = self.ctx.current_time();
+        let _ = self
+            .master_gain
+            .gain()
+            .set_target_at_time(self.target_level(), now, 0.1);
+    }
+
+    /// Mute or unmute, independent of volume. Eased so it doesn't click.
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+        let now = self.ctx.current_time();
+        let _ = self
+            .master_gain
+            .gain()
+            .set_target_at_time(self.target_level(), now, 0.1);
     }
 
     /// Apply this frame's visual state: glide the drone and global FX toward the

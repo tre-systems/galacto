@@ -210,6 +210,33 @@ body {
   color: #fff;
 }
 
+/* Mute toggle — a compact icon button sitting in the volume row */
+.mute {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 4ch;
+  padding: 2px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  text-align: right;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.mute:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.mute[aria-pressed="true"] {
+  opacity: 0.6;
+}
+
 /* Restart button — re-seeds the current scenario */
 .restart {
   appearance: none;

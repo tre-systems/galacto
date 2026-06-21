@@ -112,6 +112,20 @@
           <input id="size-slider" type="range" min="0" max="100" value="50" step="1" />
           <span id="size-readout">1.0×</span>
         </div>
+        <div class="control">
+          <label for="volume-slider">Volume</label>
+          <input id="volume-slider" type="range" min="0" max="100" value="70" step="1" />
+          <button
+            id="mute-btn"
+            type="button"
+            class="mute"
+            aria-pressed="false"
+            aria-label="Mute"
+            title="Mute"
+          >
+            🔊
+          </button>
+        </div>
         <button id="restart-btn" type="button" class="restart">↻ Restart</button>
         <a
           id="kofi"
@@ -147,16 +161,18 @@
           const mod = await import("./galacto.js?v=__CACHE_BUST__");
           await mod.default();
           loadingEl.style.display = "none";
-          setupScenarioControl(mod);
+          const panel = setupControlPanel();
+          setupScenarioControl(mod, panel.collapse);
           setupSpeedControl(mod);
           setupTempControl(mod);
           setupGravityControl(mod);
           setupHaloControl(mod);
           setupHaloProfileControl(mod);
           setupStarSizeControl(mod);
+          setupVolumeControl(mod);
+          setupMuteButton(mod);
           setupRestartButton(mod);
           setupAutoSound(mod);
-          setupControlPanel();
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -166,10 +182,13 @@
       }
 
       // Switch the initial-condition scenario; the sim re-seeds immediately.
-      function setupScenarioControl(mod) {
+      // Picking a new simulation also closes the panel so the fresh galaxy is
+      // unobstructed.
+      function setupScenarioControl(mod, collapse) {
         const sel = document.getElementById("scenario-select");
         sel.addEventListener("change", () => {
           mod.set_scenario(parseInt(sel.value, 10));
+          collapse();
         });
       }
 
@@ -295,6 +314,10 @@
         });
 
         window.addEventListener("resize", clampIntoView);
+
+        // Expose a collapse so other controls (e.g. switching simulation) can
+        // tuck the panel away.
+        return { collapse: () => setCollapsed(true) };
       }
 
       // Disk-temperature slider (0–100) → log scale (0.02 … 2.0). It's a seed-time
@@ -359,6 +382,40 @@
           readout.textContent = (size / DEFAULT).toFixed(2) + "×";
         };
         slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Volume slider (0–100) → 0…1 on a squared (perceptual) taper, so the
+      // slider's lower half does the fine, audible work. Defaults below full so
+      // the soundscape starts gently; the readout shows the slider position.
+      function setupVolumeControl(mod) {
+        const slider = document.getElementById("volume-slider");
+        const apply = () => {
+          const t = slider.value / 100;
+          mod.set_volume(t * t);
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Mute button: toggles the whole soundscape silent without touching the
+      // volume setting, so unmuting restores the chosen level. The icon and ARIA
+      // state track the toggle.
+      function setupMuteButton(mod) {
+        const btn = document.getElementById("mute-btn");
+        let muted = false;
+        const apply = () => {
+          btn.textContent = muted ? "🔇" : "🔊";
+          btn.setAttribute("aria-pressed", String(muted));
+          const label = muted ? "Unmute" : "Mute";
+          btn.setAttribute("aria-label", label);
+          btn.title = label;
+          mod.set_muted(muted);
+        };
+        btn.addEventListener("click", () => {
+          muted = !muted;
+          apply();
+        });
         apply();
       }
 
