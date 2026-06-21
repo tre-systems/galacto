@@ -133,8 +133,15 @@ body {
 }
 
 #controls-icon {
-  font-size: 16px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The cog is an inline SVG (not a font glyph) so it centres by geometry, with no
+   baseline/line-height offset — dead-centre in the collapsed circle. */
+#controls-icon svg {
+  display: block;
 }
 
 #controls-body {
@@ -268,7 +275,7 @@ body {
 #kofi {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   align-self: center;
   margin-top: 2px;
   padding: 6px 13px;
@@ -293,4 +300,11 @@ body {
   background: rgba(116, 189, 255, 0.13);
   transform: translateY(-1px);
   outline: none;
+}
+
+/* The ♥ glyph renders optically high beside the text; pin its box height and
+   nudge it down a hair so it sits on the label's centre line. */
+#kofi span {
+  line-height: 1;
+  transform: translateY(1px);
 }
