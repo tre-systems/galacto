@@ -1,6 +1,6 @@
 # 🌌 Galaxy Sandbox
 
-A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk temperature and speed live. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
+A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10×) where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk temperature and speed live. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
 **Live:** [galacto.org](https://galacto.org/) — needs a [WebGPU-capable browser](#browser-support).
 
@@ -11,6 +11,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 - **GPU compute physics** — the all-pairs gravity for every body runs in a WebGPU compute shader (workgroup-tiled); the CPU never touches per-body state.
 - **Self-gravity N-body** — every body attracts every other, so structure forms for real rather than being scripted.
 - **Selectable scenarios** — a dropdown switches the initial conditions: a **spiral disk** that grows arms, plus six multi-galaxy setups — **merger**, **head-on collision**, **retrograde merger**, **minor merger** (a shredded satellite), a **three-galaxy group**, and a **grand-design (M51)** flyby whose companion tidally draws out a bridge and two-armed structure.
+- **Adjustable body count** — a slider sets the number of bodies (16,384 by default, up to 10×), re-seeding the scenario at the new resolution. Per-body mass scales as 1/N, so more bodies refine the *same* galaxy rather than piling on mass. The top end is heavy — gravity is all-pairs O(N²).
 - **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
 - **Disk temperature** — sets the disk's velocity dispersion (≈ Toomre Q). It's a seed-time property, so it's *staged* and applied on **Restart** rather than disturbing the running sim.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
@@ -31,6 +32,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies whe
 | **Spacebar**         | Pause / resume the simulation       |
 | **R**                | Reset the camera                    |
 | **Scenario dropdown**| Choose the setup (spiral disk; a merger / head-on / retrograde / minor / group collision; or the grand-design M51 flyby) — re-seeds |
+| **Bodies slider**    | Number of bodies (default 16,384, up to 10×) — re-seeds; the top end is heavy (gravity is all-pairs O(N²)) |
 | **Speed slider**     | Scale simulation speed (0.25×–8×) — live |
 | **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
 | **Halo slider**      | Dark-matter halo strength (0–2×) — live; confine or release the bodies |

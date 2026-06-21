@@ -53,7 +53,7 @@ digraph FrameLoop {
 
   // render phase
   CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step (leapfrog): drift_half → compute_accel → kick_drift_half<BR/>tiled all-pairs self-gravity · 64 groups × 256</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">16,384 billboard quads (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">one billboard quad per body (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
 

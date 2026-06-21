@@ -66,6 +66,19 @@
           </select>
         </div>
         <div class="control">
+          <label for="count-slider">Bodies</label>
+          <input
+            id="count-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="10"
+            step="1"
+            title="Body count — re-seeds the galaxy; the top end is heavy (gravity is all-pairs)"
+          />
+          <span id="count-readout">16.4k</span>
+        </div>
+        <div class="control">
           <label for="speed-slider">Speed</label>
           <input
             id="speed-slider"
@@ -163,6 +176,7 @@
           loadingEl.style.display = "none";
           const panel = setupControlPanel();
           setupScenarioControl(mod, panel.collapse);
+          setupParticleCountControl(mod);
           setupSpeedControl(mod);
           setupTempControl(mod);
           setupGravityControl(mod);
@@ -190,6 +204,27 @@
           mod.set_scenario(parseInt(sel.value, 10));
           collapse();
         });
+      }
+
+      // Body-count slider (0–100) maps linearly to the number of bodies, so the
+      // default (16,384) sits at 10% and the top is 10× (163,840). Changing it
+      // re-seeds the sim (like a restart) — heavy, and at the top end the all-pairs
+      // gravity is ~100× the work — so it applies on release ('change'), not while
+      // dragging; the readout updates live.
+      function setupParticleCountControl(mod) {
+        const slider = document.getElementById("count-slider");
+        const readout = document.getElementById("count-readout");
+        const MAX = 163840; // mirrors MAX_PARTICLES in simulation.rs
+        const STEP = 256; // mirrors WORKGROUP_SIZE — the count must tile evenly
+        const countFor = () =>
+          Math.max(STEP, Math.round(((slider.value / 100) * MAX) / STEP) * STEP);
+        const fmt = (n) => (n >= 1000 ? +(n / 1000).toFixed(1) + "k" : String(n));
+        const show = () => {
+          readout.textContent = fmt(countFor());
+        };
+        slider.addEventListener("input", show);
+        slider.addEventListener("change", () => mod.set_particle_count(countFor()));
+        show();
       }
 
       // Switch the dark-matter halo profile; the sim re-seeds so the disk starts

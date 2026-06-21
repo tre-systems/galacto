@@ -103,19 +103,25 @@ impl Scenario {
         }
     }
 
-    /// Generate the initial bodies for this scenario at a given disk temperature.
-    /// `halo_kind` matters only to the spiral disk, whose circular velocities are
-    /// balanced against the global halo; the multi-galaxy disks orbit their own
-    /// cores and treat the halo as a background, so they ignore it.
-    pub fn generate(self, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+    /// Generate `count` initial bodies for this scenario at a given disk
+    /// temperature. `halo_kind` matters only to the spiral disk, whose circular
+    /// velocities are balanced against the global halo; the multi-galaxy disks orbit
+    /// their own cores and treat the halo as a background, so they ignore it.
+    ///
+    /// Per-body mass scales as `NUM_PARTICLES / count`, holding each system's total
+    /// disk mass constant: raising the count refines the same galaxy rather than
+    /// piling on mass, so the dynamics and timescales stay put. (Core/bulge masses
+    /// are fixed point masses and don't scale.)
+    pub fn generate(self, count: u32, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+        let star_mass = STAR_MASS * NUM_PARTICLES as f32 / count as f32;
         match self {
-            Scenario::Spiral => generate_disk(temp, halo_kind),
-            Scenario::Merger => generate_merger(temp),
-            Scenario::HeadOn => generate_head_on(temp),
-            Scenario::Retrograde => generate_retrograde(temp),
-            Scenario::MinorMerger => generate_minor(temp),
-            Scenario::Group => generate_group(temp),
-            Scenario::GrandDesign => generate_grand_design(temp, halo_kind),
+            Scenario::Spiral => generate_disk(count, temp, halo_kind, star_mass),
+            Scenario::Merger => generate_merger(count, temp, star_mass),
+            Scenario::HeadOn => generate_head_on(count, temp, star_mass),
+            Scenario::Retrograde => generate_retrograde(count, temp, star_mass),
+            Scenario::MinorMerger => generate_minor(count, temp, star_mass),
+            Scenario::Group => generate_group(count, temp, star_mass),
+            Scenario::GrandDesign => generate_grand_design(count, temp, halo_kind, star_mass),
         }
     }
 }
@@ -175,16 +181,16 @@ fn gaussian(rng: &mut StdRng) -> f32 {
     (-2.0 * u1.ln()).sqrt() * (TAU * u2).cos()
 }
 
-/// Push one disk star (see `DiskStar`) into `out`. The vertical thermal kick is
-/// smaller than the in-plane one to keep the disk thin.
-fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, rng: &mut StdRng) {
+/// Push one disk star (see `DiskStar`) into `out` with per-body mass `star_mass`.
+/// The vertical thermal kick is smaller than the in-plane one to keep the disk thin.
+fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, star_mass: f32, rng: &mut StdRng) {
     let (st, ct) = (s.theta.sin(), s.theta.cos());
     out.push(Particle {
         pos_mass: [
             s.center[0] + s.r * ct,
             s.center[1] + s.r * st,
             s.center[2] + s.z,
-            STAR_MASS,
+            star_mass,
         ],
         vel: [
             s.bulk[0] - s.vc * st + gaussian(rng) * s.sigma,
@@ -197,10 +203,10 @@ fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, rng: &mut StdRng) {
 
 /// The spiral-disk scenario: one self-gravitating exponential disk at the origin,
 /// balanced against the global halo, which swing-amplifies into spiral arms.
-fn generate_disk(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+fn generate_disk(count: u32, temp: f32, halo_kind: HaloKind, star_mass: f32) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
-    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
-    seed_spiral_disk(&mut particles, NUM_PARTICLES, temp, halo_kind, &mut rng);
+    let mut particles = Vec::with_capacity(count as usize);
+    seed_spiral_disk(&mut particles, count, temp, halo_kind, star_mass, &mut rng);
     particles
 }
 
@@ -215,6 +221,7 @@ fn seed_spiral_disk(
     count: u32,
     temp: f32,
     halo_kind: HaloKind,
+    star_mass: f32,
     rng: &mut StdRng,
 ) {
     // Central bulge body, at rest at the origin (tint 0 → warm nucleus).
@@ -244,6 +251,7 @@ fn seed_spiral_disk(
                 sigma: disp * vc,
                 tint: 0.0,
             },
+            star_mass,
             rng,
         );
     }
@@ -252,7 +260,7 @@ fn seed_spiral_disk(
 /// One galaxy in a multi-galaxy scenario: a heavy core plus a centrally-
 /// concentrated disk in its own rest frame `bulk`, spinning prograde (`spin = 1`)
 /// or retrograde (`spin = -1`). `count` is its body budget (core + disk); the
-/// per-scenario counts must sum to `NUM_PARTICLES` so the buffer fills exactly.
+/// per-scenario counts must sum to the requested total so the buffer fills exactly.
 struct Galaxy {
     center: [f32; 3],
     bulk: [f32; 3],
@@ -282,7 +290,7 @@ impl Default for Galaxy {
 /// Seed one `Galaxy` — a heavy core plus a disk on near-circular orbits in the
 /// core's softened point potential (the global halo is ignored; each disk is
 /// balanced in its own frame) — into `out`.
-fn seed_galaxy(out: &mut Vec<Particle>, g: &Galaxy, disp: f32, rng: &mut StdRng) {
+fn seed_galaxy(out: &mut Vec<Particle>, g: &Galaxy, disp: f32, star_mass: f32, rng: &mut StdRng) {
     out.push(Particle {
         pos_mass: [g.center[0], g.center[1], g.center[2], g.core_mass],
         vel: [g.bulk[0], g.bulk[1], g.bulk[2], g.tint],
@@ -307,99 +315,112 @@ fn seed_galaxy(out: &mut Vec<Particle>, g: &Galaxy, disp: f32, rng: &mut StdRng)
                 sigma: disp * vc.abs(),
                 tint: g.tint,
             },
+            star_mass,
             rng,
         );
     }
 }
 
-/// Seed a set of galaxies (the multi-galaxy scenarios). Their `count`s must sum
-/// to `NUM_PARTICLES` so the body buffer is filled exactly.
-fn generate_galaxies(galaxies: &[Galaxy], temp: f32) -> Vec<Particle> {
+/// Seed a set of galaxies (the multi-galaxy scenarios). Their `count`s must sum to
+/// `count` so the body buffer is filled exactly.
+fn generate_galaxies(galaxies: &[Galaxy], count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
-    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
+    let mut particles = Vec::with_capacity(count as usize);
     let disp = dispersion(temp);
     for g in galaxies {
-        seed_galaxy(&mut particles, g, disp, &mut rng);
+        seed_galaxy(&mut particles, g, disp, star_mass, &mut rng);
     }
-    debug_assert_eq!(particles.len(), NUM_PARTICLES as usize);
+    debug_assert_eq!(particles.len(), count as usize);
     particles
 }
 
 /// Two equal galaxies on a bound, prograde approach about the origin, so
 /// self-gravity merges them into one spinning remnant. The two populations carry
 /// distinct tints so you can watch them mix.
-fn generate_merger(temp: f32) -> Vec<Particle> {
+fn generate_merger(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
     generate_galaxies(
         &[
             Galaxy {
                 center: [-MERGER_SEP, 0.0, 0.0],
                 bulk: [0.0, -MERGER_APPROACH, 0.0],
+                count: count / 2,
                 ..Default::default()
             },
             Galaxy {
                 center: [MERGER_SEP, 0.0, 0.0],
                 bulk: [0.0, MERGER_APPROACH, 0.0],
+                count: count - count / 2,
                 tint: 1.0,
                 ..Default::default()
             },
         ],
+        count,
         temp,
+        star_mass,
     )
 }
 
 /// Two equal galaxies aimed straight at each other (no orbital angular momentum):
 /// they interpenetrate and violently relax into one remnant.
-fn generate_head_on(temp: f32) -> Vec<Particle> {
+fn generate_head_on(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
     generate_galaxies(
         &[
             Galaxy {
                 center: [-MERGER_SEP, 0.0, 0.0],
                 bulk: [HEADON_SPEED, 0.0, 0.0],
+                count: count / 2,
                 ..Default::default()
             },
             Galaxy {
                 center: [MERGER_SEP, 0.0, 0.0],
                 bulk: [-HEADON_SPEED, 0.0, 0.0],
+                count: count - count / 2,
                 tint: 1.0,
                 ..Default::default()
             },
         ],
+        count,
         temp,
+        star_mass,
     )
 }
 
 /// Like the merger, but the second disk spins retrograde — which suppresses the
 /// long tidal bridge and tails a prograde pair throws off.
-fn generate_retrograde(temp: f32) -> Vec<Particle> {
+fn generate_retrograde(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
     generate_galaxies(
         &[
             Galaxy {
                 center: [-MERGER_SEP, 0.0, 0.0],
                 bulk: [0.0, -MERGER_APPROACH, 0.0],
+                count: count / 2,
                 ..Default::default()
             },
             Galaxy {
                 center: [MERGER_SEP, 0.0, 0.0],
                 bulk: [0.0, MERGER_APPROACH, 0.0],
+                count: count - count / 2,
                 spin: -1.0,
                 tint: 1.0,
                 ..Default::default()
             },
         ],
+        count,
         temp,
+        star_mass,
     )
 }
 
 /// A minor merger: a massive primary and a quarter-mass satellite on an infalling
 /// orbit. The satellite is tidally shredded into a stream around the primary.
-fn generate_minor(temp: f32) -> Vec<Particle> {
-    let satellite = NUM_PARTICLES / 4;
+fn generate_minor(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
+    let satellite = count / 4;
     generate_galaxies(
         &[
             Galaxy {
                 center: [-30.0, 0.0, 0.0],
                 bulk: [0.0, -8.0, 0.0],
-                count: NUM_PARTICLES - satellite,
+                count: count - satellite,
                 ..Default::default()
             },
             Galaxy {
@@ -412,14 +433,16 @@ fn generate_minor(temp: f32) -> Vec<Particle> {
                 ..Default::default()
             },
         ],
+        count,
         temp,
+        star_mass,
     )
 }
 
 /// A small group of three equal galaxies set rotating about their common centre,
 /// which fall together and merge into a single system.
-fn generate_group(temp: f32) -> Vec<Particle> {
-    let a = NUM_PARTICLES / 3;
+fn generate_group(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
+    let a = count / 3;
     generate_galaxies(
         &[
             Galaxy {
@@ -441,12 +464,14 @@ fn generate_group(temp: f32) -> Vec<Particle> {
                 center: [91.0, -52.0, 0.0],
                 bulk: [7.0, 12.0, 0.0],
                 radius: 70.0,
-                count: NUM_PARTICLES - 2 * a,
+                count: count - 2 * a,
                 tint: 1.0,
                 ..Default::default()
             },
         ],
+        count,
         temp,
+        star_mass,
     )
 }
 
@@ -454,15 +479,21 @@ fn generate_group(temp: f32) -> Vec<Particle> {
 /// flyby — the M51 mechanism for a grand-design two-arm pattern. The main disk is
 /// halo-supported (like the spiral scenario); the companion is a small self-bound
 /// galaxy that sweeps past rather than immediately merging.
-fn generate_grand_design(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+fn generate_grand_design(
+    count: u32,
+    temp: f32,
+    halo_kind: HaloKind,
+    star_mass: f32,
+) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
-    let mut particles = Vec::with_capacity(NUM_PARTICLES as usize);
-    let companion = NUM_PARTICLES / 8;
+    let mut particles = Vec::with_capacity(count as usize);
+    let companion = count / 8;
     seed_spiral_disk(
         &mut particles,
-        NUM_PARTICLES - companion,
+        count - companion,
         temp,
         halo_kind,
+        star_mass,
         &mut rng,
     );
     seed_galaxy(
@@ -477,9 +508,10 @@ fn generate_grand_design(temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
             ..Default::default()
         },
         dispersion(temp),
+        star_mass,
         &mut rng,
     );
-    debug_assert_eq!(particles.len(), NUM_PARTICLES as usize);
+    debug_assert_eq!(particles.len(), count as usize);
     particles
 }
 
@@ -531,33 +563,69 @@ mod tests {
 
     #[test]
     fn spiral_seeds_valid_bodies() {
-        assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Logarithmic));
-        assert_valid_bodies(&Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Nfw));
+        assert_valid_bodies(&Scenario::Spiral.generate(
+            NUM_PARTICLES,
+            DEFAULT_TEMP,
+            HaloKind::Logarithmic,
+        ));
+        assert_valid_bodies(&Scenario::Spiral.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Nfw));
     }
+
+    const ALL_SCENARIOS: [Scenario; 7] = [
+        Scenario::Spiral,
+        Scenario::Merger,
+        Scenario::HeadOn,
+        Scenario::Retrograde,
+        Scenario::MinorMerger,
+        Scenario::Group,
+        Scenario::GrandDesign,
+    ];
 
     /// Every scenario must fill the buffer exactly (galaxy counts summing to
     /// NUM_PARTICLES) with finite, positively-massed, in-range bodies — under
     /// either halo profile.
     #[test]
     fn all_scenarios_seed_valid_bodies() {
-        for s in [
-            Scenario::Spiral,
-            Scenario::Merger,
-            Scenario::HeadOn,
-            Scenario::Retrograde,
-            Scenario::MinorMerger,
-            Scenario::Group,
-            Scenario::GrandDesign,
-        ] {
+        for s in ALL_SCENARIOS {
             for halo in [HaloKind::Logarithmic, HaloKind::Nfw] {
-                assert_valid_bodies(&s.generate(DEFAULT_TEMP, halo));
+                assert_valid_bodies(&s.generate(NUM_PARTICLES, DEFAULT_TEMP, halo));
             }
         }
     }
 
+    /// The body-count slider passes any tile-multiple count; every scenario must
+    /// seed exactly that many bodies (the per-galaxy splits sum to the total).
+    #[test]
+    fn every_scenario_seeds_the_requested_count() {
+        for s in ALL_SCENARIOS {
+            for count in [256, 2048, NUM_PARTICLES, 32_768, NUM_PARTICLES * 10] {
+                let bodies = s.generate(count, DEFAULT_TEMP, HaloKind::Logarithmic);
+                assert_eq!(bodies.len(), count as usize, "{s:?} at count {count}");
+            }
+        }
+    }
+
+    /// Raising the count holds each system's total mass ~constant (per-body mass
+    /// scales as 1/count), so more bodies refine the same galaxy.
+    #[test]
+    fn count_scales_per_body_mass_inversely() {
+        let total = |count| {
+            Scenario::Spiral
+                .generate(count, DEFAULT_TEMP, HaloKind::Logarithmic)
+                .iter()
+                .map(|p| p.pos_mass[3] as f64)
+                .sum::<f64>()
+        };
+        let (base, dense) = (total(NUM_PARTICLES), total(NUM_PARTICLES * 4));
+        assert!(
+            (dense - base).abs() / base < 0.001,
+            "total mass should stay ~constant: {base} vs {dense}"
+        );
+    }
+
     #[test]
     fn spiral_disk_radii_stay_within_bounds() {
-        let bodies = Scenario::Spiral.generate(DEFAULT_TEMP, HaloKind::Logarithmic);
+        let bodies = Scenario::Spiral.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Logarithmic);
         // Skip the bulge at index 0; disk radii are clamped to DISK_RMAX.
         for b in &bodies[1..] {
             let r = (b.pos_mass[0] * b.pos_mass[0] + b.pos_mass[1] * b.pos_mass[1]).sqrt();
@@ -568,8 +636,8 @@ mod tests {
     #[test]
     fn seeding_is_deterministic() {
         // A fixed RNG seed means a given scenario+temperature is reproducible.
-        let a = Scenario::Spiral.generate(1.0, HaloKind::Nfw);
-        let b = Scenario::Spiral.generate(1.0, HaloKind::Nfw);
+        let a = Scenario::Spiral.generate(NUM_PARTICLES, 1.0, HaloKind::Nfw);
+        let b = Scenario::Spiral.generate(NUM_PARTICLES, 1.0, HaloKind::Nfw);
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&a),
             bytemuck::cast_slice::<_, u8>(&b)
@@ -581,7 +649,7 @@ mod tests {
         // Temperature is the velocity dispersion: the vertical kick is purely
         // thermal for the spiral disk, so a hot disk spreads in vz far more.
         let mean_abs_vz = |temp| {
-            let bodies = Scenario::Spiral.generate(temp, HaloKind::Logarithmic);
+            let bodies = Scenario::Spiral.generate(NUM_PARTICLES, temp, HaloKind::Logarithmic);
             let disk = &bodies[1..]; // skip the bulge
             disk.iter().map(|b| b.vel[2].abs()).sum::<f32>() / disk.len() as f32
         };

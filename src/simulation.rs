@@ -5,17 +5,34 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
-/// Total bodies in the simulation. Self-gravity is all-pairs (O(N²)), so this is
+/// Default body count, and the reference total against which per-body mass is
+/// scaled in `scenarios.rs` (so changing the count refines the same galaxy rather
+/// than changing its total mass). Self-gravity is all-pairs (O(N²)), so this is
 /// far smaller than a test-particle sim would allow. Must be a multiple of
 /// `WORKGROUP_SIZE` so the tiled gravity kernel never reads out of bounds.
 pub(crate) const NUM_PARTICLES: u32 = 16384;
-/// Compute workgroup size, equal to `TILE` in `update.wgsl`.
+/// Upper bound for the body-count slider (10× the default). The GPU buffers are
+/// allocated at this size once, so the count can grow live without reallocating
+/// them or the bind groups — only the active `count` is ever dispatched or drawn.
+pub(crate) const MAX_PARTICLES: u32 = NUM_PARTICLES * 10;
+/// Compute workgroup size, equal to `TILE` in `update.wgsl`. The active body count
+/// must stay a multiple of this so the tiled gravity kernel tiles evenly.
 const WORKGROUP_SIZE: u32 = 256;
-/// Workgroups dispatched per kernel (one tile each). Also the number of partial
-/// sums the core-statistics reduction (`reduce_core`) writes for the audio.
-const NUM_WORKGROUPS: u32 = NUM_PARTICLES / WORKGROUP_SIZE;
-/// Bytes read back per core-statistics readback: one `vec4<f32>` per workgroup.
-const REDUCTION_BYTES: u64 = NUM_WORKGROUPS as u64 * 16;
+/// Workgroups at the maximum body count — sizes the core-statistics buffers.
+const MAX_WORKGROUPS: u32 = MAX_PARTICLES / WORKGROUP_SIZE;
+/// Most bytes a core-statistics readback can produce: one `vec4<f32>` per
+/// workgroup at the maximum body count.
+const MAX_REDUCTION_BYTES: u64 = MAX_WORKGROUPS as u64 * 16;
+
+/// Round a requested body count to a value the solver accepts: a multiple of the
+/// tile size, at least one tile and at most [`MAX_PARTICLES`]. The body-count
+/// slider passes already-stepped values; this is the authoritative guard.
+pub(crate) fn clamp_particle_count(requested: u32) -> u32 {
+    // Bound first so the round-to-nearest add can't overflow on a huge request.
+    let requested = requested.min(MAX_PARTICLES);
+    let tiles = ((requested + WORKGROUP_SIZE / 2) / WORKGROUP_SIZE).max(1);
+    (tiles * WORKGROUP_SIZE).min(MAX_PARTICLES)
+}
 
 /// Fixed simulation timestep (seconds). Physics advances in whole steps of this
 /// size regardless of display refresh rate; see the accumulator in `lib.rs`.
@@ -126,7 +143,24 @@ struct ReduceState {
     stats: CoreStats,
 }
 
+/// Inputs to [`Simulation::reseed`]: what to seed (scenario, disk temperature, body
+/// count) plus the live physics the fresh bodies must be balanced against (gravity
+/// and halo). Bundled so the call site reads as named fields rather than a long
+/// positional argument list.
+pub struct Reseed {
+    pub scenario: Scenario,
+    pub temp: f32,
+    pub count: u32,
+    pub gravity: f32,
+    pub halo_v0: f32,
+    pub halo_kind: HaloKind,
+}
+
 pub struct Simulation {
+    /// Active body count (a multiple of `WORKGROUP_SIZE`, ≤ `MAX_PARTICLES`). The
+    /// buffers are sized for the maximum; only these many bodies are dispatched,
+    /// drawn, and read back. Set by `reseed` from the body-count slider.
+    count: u32,
     // Written at init and re-uploaded on reseed (temperature changes).
     particle_buffer: wgpu::Buffer,
     #[expect(dead_code)] // held only to keep the GPU resource alive
@@ -155,45 +189,57 @@ impl Simulation {
         console_log!("Creating simulation...");
 
         // The tiled gravity kernel reads bodies in whole WORKGROUP_SIZE-sized
-        // tiles with no tail guard, so the count must divide evenly.
+        // tiles with no tail guard, so every count must divide evenly.
         debug_assert_eq!(NUM_PARTICLES % WORKGROUP_SIZE, 0);
+        debug_assert_eq!(MAX_PARTICLES % WORKGROUP_SIZE, 0);
 
-        // Start in the grand-design (M51) flyby at the default temperature,
-        // balanced against the default (logarithmic) halo — the first thing a
+        // Start in the grand-design (M51) flyby at the default temperature and body
+        // count, balanced against the default (logarithmic) halo — the first thing a
         // visitor sees, so it leads with the most dynamic scenario.
         let scenario = Scenario::GrandDesign;
-        let particles = scenario.generate(DEFAULT_TEMP, HaloKind::Logarithmic);
+        let particles = scenario.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Logarithmic);
 
+        // The particle buffer is sized for MAX_PARTICLES (zero-padded past the active
+        // count) so the body-count slider can grow the sim without reallocating it.
+        let mut initial = vec![Particle::zeroed(); MAX_PARTICLES as usize];
+        initial[..particles.len()].copy_from_slice(&particles);
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
-            contents: bytemuck::cast_slice(&particles),
+            contents: bytemuck::cast_slice(&initial),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
         // Scratch accel buffer, rewritten every step; no initial contents needed.
         let accel_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Accel Buffer"),
-            size: (NUM_PARTICLES as u64) * 16, // vec4<f32> per body
+            size: (MAX_PARTICLES as u64) * 16, // vec4<f32> per body
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
 
         // Core-statistics reduction output (one vec4 per workgroup) plus a mappable
-        // staging copy for the async readback that feeds the audio.
+        // staging copy for the async readback that feeds the audio. Sized for the
+        // maximum body count; only the active prefix is copied and read each frame.
         let reductions_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Core Reduction Buffer"),
-            size: REDUCTION_BYTES,
+            size: MAX_REDUCTION_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let reduction_staging = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Core Reduction Staging"),
-            size: REDUCTION_BYTES,
+            size: MAX_REDUCTION_BYTES,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
-        let params = Self::build_params(scenario.softening(), G, HALO_V0, HaloKind::Logarithmic);
+        let params = Self::build_params(
+            scenario.softening(),
+            G,
+            HALO_V0,
+            HaloKind::Logarithmic,
+            NUM_PARTICLES,
+        );
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Params Buffer"),
@@ -452,6 +498,7 @@ impl Simulation {
         console_log!("🌌 Pick a scenario and tweak the sliders.");
 
         Self {
+            count: NUM_PARTICLES,
             particle_buffer,
             accel_buffer,
             params_buffer,
@@ -478,12 +525,13 @@ impl Simulation {
         gravity: f32,
         halo_v0: f32,
         halo_kind: HaloKind,
+        count: u32,
     ) -> SimulationParams {
         SimulationParams {
             dt: FIXED_DT,
             g: gravity,
             softening,
-            particle_count: NUM_PARTICLES,
+            particle_count: count,
             halo_v0_sq: halo_v0 * halo_v0,
             // The shader reads halo_rc2 as the active profile's squared radius: the
             // log core radius, or the (smaller) NFW scale radius.
@@ -496,27 +544,27 @@ impl Simulation {
         }
     }
 
-    /// Regenerate from fresh initial conditions for `scenario` at `temp` and upload
-    /// them, restarting the galaxy. Also rewrites the params uniform (scenarios use
-    /// different softening; gravity/halo carry the current live values).
-    pub fn reseed(
-        &self,
-        queue: &wgpu::Queue,
-        scenario: Scenario,
-        temp: f32,
-        gravity: f32,
-        halo_v0: f32,
-        halo_kind: HaloKind,
-    ) {
-        // The spiral disk balances its circular velocities against the active halo,
-        // so seeding takes `halo_kind` too — the disk is born in equilibrium.
-        let particles = scenario.generate(temp, halo_kind);
+    /// Regenerate from fresh initial conditions and upload them, restarting the
+    /// galaxy. Also rewrites the params uniform (scenarios use different softening;
+    /// gravity/halo carry the current live values).
+    pub fn reseed(&mut self, queue: &wgpu::Queue, r: Reseed) {
+        // Adopt the new body count (drives dispatch, draw, and readback extents),
+        // then regenerate. The spiral disk balances its circular velocities against
+        // the active halo, so seeding takes `halo_kind` too — born in equilibrium.
+        self.count = clamp_particle_count(r.count);
+        let particles = r.scenario.generate(self.count, r.temp, r.halo_kind);
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
-        self.set_physics(queue, scenario.softening(), gravity, halo_v0, halo_kind);
+        self.set_physics(
+            queue,
+            r.scenario.softening(),
+            r.gravity,
+            r.halo_v0,
+            r.halo_kind,
+        );
     }
 
     /// Rewrite only the params uniform (live gravity / halo changes), leaving the
-    /// running bodies untouched.
+    /// running bodies and the active count untouched.
     pub fn set_physics(
         &self,
         queue: &wgpu::Queue,
@@ -525,7 +573,7 @@ impl Simulation {
         halo_v0: f32,
         halo_kind: HaloKind,
     ) {
-        let params = Self::build_params(softening, gravity, halo_v0, halo_kind);
+        let params = Self::build_params(softening, gravity, halo_v0, halo_kind, self.count);
         queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[params]));
     }
 
@@ -556,16 +604,23 @@ impl Simulation {
             });
             pass.set_pipeline(&self.reduce_pipeline);
             pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            pass.dispatch_workgroups(NUM_WORKGROUPS, 1, 1);
+            pass.dispatch_workgroups(self.count / WORKGROUP_SIZE, 1, 1);
         }
         encoder.copy_buffer_to_buffer(
             &self.reductions_buffer,
             0,
             &self.reduction_staging,
             0,
-            REDUCTION_BYTES,
+            self.reduction_bytes(),
         );
         true
+    }
+
+    /// Bytes the core-statistics reduction produces at the current body count: one
+    /// `vec4<f32>` per workgroup. Only this active prefix of the staging buffer is
+    /// copied and read each frame.
+    fn reduction_bytes(&self) -> u64 {
+        (self.count / WORKGROUP_SIZE) as u64 * 16
     }
 
     /// Kick off the async map of the staging buffer (call after the queue submit
@@ -581,15 +636,18 @@ impl Simulation {
     pub fn map_core_readback(&self) {
         let staging = self.reduction_staging.clone();
         let state = self.reduce_state.clone();
+        // Map only the active prefix — the count may have shrunk, leaving stale
+        // data in the tail that must not be summed.
+        let bytes = self.reduction_bytes();
         self.reduce_state.borrow_mut().in_flight = true;
         self.reduction_staging
-            .slice(..)
+            .slice(0..bytes)
             .map_async(wgpu::MapMode::Read, move |res| {
                 let mut st = state.borrow_mut();
                 if res.is_ok() {
                     let (mut mass, mut flux, mut activity) = (0.0_f32, 0.0_f32, 0.0_f32);
                     {
-                        let data = staging.slice(..).get_mapped_range();
+                        let data = staging.slice(0..bytes).get_mapped_range();
                         for p in bytemuck::cast_slice::<u8, f32>(&data[..]).chunks_exact(4) {
                             mass += p[0];
                             flux += p[1];
@@ -629,14 +687,14 @@ impl Simulation {
         });
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &self.compute_bind_group, &[]);
-        pass.dispatch_workgroups(NUM_PARTICLES / WORKGROUP_SIZE, 1, 1);
+        pass.dispatch_workgroups(self.count / WORKGROUP_SIZE, 1, 1);
     }
 
     pub fn render_pass<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.render_bind_group, &[]);
         // One triangle-strip quad (4 verts) per particle, instanced.
-        render_pass.draw(0..4, 0..NUM_PARTICLES);
+        render_pass.draw(0..4, 0..self.count);
     }
 
     pub fn update_camera(
@@ -682,7 +740,23 @@ mod tests {
 
     #[test]
     fn particle_count_is_a_tile_multiple() {
-        // The tiled gravity kernel reads whole WORKGROUP_SIZE tiles, no tail guard.
+        // The tiled gravity kernel reads whole WORKGROUP_SIZE tiles, no tail guard,
+        // so the default, the maximum, and any clamped count must tile evenly.
         assert_eq!(NUM_PARTICLES % WORKGROUP_SIZE, 0);
+        assert_eq!(MAX_PARTICLES % WORKGROUP_SIZE, 0);
+        assert_eq!(MAX_PARTICLES, NUM_PARTICLES * 10);
+    }
+
+    #[test]
+    fn clamp_particle_count_tiles_and_bounds() {
+        // Always a tile multiple, never below one tile, never above the maximum.
+        for req in [0, 1, 100, 200, 16_384, 100_000, MAX_PARTICLES, u32::MAX] {
+            let c = clamp_particle_count(req);
+            assert_eq!(c % WORKGROUP_SIZE, 0, "clamp({req}) = {c} must tile evenly");
+            assert!((WORKGROUP_SIZE..=MAX_PARTICLES).contains(&c));
+        }
+        assert_eq!(clamp_particle_count(0), WORKGROUP_SIZE);
+        assert_eq!(clamp_particle_count(NUM_PARTICLES), NUM_PARTICLES);
+        assert_eq!(clamp_particle_count(u32::MAX), MAX_PARTICLES);
     }
 }

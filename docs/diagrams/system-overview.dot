@@ -110,7 +110,7 @@ digraph SystemOverview {
       color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=22
     ];
     G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · leapfrog: drift → gravity → kick</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-    G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">16,384 self-gravitating bodies</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">self-gravitating bodies (16,384 default, up to 10×)</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
     G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · billboard project + glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
     G4 [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · composite</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }

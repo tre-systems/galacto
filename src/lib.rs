@@ -17,7 +17,7 @@ use graphics::Graphics;
 use input::InputHandler;
 use postprocess::PostProcess;
 use scenarios::Scenario;
-use simulation::{HaloKind, Simulation};
+use simulation::{HaloKind, Reseed, Simulation};
 use utils::{console_log, set_panic_hook};
 
 use std::cell::RefCell;
@@ -71,6 +71,9 @@ pub struct AppState {
     /// Current scenario and the disk temperature staged for the next (re)seed.
     scenario: Scenario,
     disk_temp: f32,
+    /// Active body count, set by the body-count slider and carried into every
+    /// reseed (changing it re-seeds the scenario at the new resolution).
+    particle_count: u32,
     /// Dark-matter halo profile; switching it re-seeds so the disk stays balanced.
     halo_kind: HaloKind,
     /// Live physics/visual knobs (no re-seed): gravity, halo speed, star size.
@@ -130,6 +133,7 @@ impl AppState {
             speed: 1.0,
             scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
+            particle_count: simulation::NUM_PARTICLES,
             halo_kind: HaloKind::Logarithmic,
             gravity: simulation::G,
             halo_v0: simulation::HALO_V0,
@@ -302,15 +306,25 @@ impl AppState {
         self.reseed();
     }
 
-    fn reseed(&self) {
+    fn reseed(&mut self) {
         self.simulation.reseed(
             &self.graphics.queue,
-            self.scenario,
-            self.disk_temp,
-            self.gravity,
-            self.halo_v0,
-            self.halo_kind,
+            Reseed {
+                scenario: self.scenario,
+                temp: self.disk_temp,
+                count: self.particle_count,
+                gravity: self.gravity,
+                halo_v0: self.halo_v0,
+                halo_kind: self.halo_kind,
+            },
         );
+    }
+
+    /// Set the body count (the body-count slider) and re-seed the current scenario
+    /// at the new resolution. Clamped to a valid tile-multiple within bounds.
+    pub fn set_count(&mut self, count: u32) {
+        self.particle_count = simulation::clamp_particle_count(count);
+        self.reseed();
     }
 
     /// Live gravity strength (the gravity slider): rewrites the params uniform
@@ -526,6 +540,18 @@ pub fn restart() {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().restart();
+        }
+    });
+}
+
+/// Set the body count (the body-count slider), re-seeding the current scenario at
+/// the new resolution. The value is clamped to a tile multiple within bounds.
+/// No-ops until ready.
+#[wasm_bindgen]
+pub fn set_particle_count(count: u32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_count(count);
         }
     });
 }

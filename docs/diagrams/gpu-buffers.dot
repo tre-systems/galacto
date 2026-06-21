@@ -62,7 +62,7 @@ digraph GpuBuffers {
     particle [label=<
       <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
         <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Particle buffer</B></FONT></TD></TR>
-        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · 16,384 × 32 B</FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · up to 163,840 × 32 B</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>pos_mass</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz position, w mass</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>vel</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz velocity, w colour tint</FONT></TD></TR>
       </TABLE>
@@ -71,7 +71,7 @@ digraph GpuBuffers {
     accel [label=<
       <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
         <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Accel buffer</B></FONT></TD></TR>
-        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · scratch · 16,384 × 16 B</FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · read_write · scratch · up to 163,840 × 16 B</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>accel</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">vec4 — xyz acceleration</FONT></TD></TR>
       </TABLE>
     >];
