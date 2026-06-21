@@ -158,8 +158,11 @@ body {
 }
 
 #controls.collapsed #controls-toggle {
-  padding: 7px;
-  border-radius: 999px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center; /* perfectly centre the cog (align-items is on the base) */
+  border-radius: 50%; /* a true circle, since width == height */
   background: rgba(10, 14, 28, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(8px);
