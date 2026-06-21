@@ -114,7 +114,7 @@
         </div>
         <div class="control">
           <label for="volume-slider">Volume</label>
-          <input id="volume-slider" type="range" min="0" max="100" value="45" step="1" />
+          <input id="volume-slider" type="range" min="0" max="100" value="32" step="1" />
           <button
             id="mute-btn"
             type="button"
@@ -133,8 +133,8 @@
           target="_blank"
           rel="noopener noreferrer"
         >
-          <span aria-hidden="true">☕</span>
-          Buy me a coffee
+          <span aria-hidden="true">♥</span>
+          Support this project
         </a>
       </div>
     </div>
@@ -314,6 +314,14 @@
         });
 
         window.addEventListener("resize", clampIntoView);
+
+        // A press anywhere outside the open panel tucks it away (clicks on the
+        // canvas, etc.). Presses inside — toggle, sliders, links — are ignored.
+        document.addEventListener("pointerdown", (e) => {
+          if (!panel.classList.contains("collapsed") && !panel.contains(e.target)) {
+            setCollapsed(true);
+          }
+        });
 
         // Expose a collapse so other controls (e.g. switching simulation) can
         // tuck the panel away.

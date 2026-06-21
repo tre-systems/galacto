@@ -135,9 +135,9 @@ impl AppState {
             halo_v0: simulation::HALO_V0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
             audio: None,
-            // Start at 20% of full volume so the soundscape opens gently; matches
-            // the page's volume slider default (45% → ~0.20 on its squared taper).
-            sound_volume: 0.20,
+            // Start at 10% of full volume so the soundscape opens gently; matches
+            // the page's volume slider default (32% → ~0.10 on its squared taper).
+            sound_volume: 0.10,
             sound_muted: false,
             prev_rotation: (0.0, 0.0),
             motion: 0.0,
