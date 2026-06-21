@@ -2,7 +2,7 @@
 
 A GPU-accelerated **self-gravitating N-body** galaxy sandbox: ~16,000 bodies where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk temperature and speed live. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
-**Live:** [galacto.tre.systems](https://galacto.tre.systems/) — needs a [WebGPU-capable browser](#browser-support).
+**Live:** [galacto.org](https://galacto.org/) — needs a [WebGPU-capable browser](#browser-support).
 
 ![A self-gravitating disk galaxy with spiral arms](screenshot.png)
 
