@@ -18,7 +18,8 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 - **Generative soundscape** — a cosmic ambient bed that starts on your first interaction (browsers block audio until then), entirely synthesized in the browser (Web Audio oscillators, a code-generated reverb, a feedback delay — no sample files). It's driven by the galaxy itself: a tiny GPU readback tracks how much **mass has gathered at the centre** and how fast it's **moving in or out**, so the pad swells and brightens into tension as the core collapses and settles back as it disperses, with note density following the churn. Each **scenario** sets the scale and mood (serene for the lone disks, tense and dissonant for the collisions), and the camera (**zoom**, **rotation**) and physics knobs layer on top. Everything is slew-limited, so the sound always glides — cinematic, never abrupt.
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
 - **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent.
-- **Collapsible controls** — the control panel folds away to a small "Controls" tab so it stays out of the view.
+- **Collapsible controls** — the control panel folds away to a small ⚙ button so it stays out of the view.
+- **Installable PWA** — a web manifest, maskable icons, and a service worker make it installable to the home screen and launchable offline; the precached app shell (glue, WASM, styles) also loads instantly on repeat visits, while navigation stays network-first so a new deploy shows immediately.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
 ## Controls

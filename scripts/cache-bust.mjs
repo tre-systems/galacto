@@ -30,6 +30,18 @@ if (busted === html) {
   console.log(`cache-bust: pinned galacto.js + styles.css to ?v=${version}`);
 }
 
+// Stamp the same version into the service worker, so each deploy gets its own
+// cache (galacto-<version>) and its precache URLs match index.html's ?v=.
+const swPath = join(process.cwd(), 'pkg', 'sw.js');
+const sw = readFileSync(swPath, 'utf8');
+const swBusted = sw.replaceAll('__CACHE_BUST__', version);
+if (swBusted === sw) {
+  console.warn('cache-bust: no __CACHE_BUST__ placeholder found in pkg/sw.js');
+} else {
+  writeFileSync(swPath, swBusted);
+  console.log(`cache-bust: pinned service worker cache to galacto-${version}`);
+}
+
 writeFileSync(
   sentryConfigPath,
   `window.TRE_STATIC_SENTRY_CONFIG = ${JSON.stringify(

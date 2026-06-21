@@ -2,14 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover + no user-scaling: the canvas fills the screen and
+         pinch/drag drives the camera, not the page. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Galaxy Sandbox - WebGPU</title>
     <meta
       name="description"
       content="A GPU-accelerated self-gravitating N-body galaxy sandbox: a spiral disk and galaxy collisions (merger, head-on, retrograde, minor merger, a galaxy group, a grand-design M51 flyby), with live speed and disk-temperature controls and a generative soundscape driven by the simulation. Built with Rust, WebAssembly, and WebGPU."
     />
     <link rel="stylesheet" href="styles.css?v=__CACHE_BUST__" />
+
+    <!-- PWA: installable, offline-capable app shell -->
+    <link rel="manifest" href="site.webmanifest?v=__CACHE_BUST__" />
+    <meta name="theme-color" content="#05060d" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="application-name" content="Galacto" />
+    <meta name="apple-mobile-web-app-title" content="Galacto" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
     <script src="sentry-config.js?v=__CACHE_BUST__"></script>
     <script src="sentry.js?v=__CACHE_BUST__" defer></script>
   </head>
@@ -500,6 +516,18 @@
         events.forEach((e) =>
           window.addEventListener(e, start, { capture: true, passive: true })
         );
+      }
+
+      // Register the service worker so the app installs and launches offline.
+      // Non-blocking and best-effort — the sim runs fine without it (and it's a
+      // no-op on the dev file server if unsupported). The ?v= keeps it fresh per
+      // deploy, matching the cache-busted shell.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("./sw.js?v=__CACHE_BUST__")
+            .catch((e) => console.warn("Service worker registration failed:", e));
+        });
       }
 
       init().catch(console.error);

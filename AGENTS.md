@@ -29,7 +29,8 @@ cargo test
 cargo check --target wasm32-unknown-unknown
 ```
 
-- Web build: `npm run build` (wasm-pack `--target web`, then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs` to stamp the JS import with `?v=<git-sha>`).
+- Web build: `npm run build` (wasm-pack `--target web`, then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs` to stamp the JS/CSS `?v=<git-sha>` and the service worker's per-deploy cache name).
+- PWA icons: `npm run icons` rasterises `assets/icons/*.svg` → `static/icons/*.png` (committed; needs librsvg's `rsvg-convert` on PATH — `brew install librsvg`). Re-run after editing the icon SVGs.
 - Local run: `npm run dev` (builds, then serves `pkg/` on port 8000). Needs a WebGPU-capable browser.
 - Diagrams: `npm run diagrams` to render, `npm run check:diagrams` to verify (needs Graphviz on PATH — `brew install graphviz`).
 - Never bypass the hook with `--no-verify` unless explicitly asked.
@@ -58,7 +59,8 @@ cargo check --target wasm32-unknown-unknown
 - Music (pure): `src/music.rs` (`MusicEngine` + the `GalaxyState` snapshot → a `DroneTarget` pad and a stream of `NoteEvent`s; maps the visuals to a cosmic ambient soundscape; no web/audio deps, so it unit-tests natively like `scenarios.rs`).
 - Audio (Web Audio): `src/audio.rs` (`AudioEngine` — the synthesized node graph: a detuned drone pad + per-note oscillators, a procedurally-generated reverb impulse, a feedback delay, and a compressor, plus a look-ahead scheduler on the AudioContext clock. No sample files. Owned by `AppState` as an `Option`, built lazily on first enable so the context starts inside the user gesture).
 - Shaders: `src/shaders/update.wgsl` (compute: tiled all-pairs self-gravity + halo + leapfrog integration, in three kernels — `drift_half`, `compute_accel`, `kick_drift_half` — plus `reduce_core`, the workgroup tree-reduction of windowed central mass + radial flux for the audio), `src/shaders/render.wgsl` (vertex: project + colour — spiral by live radius, merger by `vel.w` galaxy tint; fragment: brightness/glow), `src/shaders/post.wgsl` (fullscreen bright-pass / separable blur / tonemap composite).
-- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario and halo-model dropdowns, body-count / speed / disk-temp / gravity / halo / star-size / volume sliders, mute button, restart + draggable panel toggle that also closes on an outside click or a scenario switch; the soundscape auto-starts on the visitor's first interaction), `static/styles.css`.
+- Frontend: `static/index.html` (WebGPU support check, loading/error UI, WASM bootstrap, control wiring: scenario and halo-model dropdowns, body-count / speed / disk-temp / gravity / halo / star-size / volume sliders, mute button, restart + draggable panel toggle that also closes on an outside click or a scenario switch; the soundscape auto-starts on the visitor's first interaction; registers the service worker), `static/styles.css`.
+- PWA: `static/site.webmanifest` (+ an identical `manifest.json`), `static/sw.js` (the service worker: precaches the app shell, network-first navigation, stale-while-revalidate assets; `__CACHE_BUST__` → per-deploy cache name), and `static/icons/*.png` (generated from `assets/icons/*.svg` by `scripts/gen-icons.mjs`). The app installs to the home screen and launches offline.
 
 ## Tests
 
