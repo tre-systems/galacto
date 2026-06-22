@@ -157,21 +157,47 @@ fn circular_velocity(r: f32, halo_kind: HaloKind) -> f32 {
     (v_bulge2 + v_disk2 + halo_velocity_sq(r, halo_kind)).sqrt()
 }
 
-/// The halo's contribution to circular velocity squared at radius `r`. This must
-/// match the force applied in `update.wgsl` for each profile, so the seeded disk
-/// is born in equilibrium with whichever halo is active.
+/// The halo's contribution to circular velocity squared at radius `r`, for the
+/// seed-time default halo strength (`HALO_V0`). Used when seeding disks in
+/// equilibrium.
 fn halo_velocity_sq(r: f32, halo_kind: HaloKind) -> f32 {
+    halo_velocity_sq_at(r, HALO_V0, halo_kind)
+}
+
+/// Halo circular velocity squared at `r` for an arbitrary characteristic speed
+/// `halo_v0` (the live, slider-driven value). Must match the force in
+/// `update.wgsl` for each profile.
+fn halo_velocity_sq_at(r: f32, halo_v0: f32, halo_kind: HaloKind) -> f32 {
     match halo_kind {
         // Logarithmic: v_halo² = v0²·r² / (r² + rc²).
-        HaloKind::Logarithmic => HALO_V0 * HALO_V0 * r * r / (r * r + HALO_RC * HALO_RC),
+        HaloKind::Logarithmic => halo_v0 * halo_v0 * r * r / (r * r + HALO_RC * HALO_RC),
         // NFW: v_halo² = v0²·[ln(1+x) − x/(1+x)] / (x·NFW_G_MAX), with x = r/rs and
         // rs = NFW_RS; normalised so v0 is the halo's peak circular speed.
         HaloKind::Nfw => {
             let x = r / NFW_RS;
             let mass_factor = (1.0 + x).ln() - x / (1.0 + x);
-            HALO_V0 * HALO_V0 * mass_factor / (x * NFW_G_MAX)
+            halo_v0 * halo_v0 * mass_factor / (x * NFW_G_MAX)
         }
     }
+}
+
+/// Decompose the disk circular velocity at radius `r` into its [bulge, disk, halo]
+/// components (sim velocity units), under the *live* gravity and halo strength (the
+/// gravity / halo sliders). The quadrature sum of the three is the total circular
+/// speed; drives the rotation-curve overlay. Same bulge + enclosed-disk + halo
+/// model as [`circular_velocity`], so the curve reflects the same physics the disk
+/// was built on.
+pub fn rotation_components(r: f32, gravity: f32, halo_v0: f32, halo_kind: HaloKind) -> [f32; 3] {
+    let r = r.max(1.0);
+    let r2 = r * r;
+    let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
+    let v_bulge2 = gravity * BULGE_MASS * r2 / (r2 + eps2).powf(1.5);
+    let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
+    let x = r / DISK_RD;
+    let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
+    let v_disk2 = gravity * m_enc / r;
+    let v_halo2 = halo_velocity_sq_at(r, halo_v0, halo_kind);
+    [v_bulge2.sqrt(), v_disk2.sqrt(), v_halo2.sqrt()]
 }
 
 /// Standard-normal sample (Box–Muller).

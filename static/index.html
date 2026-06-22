@@ -188,6 +188,16 @@
               title="Show the dark-matter halo as a glowing cloud"
             />
           </div>
+          <div class="control">
+            <label for="rc-toggle">Curve</label>
+            <input
+              id="rc-toggle"
+              type="checkbox"
+              class="switch"
+              role="switch"
+              title="Show the rotation curve — disk + bulge + dark-matter halo, in km/s vs kpc"
+            />
+          </div>
         </div>
         <div class="control">
           <label for="size-slider">Star size</label>
@@ -225,6 +235,23 @@
             Support this project
           </a>
         </div>
+      </div>
+    </div>
+
+    <!-- Rotation-curve overlay (toggled from the Dark matter halo group). Shows the
+         circular speed v(r) decomposed into disk + bulge + halo — the flat outer
+         curve is the signature of the dark-matter halo. -->
+    <div id="rotcurve" hidden aria-hidden="true">
+      <div class="rc-head">
+        <span class="rc-title">Rotation curve</span>
+        <span id="rc-time" class="rc-time">0 Myr</span>
+      </div>
+      <canvas id="rc-canvas"></canvas>
+      <div class="rc-legend">
+        <span class="rc-k rc-total">Total</span>
+        <span class="rc-k rc-disk">Disk</span>
+        <span class="rc-k rc-bulge">Bulge</span>
+        <span class="rc-k rc-halo">Halo</span>
       </div>
     </div>
 
@@ -270,6 +297,7 @@
           setupHaloControl(mod);
           setupHaloProfileControl(mod);
           setupHaloVisibility(mod);
+          setupRotationCurve(mod);
           setupStarSizeControl(mod);
           setupVolumeControl(mod);
           setupMuteButton(mod);
@@ -332,6 +360,133 @@
         const apply = () => mod.set_halo_visible(toggle.checked);
         toggle.addEventListener("change", apply);
         apply();
+      }
+
+      // Rotation-curve overlay: a small chart of circular speed v(r) decomposed into
+      // disk + bulge + dark-matter halo (km/s vs kpc), from the WASM in physical
+      // units. The flat outer curve held up by the halo is the classic evidence for
+      // dark matter — drag the Halo/Gravity sliders and watch it respond. Off by
+      // default (the toggle lives in the Dark matter halo group); a clock shows the
+      // elapsed simulated time. All physics comes from the sim — JS only draws.
+      function setupRotationCurve(mod) {
+        const wrap = document.getElementById("rotcurve");
+        const toggle = document.getElementById("rc-toggle");
+        const canvas = document.getElementById("rc-canvas");
+        const timeEl = document.getElementById("rc-time");
+        const ctx = canvas.getContext("2d");
+        const W = 240, H = 150;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.style.width = W + "px";
+        canvas.style.height = H + "px";
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.scale(dpr, dpr);
+        const COL = {
+          total: "#ffffff",
+          disk: "#7aa2f7",
+          bulge: "#ffd479",
+          halo: "#b18cff",
+          axis: "rgba(199,210,254,0.4)",
+          grid: "rgba(255,255,255,0.07)",
+        };
+
+        const draw = () => {
+          const flat = mod.rotation_curve(56);
+          if (!flat || flat.length < 10) return;
+          const n = flat.length / 5;
+          const R = [], comp = { bulge: [], disk: [], halo: [], total: [] };
+          let maxR = 0, maxV = 0;
+          for (let i = 0; i < n; i++) {
+            const o = i * 5;
+            R.push(flat[o]);
+            comp.bulge.push(flat[o + 1]);
+            comp.disk.push(flat[o + 2]);
+            comp.halo.push(flat[o + 3]);
+            comp.total.push(flat[o + 4]);
+            if (flat[o] > maxR) maxR = flat[o];
+            if (flat[o + 4] > maxV) maxV = flat[o + 4];
+          }
+          const padL = 32, padR = 8, padT = 8, padB = 18;
+          const pw = W - padL - padR, ph = H - padT - padB;
+          const vStep = maxV > 360 ? 200 : maxV > 180 ? 100 : 50;
+          const vMax = Math.max(vStep, Math.ceil((maxV * 1.1) / vStep) * vStep);
+          const X = (r) => padL + (r / maxR) * pw;
+          const Y = (v) => padT + ph - (v / vMax) * ph;
+          ctx.clearRect(0, 0, W, H);
+
+          // y gridlines + km/s labels
+          ctx.font = "9px system-ui, sans-serif";
+          ctx.textBaseline = "middle";
+          ctx.textAlign = "right";
+          for (let v = 0; v <= vMax + 0.5; v += vStep) {
+            const y = Y(v);
+            ctx.strokeStyle = COL.grid;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padL, y);
+            ctx.lineTo(W - padR, y);
+            ctx.stroke();
+            ctx.fillStyle = COL.axis;
+            ctx.fillText(String(v), padL - 4, y);
+          }
+          // x label
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+          ctx.fillStyle = COL.axis;
+          ctx.fillText("radius (kpc)", padL + pw / 2, H);
+          // y unit
+          ctx.save();
+          ctx.translate(8, padT + ph / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = "top";
+          ctx.fillText("km/s", 0, 0);
+          ctx.restore();
+
+          const line = (arr, color, dash, width) => {
+            ctx.beginPath();
+            ctx.setLineDash(dash);
+            ctx.lineWidth = width;
+            ctx.strokeStyle = color;
+            for (let i = 0; i < n; i++) {
+              const x = X(R[i]), y = Y(arr[i]);
+              i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            }
+            ctx.stroke();
+          };
+          line(comp.bulge, COL.bulge, [3, 2], 1);
+          line(comp.disk, COL.disk, [3, 2], 1);
+          line(comp.halo, COL.halo, [3, 2], 1);
+          line(comp.total, COL.total, [], 2);
+          ctx.setLineDash([]);
+        };
+
+        let rafId = null;
+        const tick = () => {
+          const myr = mod.elapsed_myr();
+          timeEl.textContent =
+            myr < 1000 ? Math.round(myr) + " Myr" : (myr / 1000).toFixed(2) + " Gyr";
+          rafId = requestAnimationFrame(tick);
+        };
+        const setShown = (on) => {
+          wrap.hidden = !on;
+          if (on) {
+            draw();
+            if (rafId === null) tick();
+          } else if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        };
+        toggle.addEventListener("change", () => setShown(toggle.checked));
+
+        // The curve depends on the live gravity, halo strength, and halo model —
+        // redraw when those change (only while it's on screen).
+        const redraw = () => {
+          if (!wrap.hidden) draw();
+        };
+        document.getElementById("gravity-slider").addEventListener("input", redraw);
+        document.getElementById("halo-slider").addEventListener("input", redraw);
+        document.getElementById("halo-select").addEventListener("change", redraw);
       }
 
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale

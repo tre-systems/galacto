@@ -9,6 +9,7 @@ mod music;
 mod postprocess;
 mod scenarios;
 mod simulation;
+mod units;
 mod utils;
 
 use audio::AudioEngine;
@@ -63,6 +64,9 @@ pub struct AppState {
     last_time: f32,
     accumulator: f32,
     steps_this_frame: u32,
+    /// Total simulated time since the last (re)seed, in sim time units (each step
+    /// advances `FIXED_DT`). Surfaced as a physical clock via `units`.
+    sim_time: f32,
     /// Clamped real seconds elapsed last frame, reused for frame-rate-independent
     /// audio smoothing.
     frame_dt: f32,
@@ -131,6 +135,7 @@ impl AppState {
             last_time: 0.0,
             accumulator: 0.0,
             steps_this_frame: 0,
+            sim_time: 0.0,
             frame_dt: simulation::FIXED_DT,
             speed: 1.0,
             scenario: Scenario::GrandDesign,
@@ -194,6 +199,9 @@ impl AppState {
             self.accumulator -= steps as f32 * simulation::FIXED_DT;
         }
         self.steps_this_frame = steps;
+        // Each scheduled step advances the physics by FIXED_DT, regardless of the
+        // speed multiplier (which only changes how many steps run per real second).
+        self.sim_time += steps as f32 * simulation::FIXED_DT;
     }
 
     pub fn render(&mut self) -> Result<(), wasm_bindgen::JsValue> {
@@ -332,6 +340,7 @@ impl AppState {
     }
 
     fn reseed(&mut self) {
+        self.sim_time = 0.0; // a fresh galaxy restarts the clock
         self.simulation.reseed(
             &self.graphics.queue,
             Reseed {
@@ -630,6 +639,50 @@ pub fn set_halo_visible(visible: bool) {
             app.borrow_mut().set_halo_visible(visible);
         }
     });
+}
+
+/// Sample the disk's rotation curve under the current live gravity/halo, in
+/// physical units, for the rotation-curve overlay. Returns a flat array of
+/// `samples` groups of five: `[radius_kpc, v_bulge, v_disk, v_halo, v_total]`, the
+/// velocities in km/s. The page recomputes it whenever the gravity/halo controls
+/// change. Empty until ready.
+#[wasm_bindgen]
+pub fn rotation_curve(samples: u32) -> Vec<f32> {
+    let n = samples.max(2);
+    APP_STATE.with(|cell| {
+        let borrow = cell.borrow();
+        let Some(app) = borrow.as_ref() else {
+            return Vec::new();
+        };
+        let app = app.borrow();
+        // Sample out past the disk edge so the flat, halo-supported part is visible.
+        let r_max = 260.0_f32;
+        let mut out = Vec::with_capacity(n as usize * 5);
+        for i in 0..n {
+            let r = 1.0 + (r_max - 1.0) * (i as f32 / (n - 1) as f32);
+            let [vb, vd, vh] =
+                scenarios::rotation_components(r, app.gravity, app.halo_v0, app.halo_kind);
+            let vt = (vb * vb + vd * vd + vh * vh).sqrt();
+            out.push(r * units::KPC_PER_UNIT);
+            out.push(vb * units::KMS_PER_UNIT);
+            out.push(vd * units::KMS_PER_UNIT);
+            out.push(vh * units::KMS_PER_UNIT);
+            out.push(vt * units::KMS_PER_UNIT);
+        }
+        out
+    })
+}
+
+/// Simulated time since the last (re)seed, in megayears — for the on-screen clock.
+/// 0 until ready.
+#[wasm_bindgen]
+pub fn elapsed_myr() -> f32 {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|app| app.borrow().sim_time * units::MYR_PER_UNIT)
+            .unwrap_or(0.0)
+    })
 }
 
 /// Toggle the generative soundscape on or off (the page's 🔊 button). The first

@@ -535,3 +535,85 @@ body {
 #update-dismiss:hover {
   opacity: 1;
 }
+
+/* Rotation-curve overlay — a small physics chart, bottom-right, in the glass style.
+   Toggled from the Dark matter halo group; off by default to keep the view clean. */
+#rotcurve {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(10, 14, 28, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #c7d2fe;
+  z-index: 150;
+  user-select: none;
+}
+
+#rotcurve[hidden] {
+  display: none;
+}
+
+.rc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rc-title {
+  opacity: 0.8;
+}
+
+.rc-time {
+  color: #fff;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
+#rc-canvas {
+  display: block;
+}
+
+.rc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.rc-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rc-k::before {
+  content: "";
+  width: 12px;
+  border-top: 2px solid currentColor;
+}
+
+.rc-total {
+  color: #ffffff;
+}
+.rc-disk {
+  color: #7aa2f7;
+}
+.rc-bulge {
+  color: #ffd479;
+}
+.rc-halo {
+  color: #b18cff;
+}
