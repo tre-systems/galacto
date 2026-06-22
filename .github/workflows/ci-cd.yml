@@ -78,6 +78,14 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Wires Sentry into the production build: error monitoring and the
+          # in-app feedback button (which stays hidden unless a DSN is present).
+          # The DSN is a public client key; it ships in the browser bundle.
+          # Set the SENTRY_DSN repo secret to activate it.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: production
+          SENTRY_RELEASE: ${{ github.sha }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
