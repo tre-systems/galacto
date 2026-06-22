@@ -926,7 +926,7 @@
 
       // Reveal the "update available" toast and wire its Reload button to take
       // the waiting service worker live (which triggers the reload below).
-      function showUpdateToast(applyUpdate) {
+      function showUpdateToast(reg) {
         const toast = document.getElementById("update-toast");
         if (!toast || toast.dataset.shown === "1") return; // show at most once
         toast.dataset.shown = "1";
@@ -939,7 +939,15 @@
           (e) => {
             e.currentTarget.disabled = true;
             e.currentTarget.textContent = "Updating…";
-            applyUpdate();
+            // Message the *current* waiting worker (a worker captured when the
+            // prompt first appeared may have gone redundant if another deploy
+            // landed since) so it calls skipWaiting → controllerchange → reload.
+            if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            // Safety net: if control never changes hands (no waiting worker, or it
+            // went redundant), reload anyway rather than hang on "Updating…".
+            // Navigation is network-first and assets are ?v=-versioned, so a plain
+            // reload still loads the fresh app.
+            setTimeout(() => window.location.reload(), 2500);
           },
           { once: true },
         );
@@ -961,12 +969,8 @@
               "./sw.js?v=__CACHE_BUST__",
             );
 
-            const promptFor = (worker) => {
-              if (worker) showUpdateToast(() => worker.postMessage({ type: "SKIP_WAITING" }));
-            };
-
             // A new version already finished installing and is waiting.
-            if (reg.waiting && navigator.serviceWorker.controller) promptFor(reg.waiting);
+            if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg);
 
             // A new version arrives while the page is open.
             reg.addEventListener("updatefound", () => {
@@ -974,7 +978,7 @@
               if (!installing) return;
               installing.addEventListener("statechange", () => {
                 if (installing.state === "installed" && navigator.serviceWorker.controller) {
-                  promptFor(reg.waiting || installing);
+                  showUpdateToast(reg);
                 }
               });
             });
