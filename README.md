@@ -120,6 +120,13 @@ Everything derives from a fixed RNG seed, so a given scenario and temperature al
 
 ## Documentation
 
+Two illustrated pages for readers, live on the site:
+
+- [**The Physics of Galacto**](https://galacto.org/physics.html) — the science: self-gravity, the leapfrog, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction — plus an honest account of what's real vs. illustrative
+- [**Building Galacto**](https://galacto.org/engineering.html) — the engineering: a real-time GPU N-body in Rust + WebGPU, from the tiled all-pairs gravity kernel to the leapfrog compute passes and instanced rendering
+
+For contributors:
+
 - [Architecture](docs/ARCHITECTURE.md) — how the code is organized and how one frame is produced
 - [Diagrams](docs/diagrams/README.md) — Graphviz system-overview, frame-loop, and GPU-buffer diagrams
 - [Backlog](BACKLOG.md) — ordered next work and known constraints
