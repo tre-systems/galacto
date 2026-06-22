@@ -111,6 +111,15 @@
             <option value="5">Galaxy group</option>
             <option value="6" selected>Grand-design (M51)</option>
           </select>
+          <button
+            id="restart-btn"
+            type="button"
+            class="restart-icon"
+            aria-label="Restart scenario"
+            title="Restart"
+          >
+            ↻
+          </button>
         </div>
         <div class="control">
           <label for="count-slider">Bodies</label>
@@ -186,22 +195,23 @@
             🔊
           </button>
         </div>
-        <button id="restart-btn" type="button" class="restart">↻ Restart</button>
-        <!-- Opens the Sentry user-feedback form. Hidden until sentry.js wires it
-             up (so it never shows a dead button when Sentry isn't configured). -->
-        <button id="feedback-btn" type="button" class="feedback" hidden>
-          <span aria-hidden="true">💬</span>
-          Send feedback
-        </button>
-        <a
-          id="kofi"
-          href="https://ko-fi.com/N4N31DPNUS"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span aria-hidden="true">♥</span>
-          Support this project
-        </a>
+        <div class="panel-footer">
+          <!-- Opens the Sentry user-feedback form. Hidden until sentry.js wires it
+               up (so it never shows a dead button when Sentry isn't configured). -->
+          <button id="feedback-btn" type="button" class="feedback" hidden>
+            <span aria-hidden="true">💬</span>
+            Feedback
+          </button>
+          <a
+            id="kofi"
+            href="https://ko-fi.com/N4N31DPNUS"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span aria-hidden="true">♥</span>
+            Support this project
+          </a>
+        </div>
       </div>
     </div>
 

@@ -81,12 +81,74 @@ body {
   font-family: monospace;
 }
 
-/* On-screen controls */
+/* On-screen controls — a fixed cog button at the top-left that the panel hangs
+   off. The chrome lives on the body (not the container), so the cog holds its exact
+   place whether the panel is open or closed; it stays put when dragged too. */
 #controls {
   position: fixed;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
+  top: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  user-select: none;
+  z-index: 100;
+}
+
+/* The cog: always the same discreet circular handle (and the drag grip), so it
+   never moves or changes when the panel opens or closes. */
+#controls-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(10, 14, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #c7d2fe;
+  font: inherit;
+  opacity: 0.85;
+  cursor: grab; /* the panel drags by this handle */
+  touch-action: none; /* let pointer-drag work on touch */
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+#controls-toggle:hover {
+  opacity: 1;
+}
+
+#controls-toggle:active {
+  cursor: grabbing;
+}
+
+/* Redundant next to the cog — kept in the DOM for assistive tech only. */
+#controls-label {
+  display: none;
+}
+
+#controls-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The cog is an inline SVG (not a font glyph) so it centres by geometry, with no
+   baseline/line-height offset — dead-centre in the circle. */
+#controls-icon svg {
+  display: block;
+}
+
+/* The panel body carries the glass chrome and sits below the cog when open. */
+#controls-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -99,82 +161,10 @@ body {
   font-size: 13px;
   letter-spacing: 0.02em;
   color: #c7d2fe;
-  user-select: none;
-  z-index: 100;
 }
 
-#controls-toggle {
-  appearance: none;
-  -webkit-appearance: none;
-  background: none;
-  border: none;
-  margin: 0;
-  padding: 2px 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.75;
-  cursor: grab; /* the panel drags by this handle */
-  touch-action: none; /* let pointer-drag work on touch */
-  user-select: none;
-}
-
-#controls-toggle:hover {
-  opacity: 1;
-}
-
-#controls-toggle:active {
-  cursor: grabbing;
-}
-
-#controls-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* The cog is an inline SVG (not a font glyph) so it centres by geometry, with no
-   baseline/line-height offset — dead-centre in the collapsed circle. */
-#controls-icon svg {
-  display: block;
-}
-
-#controls-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Collapsed: a discreet circular ⚙ button only — no panel chrome or body. */
-#controls.collapsed {
-  padding: 0;
-  background: none;
-  border-color: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-#controls.collapsed #controls-body,
-#controls.collapsed #controls-label {
+#controls.collapsed #controls-body {
   display: none;
-}
-
-#controls.collapsed #controls-toggle {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  justify-content: center; /* perfectly centre the cog (align-items is on the base) */
-  border-radius: 50%; /* a true circle, since width == height */
-  background: rgba(10, 14, 28, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  opacity: 0.85;
 }
 
 .control {
@@ -247,28 +237,41 @@ body {
   opacity: 0.6;
 }
 
-/* Restart button — re-seeds the current scenario */
-.restart {
+/* Restart — a compact icon button beside the scenario dropdown (re-seeds). */
+.restart-icon {
   appearance: none;
   -webkit-appearance: none;
-  align-self: center;
-  margin-top: 4px;
-  padding: 6px 20px;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   background: rgba(122, 162, 247, 0.18);
   color: #c7d2fe;
   border: 1px solid rgba(122, 162, 247, 0.5);
   border-radius: 8px;
   font: inherit;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 15px;
+  line-height: 1;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.restart:hover {
+.restart-icon:hover {
   background: rgba(122, 162, 247, 0.32);
   transform: translateY(-1px);
+}
+
+/* Footer — feedback + support share one centred row (wrapping only if forced). */
+.panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 /* Feedback button — a quiet footer action that opens the Sentry feedback form.
@@ -305,13 +308,57 @@ body {
   outline: none;
 }
 
-/* Self-styled Ko-fi link — sits at the bottom of the controls panel */
+/* Sentry feedback widget — themed to match the app. These custom properties are
+   set on the widget's host element and inherit into its shadow DOM, overriding the
+   integration's defaults (deep-space dark + the galacto blue accent + panel font). */
+#sentry-feedback {
+  --font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  --foreground: #e6ecff;
+  --background: #0b0f22;
+  --accent-foreground: #0a0e1c;
+  --accent-background: #7aa2f7;
+  --border: 1px solid rgba(255, 255, 255, 0.14);
+  --border-radius: 14px;
+  --box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --outline: 1px auto #7aa2f7;
+  --success-color: #6ee7b7;
+  --error-color: #ff8a8a;
+
+  /* Dialog shell */
+  --dialog-background: #0b0f22;
+  --dialog-color: #e6ecff;
+  --dialog-border: 1px solid rgba(255, 255, 255, 0.14);
+  --dialog-border-radius: 16px;
+  --dialog-box-shadow: 0 16px 50px rgba(0, 0, 0, 0.55);
+
+  /* Inputs */
+  --input-color: #ffffff;
+  --input-border: 1px solid rgba(255, 255, 255, 0.18);
+  --input-border-radius: 8px;
+  --input-placeholder-color: rgba(199, 210, 254, 0.5);
+  --input-focus-outline: 1px solid #7aa2f7;
+
+  /* Submit (primary) button — the galacto blue */
+  --button-primary-background: #7aa2f7;
+  --button-primary-hover-background: #93b4ff;
+  --button-primary-color: #0a0e1c;
+  --button-primary-hover-color: #0a0e1c;
+  --button-primary-border: 1px solid rgba(122, 162, 247, 0.6);
+  --button-primary-border-radius: 8px;
+
+  /* Cancel / secondary button */
+  --button-background: rgba(255, 255, 255, 0.06);
+  --button-hover-background: rgba(255, 255, 255, 0.12);
+  --button-color: #c7d2fe;
+  --button-border: 1px solid rgba(255, 255, 255, 0.16);
+  --button-border-radius: 8px;
+}
+
+/* Self-styled Ko-fi link — sits in the panel footer beside the feedback button */
 #kofi {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  align-self: center;
-  margin-top: 2px;
   padding: 6px 13px;
   border: 1px solid rgba(116, 189, 255, 0.28);
   border-radius: 999px;
