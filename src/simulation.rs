@@ -163,6 +163,7 @@ struct ReduceState {
 pub struct Reseed {
     pub scenario: Scenario,
     pub temp: f32,
+    pub gas_fraction: f32,
     pub count: u32,
     pub gravity: f32,
     pub halo_v0: f32,
@@ -687,7 +688,9 @@ impl Simulation {
         // the active halo, so seeding takes `halo_kind` too — born in equilibrium.
         self.count = clamp_particle_count(r.count);
         self.has_gas = r.scenario.has_gas();
-        let particles = r.scenario.generate(self.count, r.temp, r.halo_kind);
+        let particles = r
+            .scenario
+            .generate_with(self.count, r.temp, r.gas_fraction, r.halo_kind);
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
         self.set_physics(
             queue,

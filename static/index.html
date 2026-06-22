@@ -160,6 +160,18 @@
           <span id="temp-readout">1.30</span>
         </div>
         <div class="control">
+          <label for="gas-slider">Gas</label>
+          <input
+            id="gas-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="48"
+            step="1"
+          />
+          <span id="gas-readout">24%</span>
+        </div>
+        <div class="control">
           <label for="gravity-slider">Gravity</label>
           <input id="gravity-slider" type="range" min="0" max="100" value="50" step="1" />
           <span id="gravity-readout">1.0×</span>
@@ -293,6 +305,7 @@
           setupParticleCountControl(mod);
           setupSpeedControl(mod);
           setupTempControl(mod);
+          setupGasFractionControl(mod);
           setupGravityControl(mod);
           setupHaloControl(mod);
           setupHaloProfileControl(mod);
@@ -497,12 +510,14 @@
         const readout = document.getElementById("speed-readout");
         const MIN = 0.25;
         const MAX = 8;
+        // Megayears of simulated time per real second at the current speed: at ×1
+        // the sim advances one time-unit per real second (see the accumulator).
+        const myrPerSecAt1 = mod.myr_per_unit_time();
         const apply = () => {
           const t = slider.value / 100;
           const speed = MIN * Math.pow(MAX / MIN, t);
           mod.set_speed(speed);
-          readout.textContent =
-            (speed < 9.95 ? speed.toFixed(1) : Math.round(speed)) + "×";
+          readout.textContent = Math.round(speed * myrPerSecAt1) + " Myr/s";
         };
         slider.addEventListener("input", apply);
         apply();
@@ -609,7 +624,9 @@
           "count-slider":
             "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so the top end is heavy. Re-seeds.",
           "speed-slider":
-            "How fast the simulation runs (0.25×–8×). It doesn't change the physics — a fixed timestep keeps it frame-rate independent — only how quickly the structure develops.",
+            "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — only how quickly the structure develops.",
+          "gas-slider":
+            "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms. Re-seeds.",
           "temp-slider":
             "Disk stability, the Toomre Q parameter. Below ~1 the disk fragments into clumps; ~1–2 it swing-amplifies into spiral arms; above ~2 it stays a smooth disk. Applied on Restart.",
           "gravity-slider":
@@ -708,6 +725,22 @@
         apply();
       }
 
+      // Gas-fraction slider (0–100) → 0 … 50% of the disk seeded as cold gas. A
+      // seed-time property like the body count: the readout tracks the drag, and
+      // releasing re-seeds (so a drag doesn't re-seed on every tick).
+      function setupGasFractionControl(mod) {
+        const slider = document.getElementById("gas-slider");
+        const readout = document.getElementById("gas-readout");
+        const MAX = 0.5; // up to 50% gas
+        const fracFor = () => (slider.value / 100) * MAX;
+        const show = () => {
+          readout.textContent = Math.round(fracFor() * 100) + "%";
+        };
+        slider.addEventListener("input", show);
+        slider.addEventListener("change", () => mod.set_gas_fraction(fracFor()));
+        show();
+      }
+
       // Gravity slider (0–100) → log scale (0.25× … 4×). Live: rewrites the params
       // uniform, so the running galaxy collapses or disperses immediately.
       function setupGravityControl(mod) {
@@ -733,7 +766,9 @@
         const apply = () => {
           const halo = (slider.value / 50) * DEFAULT;
           mod.set_halo(halo);
-          readout.textContent = (halo / DEFAULT).toFixed(2) + "×";
+          // Characteristic circular speed in km/s (220 km/s at ×1 — the units.rs
+          // anchor): the flat outer rotation speed the halo holds up.
+          readout.textContent = Math.round(halo * (220 / DEFAULT)) + " km/s";
         };
         slider.addEventListener("input", apply);
         apply();

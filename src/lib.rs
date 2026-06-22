@@ -75,6 +75,9 @@ pub struct AppState {
     /// Current scenario and the disk temperature staged for the next (re)seed.
     scenario: Scenario,
     disk_temp: f32,
+    /// Fraction of the disk seeded as gas, staged for the next (re)seed (the
+    /// gas-fraction slider). Only the disk scenarios use it.
+    gas_fraction: f32,
     /// Active body count, set by the body-count slider and carried into every
     /// reseed (changing it re-seeds the scenario at the new resolution).
     particle_count: u32,
@@ -140,6 +143,7 @@ impl AppState {
             speed: 1.0,
             scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
+            gas_fraction: scenarios::DEFAULT_GAS_FRACTION,
             particle_count: simulation::NUM_PARTICLES,
             halo_kind: HaloKind::Logarithmic,
             halo_visible: false,
@@ -327,6 +331,14 @@ impl AppState {
         self.disk_temp = temp;
     }
 
+    /// Set the disk's gas fraction (the gas-fraction slider) and re-seed, so the
+    /// blue star-forming component grows or thins. A seed-time property, like the
+    /// body count.
+    pub fn set_gas_fraction(&mut self, fraction: f32) {
+        self.gas_fraction = fraction.clamp(0.0, 1.0);
+        self.reseed();
+    }
+
     /// Switch scenario (the dropdown) and re-seed from its initial conditions.
     pub fn set_scenario(&mut self, id: u32) {
         self.scenario = Scenario::from_id(id);
@@ -346,6 +358,7 @@ impl AppState {
             Reseed {
                 scenario: self.scenario,
                 temp: self.disk_temp,
+                gas_fraction: self.gas_fraction,
                 count: self.particle_count,
                 gravity: self.gravity,
                 halo_v0: self.halo_v0,
@@ -562,6 +575,17 @@ pub fn set_disk_temperature(temp: f32) {
     });
 }
 
+/// Set the disk's gas fraction (the gas-fraction slider, 0..1) and re-seed the
+/// current scenario so the blue star-forming gas grows or thins. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_gas_fraction(fraction: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_gas_fraction(fraction);
+        }
+    });
+}
+
 /// Switch the initial-condition scenario (0 = spiral disk, 1–5 = the multi-galaxy
 /// setups), re-seeding from its initial conditions. Called by the scenario dropdown.
 #[wasm_bindgen]
@@ -671,6 +695,14 @@ pub fn rotation_curve(samples: u32) -> Vec<f32> {
         }
         out
     })
+}
+
+/// Megayears of simulated time per simulation time-unit. At ×1 speed the sim
+/// advances one time-unit per real second, so the speed slider reads `speed ×
+/// this` as Myr/s. A fixed display constant.
+#[wasm_bindgen]
+pub fn myr_per_unit_time() -> f32 {
+    units::MYR_PER_UNIT
 }
 
 /// Simulated time since the last (re)seed, in megayears — for the on-screen clock.

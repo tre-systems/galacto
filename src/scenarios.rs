@@ -52,11 +52,11 @@ const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 const DISP_FRAC: f32 = 0.0277; // merger-disk σ as a fraction of v_c, per unit Q
 pub const DEFAULT_TEMP: f32 = 1.3; // default Toomre Q — the spiral sweet spot
 
-/// Fraction of the spiral disk seeded as dissipative gas (tagged via `vel.w`). The
-/// gas cools onto the plane (see the kick kernel) and concentrates in the spiral
-/// arms — the cold, blue, star-forming component over the older stellar disk.
-/// ~20% is galaxy-plausible.
-const GAS_FRACTION: f32 = 0.24;
+/// Default fraction of the spiral disk seeded as dissipative gas (tagged via
+/// `vel.w`). The gas cools onto the plane (see the kick kernel) and concentrates in
+/// the spiral arms — the cold, blue, star-forming component over the older stellar
+/// disk. ~20% is galaxy-plausible; the gas-fraction slider overrides it live.
+pub const DEFAULT_GAS_FRACTION: f32 = 0.24;
 /// No gas inside this radius: the bulge-dominated centre is gas-poor, so it stays
 /// warm gold rather than being speckled blue (sharpening the arm/centre contrast).
 const GAS_R_MIN: f32 = 22.0;
@@ -157,15 +157,29 @@ impl Scenario {
     /// piling on mass, so the dynamics and timescales stay put. (Core/bulge masses
     /// are fixed point masses and don't scale.)
     pub fn generate(self, count: u32, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
+        self.generate_with(count, temp, DEFAULT_GAS_FRACTION, halo_kind)
+    }
+
+    /// As [`generate`], but with an explicit gas fraction (the gas-fraction slider).
+    /// Only the disk scenarios use it; the gas-free mergers ignore it.
+    pub fn generate_with(
+        self,
+        count: u32,
+        temp: f32,
+        gas_fraction: f32,
+        halo_kind: HaloKind,
+    ) -> Vec<Particle> {
         let star_mass = STAR_MASS * NUM_PARTICLES as f32 / count as f32;
         match self {
-            Scenario::Spiral => generate_disk(count, temp, halo_kind, star_mass),
+            Scenario::Spiral => generate_disk(count, temp, gas_fraction, halo_kind, star_mass),
             Scenario::Merger => generate_merger(count, temp, star_mass),
             Scenario::HeadOn => generate_head_on(count, temp, star_mass),
             Scenario::Retrograde => generate_retrograde(count, temp, star_mass),
             Scenario::MinorMerger => generate_minor(count, temp, star_mass),
             Scenario::Group => generate_group(count, temp, star_mass),
-            Scenario::GrandDesign => generate_grand_design(count, temp, halo_kind, star_mass),
+            Scenario::GrandDesign => {
+                generate_grand_design(count, temp, gas_fraction, halo_kind, star_mass)
+            }
         }
     }
 }
@@ -273,10 +287,24 @@ fn push_disk_star(out: &mut Vec<Particle>, s: &DiskStar, star_mass: f32, rng: &m
 
 /// The spiral-disk scenario: one self-gravitating exponential disk at the origin,
 /// balanced against the global halo, which swing-amplifies into spiral arms.
-fn generate_disk(count: u32, temp: f32, halo_kind: HaloKind, star_mass: f32) -> Vec<Particle> {
+fn generate_disk(
+    count: u32,
+    temp: f32,
+    gas_fraction: f32,
+    halo_kind: HaloKind,
+    star_mass: f32,
+) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
     let mut particles = Vec::with_capacity(count as usize);
-    seed_spiral_disk(&mut particles, count, temp, halo_kind, star_mass, &mut rng);
+    seed_spiral_disk(
+        &mut particles,
+        count,
+        temp,
+        gas_fraction,
+        halo_kind,
+        star_mass,
+        &mut rng,
+    );
     particles
 }
 
@@ -290,6 +318,7 @@ fn seed_spiral_disk(
     out: &mut Vec<Particle>,
     count: u32,
     temp: f32,
+    gas_fraction: f32,
     halo_kind: HaloKind,
     star_mass: f32,
     rng: &mut StdRng,
@@ -313,7 +342,7 @@ fn seed_spiral_disk(
         // render shader draws it blue. Stars keep vel.w = 0 (coloured by radius).
         // The gas-poor inner bulge stays gas-free, so the centre reads warm gold
         // against the blue, star-forming arms (the contrast of a real spiral).
-        let is_gas = r > GAS_R_MIN && rng.random_range(0.0_f32..1.0) < GAS_FRACTION;
+        let is_gas = r > GAS_R_MIN && rng.random_range(0.0_f32..1.0) < gas_fraction;
         push_disk_star(
             out,
             &DiskStar {
@@ -557,6 +586,7 @@ fn generate_group(count: u32, temp: f32, star_mass: f32) -> Vec<Particle> {
 fn generate_grand_design(
     count: u32,
     temp: f32,
+    gas_fraction: f32,
     halo_kind: HaloKind,
     star_mass: f32,
 ) -> Vec<Particle> {
@@ -567,6 +597,7 @@ fn generate_grand_design(
         &mut particles,
         count - companion,
         temp,
+        gas_fraction,
         halo_kind,
         star_mass,
         &mut rng,
