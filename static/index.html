@@ -512,14 +512,18 @@
         };
         toggle.addEventListener("change", () => setShown(toggle.checked));
 
-        // The curve depends on the live gravity, halo strength, and halo model —
-        // redraw when those change (only while it's on screen).
+        // The curve depends on the live gravity, halo strength/size/model, and the
+        // bulge fraction — redraw when any of those change (only while on screen).
+        // (Bulge re-seeds on release, but the staged value drives the curve live.)
         const redraw = () => {
           if (!wrap.hidden) draw();
         };
         document.getElementById("gravity-slider").addEventListener("input", redraw);
         document.getElementById("halo-slider").addEventListener("input", redraw);
+        document.getElementById("halo-size-slider").addEventListener("input", redraw);
         document.getElementById("halo-select").addEventListener("change", redraw);
+        // Bulge only commits (and the curve only changes) on release.
+        document.getElementById("bulge-slider").addEventListener("change", redraw);
       }
 
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale
