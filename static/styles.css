@@ -188,6 +188,61 @@ body {
   cursor: pointer;
 }
 
+/* A small "?" after each control label that reveals a description on click. Sits
+   in its own column right after the (fixed-width) label, so they line up. */
+.info {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: transparent;
+  color: #c7d2fe;
+  font: 700 10px/1 inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  transition: opacity 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.info:hover,
+.info:focus-visible,
+.info[aria-expanded="true"] {
+  opacity: 1;
+  border-color: #7aa2f7;
+  color: #fff;
+  outline: none;
+}
+
+/* Shared description popover (one element, repositioned under the clicked icon). */
+#info-popover {
+  position: fixed;
+  z-index: 30;
+  max-width: 240px;
+  padding: 9px 11px;
+  background: rgba(10, 14, 28, 0.92);
+  border: 1px solid rgba(122, 162, 247, 0.5);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  color: #e6ebff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+#info-popover[hidden] {
+  display: none;
+}
+
 .control select {
   width: 200px;
   padding: 4px 8px;

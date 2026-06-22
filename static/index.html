@@ -303,6 +303,7 @@
           setupMuteButton(mod);
           setupRestartButton(mod);
           setupAutoSound(mod);
+          setupInfoButtons();
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -596,6 +597,98 @@
         // Expose a collapse so other controls (e.g. switching simulation) can
         // tuck the panel away.
         return { collapse: () => setCollapsed(true) };
+      }
+
+      // A small "?" after each control's label that reveals a plain-language
+      // description on click. Generated from one map (rather than hand-marked-up
+      // rows) so the copy lives in one place; one shared popover is reused.
+      function setupInfoButtons() {
+        const INFO = {
+          "scenario-select":
+            "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
+          "count-slider":
+            "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so the top end is heavy. Re-seeds.",
+          "speed-slider":
+            "How fast the simulation runs (0.25×–8×). It doesn't change the physics — a fixed timestep keeps it frame-rate independent — only how quickly the structure develops.",
+          "temp-slider":
+            "Disk stability, the Toomre Q parameter. Below ~1 the disk fragments into clumps; ~1–2 it swing-amplifies into spiral arms; above ~2 it stays a smooth disk. Applied on Restart.",
+          "gravity-slider":
+            "Scales the strength of gravity (0.25×–4×) on the running sim. Turn it up and the galaxy collapses inward; down and it loosens and disperses.",
+          "halo-select":
+            "Dark-matter halo profile. Logarithmic gives a flat outer rotation curve and keeps everything bound; NFW (the cold-dark-matter shape) rises then falls and lets fast debris escape. Re-seeds.",
+          "halo-slider":
+            "How much dark matter (0–2×). It sets the outer rotation speed — turn on the Curve and watch it flatten as you raise this. It holds the disk together and shapes the tidal tails.",
+          "halo-show":
+            "Overlays the otherwise-invisible dark-matter halo as a soft violet cloud, sized to the active profile's scale radius.",
+          "rc-toggle":
+            "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic evidence for dark matter.",
+          "size-slider":
+            "On-screen size of each star. Purely visual — larger looks brighter and more diffuse, smaller is sharper — and never touches the physics.",
+          "volume-slider":
+            "Loudness of the generative soundscape, which is synthesized live and driven by the galaxy's own core dynamics.",
+        };
+
+        const pop = document.createElement("div");
+        pop.id = "info-popover";
+        pop.setAttribute("role", "tooltip");
+        pop.hidden = true;
+        document.getElementById("controls").appendChild(pop);
+
+        let openBtn = null;
+        const close = () => {
+          if (openBtn) openBtn.setAttribute("aria-expanded", "false");
+          openBtn = null;
+          pop.hidden = true;
+        };
+        const open = (btn) => {
+          if (openBtn && openBtn !== btn)
+            openBtn.setAttribute("aria-expanded", "false");
+          pop.textContent = btn.dataset.info;
+          pop.hidden = false;
+          btn.setAttribute("aria-expanded", "true");
+          openBtn = btn;
+          // Anchor under the icon, flip above if it would overflow, clamp to view.
+          pop.style.left = "0px";
+          pop.style.top = "0px";
+          const r = btn.getBoundingClientRect();
+          const pw = pop.offsetWidth;
+          const ph = pop.offsetHeight;
+          const left = Math.max(8, Math.min(r.left, window.innerWidth - pw - 8));
+          let top = r.bottom + 6;
+          if (top + ph > window.innerHeight - 8) top = r.top - ph - 6;
+          pop.style.left = left + "px";
+          pop.style.top = top + "px";
+        };
+
+        for (const [id, text] of Object.entries(INFO)) {
+          const ctrl = document.getElementById(id);
+          const row = ctrl && ctrl.closest(".control");
+          const label = row && row.querySelector("label");
+          if (!label) continue;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "info";
+          btn.textContent = "?";
+          btn.dataset.info = text;
+          btn.setAttribute("aria-expanded", "false");
+          btn.setAttribute("aria-label", "About " + label.textContent.trim());
+          label.insertAdjacentElement("afterend", btn);
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openBtn === btn ? close() : open(btn);
+          });
+        }
+
+        // Dismiss on any press that isn't another info button, on Escape, and on
+        // resize (the anchor would otherwise go stale).
+        document.addEventListener("pointerdown", (e) => {
+          const onInfo = e.target.closest && e.target.closest(".info");
+          if (!pop.hidden && !onInfo) close();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") close();
+        });
+        window.addEventListener("resize", close);
       }
 
       // Disk stability slider (0–100) → Toomre Q (0.5 … 3.0): ≲1 fragments into
