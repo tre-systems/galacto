@@ -43,6 +43,31 @@ struct Params {
 const TILE: u32 = 256u;
 var<workgroup> shared_pm: array<vec4<f32>, 256>;
 
+// Coulomb logarithm for dynamical friction (galaxy-merger scale).
+const LN_LAMBDA: f32 = 3.0;
+
+// Halo circular velocity squared at radius r — same profiles as the halo force
+// below, used to estimate the local halo density for dynamical friction.
+fn halo_vc_sq(r: f32) -> f32 {
+    if params.halo_kind == 0u {
+        // Logarithmic: v_c² = v0² r² / (r² + rc²).
+        return params.halo_v0_sq * r * r / (r * r + params.halo_rc2);
+    }
+    // NFW: v_c² = v0² [ln(1+x) − x/(1+x)] / (x · 0.2162), x = r/rs.
+    let rs = sqrt(params.halo_rc2);
+    let x = max(r / rs, 1e-4);
+    let mass_factor = log(1.0 + x) - x / (1.0 + x);
+    return params.halo_v0_sq * mass_factor / (x * 0.2162);
+}
+
+// Error function (Abramowitz & Stegun 7.1.26) for the dynamical-friction velocity
+// factor; WGSL has no builtin erf.
+fn erf_approx(x: f32) -> f32 {
+    let t = 1.0 / (1.0 + 0.3275911 * abs(x));
+    let y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x);
+    return sign(x) * y;
+}
+
 @compute @workgroup_size(256)
 fn compute_accel(
     @builtin(global_invocation_id) gid: vec3<u32>,
@@ -96,6 +121,31 @@ fn compute_accel(
         let mass_factor = log(1.0 + x) - x / (1.0 + x);
         let r3 = max(dot(pi, pi) * length(pi), 1e-3);
         a = a - params.halo_v0_sq * rs * mass_factor / (0.2162 * r3) * pi;
+    }
+
+    // Chandrasekhar dynamical friction against the halo: a drag on a body moving
+    // through the dark-matter background, ∝ the body's own mass. It visibly decays
+    // the orbits of the heavy galaxy cores — so mergers sink together and settle
+    // rather than sailing past — while being negligible for the light disk stars.
+    // The local halo density is dM/dr with M(r) = r·v_c,halo²/G.
+    let v_vec = particles[i].vel.xyz;
+    let speed = length(v_vec);
+    if speed > 1e-3 {
+        let r = max(length(pi), 1.0);
+        let d = max(0.05 * r, 1.0);
+        let r_in = max(r - d, 0.1);
+        let rho = max(
+            ((r + d) * halo_vc_sq(r + d) - r_in * halo_vc_sq(r_in))
+                / (params.g * 8.0 * 3.14159265 * r * r * d),
+            0.0,
+        );
+        // X = v / (√2 σ); with σ² = v0²/2, √2 σ = v0 = sqrt(halo_v0_sq).
+        let x = speed / max(sqrt(params.halo_v0_sq), 1e-3);
+        let f_x = max(erf_approx(x) - 2.0 * x / 1.7724539 * exp(-x * x), 0.0);
+        let m_self = particles[i].pos_mass.w;
+        let coeff = 4.0 * 3.14159265 * LN_LAMBDA * params.g * params.g * rho * m_self * f_x
+            / (speed * speed * speed);
+        a = a - coeff * v_vec;
     }
 
     accel[i] = vec4<f32>(a, 0.0);
