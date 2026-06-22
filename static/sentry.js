@@ -43,16 +43,6 @@
           messagePlaceholder: "What's working, what's broken, or what you'd love to see?",
         }),
       );
-      // Register the modal + screenshot integrations eagerly. The default
-      // feedbackIntegration lazy-loads them when the dialog opens, which fails for
-      // a self-hosted bundle ("Missing feedback modal integration"); bundling them
-      // up front means opening the form needs no extra fetch.
-      if (typeof window.Sentry.feedbackModalIntegration === "function") {
-        integrations.push(window.Sentry.feedbackModalIntegration());
-      }
-      if (typeof window.Sentry.feedbackScreenshotIntegration === "function") {
-        integrations.push(window.Sentry.feedbackScreenshotIntegration());
-      }
     }
 
     window.Sentry.init({
@@ -62,6 +52,11 @@
       sendDefaultPii: false,
       tracesSampleRate,
       integrations,
+      // The feedback widget lazy-loads its modal/screenshot chunks on open from
+      // `${cdnBaseUrl}/<version>/feedback-modal.min.js`. Point that at our own
+      // origin (we vendor those chunks under /10.57.0/) so opening the form never
+      // depends on Sentry's CDN being reachable.
+      cdnBaseUrl: window.location.origin,
       replaysSessionSampleRate: 0,
       replaysOnErrorSampleRate: 0,
       beforeSend(event) {
