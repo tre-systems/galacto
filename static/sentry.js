@@ -3,11 +3,12 @@
   if (!config?.dsn) return;
 
   const script = document.createElement("script");
-  // Bundle with tracing + the user-feedback widget (replay is included but stays
-  // off via the 0 sample rates below).
-  script.src =
-    "https://browser.sentry-cdn.com/10.57.0/bundle.tracing.replay.feedback.min.js";
-  script.crossOrigin = "anonymous";
+  // Self-hosted SDK bundle (tracing + the user-feedback widget; replay is included
+  // but stays off via the 0 sample rates below). Served from our own origin rather
+  // than Sentry's CDN so the feedback button and error monitoring don't depend on
+  // that CDN being reachable — `?v=` is the vendored bundle's version, bumped only
+  // when sentry-sdk.js is replaced.
+  script.src = "/sentry-sdk.js?v=10.57.0";
   script.onload = () => {
     if (!window.Sentry) return;
     const configuredTracesSampleRate = Number(config.tracesSampleRate);
