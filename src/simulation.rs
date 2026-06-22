@@ -164,9 +164,11 @@ pub struct Reseed {
     pub scenario: Scenario,
     pub temp: f32,
     pub gas_fraction: f32,
+    pub bulge_frac: f32,
     pub count: u32,
     pub gravity: f32,
     pub halo_v0: f32,
+    pub halo_rc_scale: f32,
     pub halo_kind: HaloKind,
 }
 
@@ -259,6 +261,7 @@ impl Simulation {
             scenario.softening(),
             G,
             HALO_V0,
+            1.0,
             HaloKind::Logarithmic,
             NUM_PARTICLES,
             scenario.has_gas(),
@@ -658,22 +661,26 @@ impl Simulation {
         softening: f32,
         gravity: f32,
         halo_v0: f32,
+        halo_rc_scale: f32,
         halo_kind: HaloKind,
         count: u32,
         has_gas: bool,
     ) -> SimulationParams {
+        // The shader reads halo_rc2 as the active profile's squared radius (the log
+        // core radius or the smaller NFW scale radius), scaled by the live
+        // concentration knob (<1 = more concentrated, >1 = more diffuse).
+        let base_rc = match halo_kind {
+            HaloKind::Logarithmic => HALO_RC,
+            HaloKind::Nfw => NFW_RS,
+        };
+        let rc = base_rc * halo_rc_scale;
         SimulationParams {
             dt: FIXED_DT,
             g: gravity,
             softening,
             particle_count: count,
             halo_v0_sq: halo_v0 * halo_v0,
-            // The shader reads halo_rc2 as the active profile's squared radius: the
-            // log core radius, or the (smaller) NFW scale radius.
-            halo_rc2: match halo_kind {
-                HaloKind::Logarithmic => HALO_RC * HALO_RC,
-                HaloKind::Nfw => NFW_RS * NFW_RS,
-            },
+            halo_rc2: rc * rc,
             halo_kind: halo_kind.as_u32(),
             has_gas: has_gas as u32,
         }
@@ -688,15 +695,20 @@ impl Simulation {
         // the active halo, so seeding takes `halo_kind` too — born in equilibrium.
         self.count = clamp_particle_count(r.count);
         self.has_gas = r.scenario.has_gas();
-        let particles = r
-            .scenario
-            .generate_with(self.count, r.temp, r.gas_fraction, r.halo_kind);
+        let particles = r.scenario.generate_with(
+            self.count,
+            r.temp,
+            r.gas_fraction,
+            r.bulge_frac,
+            r.halo_kind,
+        );
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
         self.set_physics(
             queue,
             r.scenario.softening(),
             r.gravity,
             r.halo_v0,
+            r.halo_rc_scale,
             r.halo_kind,
         );
     }
@@ -709,12 +721,14 @@ impl Simulation {
         softening: f32,
         gravity: f32,
         halo_v0: f32,
+        halo_rc_scale: f32,
         halo_kind: HaloKind,
     ) {
         let params = Self::build_params(
             softening,
             gravity,
             halo_v0,
+            halo_rc_scale,
             halo_kind,
             self.count,
             self.has_gas,

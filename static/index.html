@@ -172,6 +172,18 @@
           <span id="gas-readout">24%</span>
         </div>
         <div class="control">
+          <label for="bulge-slider">Bulge</label>
+          <input
+            id="bulge-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="17"
+            step="1"
+          />
+          <span id="bulge-readout">10%</span>
+        </div>
+        <div class="control">
           <label for="gravity-slider">Gravity</label>
           <input id="gravity-slider" type="range" min="0" max="100" value="50" step="1" />
           <span id="gravity-readout">1.0×</span>
@@ -188,7 +200,12 @@
           <div class="control">
             <label for="halo-slider">Strength</label>
             <input id="halo-slider" type="range" min="0" max="100" value="50" step="1" />
-            <span id="halo-readout">1.0×</span>
+            <span id="halo-readout">220 km/s</span>
+          </div>
+          <div class="control">
+            <label for="halo-size-slider">Size</label>
+            <input id="halo-size-slider" type="range" min="0" max="100" value="50" step="1" />
+            <span id="halo-size-readout">15.0 kpc</span>
           </div>
           <div class="control">
             <label for="halo-show">Show</label>
@@ -306,8 +323,10 @@
           setupSpeedControl(mod);
           setupTempControl(mod);
           setupGasFractionControl(mod);
+          setupBulgeControl(mod);
           setupGravityControl(mod);
           setupHaloControl(mod);
+          setupHaloConcentrationControl(mod);
           setupHaloProfileControl(mod);
           setupHaloVisibility(mod);
           setupRotationCurve(mod);
@@ -627,6 +646,8 @@
             "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — only how quickly the structure develops.",
           "gas-slider":
             "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms. Re-seeds.",
+          "bulge-slider":
+            "The central bulge's share of the galaxy's mass (0–60%). A small bulge is a disk-dominated late-type spiral with a gently-rising rotation curve; a large one is a bulge-dominated early type with a sharp inner peak. Re-seeds.",
           "temp-slider":
             "Disk stability, the Toomre Q parameter. Below ~1 the disk fragments into clumps; ~1–2 it swing-amplifies into spiral arms; above ~2 it stays a smooth disk. Applied on Restart.",
           "gravity-slider":
@@ -634,7 +655,9 @@
           "halo-select":
             "Dark-matter halo profile. Logarithmic gives a flat outer rotation curve and keeps everything bound; NFW (the cold-dark-matter shape) rises then falls and lets fast debris escape. Re-seeds.",
           "halo-slider":
-            "How much dark matter (0–2×). It sets the outer rotation speed — turn on the Curve and watch it flatten as you raise this. It holds the disk together and shapes the tidal tails.",
+            "How much dark matter — the characteristic circular speed in km/s (0–2× the default 220). Turn on the Curve and watch the flat outer part rise as you raise this. It holds the disk together and shapes the tidal tails.",
+          "halo-size-slider":
+            "The halo's scale radius (in kpc) — how spread-out the dark matter is. Smaller = a concentrated halo with a steeply-rising inner curve; larger = a diffuse halo with a gentler rise. Reshapes the rotation curve live, no re-seed.",
           "halo-show":
             "Overlays the otherwise-invisible dark-matter halo as a soft violet cloud, sized to the active profile's scale radius.",
           "rc-toggle":
@@ -741,6 +764,21 @@
         show();
       }
 
+      // Bulge slider (0–100) → 0 … 60% bulge mass fraction. Seed-time like the gas
+      // and body-count sliders: the readout tracks the drag, releasing re-seeds.
+      function setupBulgeControl(mod) {
+        const slider = document.getElementById("bulge-slider");
+        const readout = document.getElementById("bulge-readout");
+        const MAX = 0.6;
+        const fracFor = () => (slider.value / 100) * MAX;
+        const show = () => {
+          readout.textContent = Math.round(fracFor() * 100) + "%";
+        };
+        slider.addEventListener("input", show);
+        slider.addEventListener("change", () => mod.set_bulge_fraction(fracFor()));
+        show();
+      }
+
       // Gravity slider (0–100) → log scale (0.25× … 4×). Live: rewrites the params
       // uniform, so the running galaxy collapses or disperses immediately.
       function setupGravityControl(mod) {
@@ -771,6 +809,29 @@
           readout.textContent = Math.round(halo * (220 / DEFAULT)) + " km/s";
         };
         slider.addEventListener("input", apply);
+        apply();
+      }
+
+      // Dark-matter halo concentration: the scale-radius multiplier (0.4 … 2.5×,
+      // log). Live — reshapes the halo force and the rotation curve without
+      // re-seeding. The readout is the scale radius in kpc, which differs by profile
+      // (≈15 kpc for the logarithmic core, ≈7 kpc for NFW), so it also refreshes
+      // when the model changes.
+      function setupHaloConcentrationControl(mod) {
+        const slider = document.getElementById("halo-size-slider");
+        const readout = document.getElementById("halo-size-readout");
+        const select = document.getElementById("halo-select");
+        const MIN = 0.4;
+        const MAX = 2.5;
+        const scaleFor = () => MIN * Math.pow(MAX / MIN, slider.value / 100);
+        const baseKpc = () => (select.value === "1" ? 7 : 15);
+        const apply = () => {
+          const scale = scaleFor();
+          mod.set_halo_concentration(scale);
+          readout.textContent = (baseKpc() * scale).toFixed(1) + " kpc";
+        };
+        slider.addEventListener("input", apply);
+        select.addEventListener("change", apply);
         apply();
       }
 

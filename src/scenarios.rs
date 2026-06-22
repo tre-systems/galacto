@@ -11,7 +11,7 @@ use std::f32::consts::TAU;
 
 // --- Spiral-disk scenario: a bulge body + a self-gravitating exponential disk
 // whose own mass dominates its region (a "maximal disk"), which is spiral-prone.
-const BULGE_MASS: f32 = 40_000.0;
+// The bulge mass is derived from the bulge fraction (see `bulge_mass_for`).
 const STAR_MASS: f32 = 21.0;
 const DISK_RD: f32 = 35.0; // exponential scale length
 const DISK_RMAX: f32 = 170.0; // clamp on the sampled disk radius
@@ -61,6 +61,21 @@ pub const DEFAULT_GAS_FRACTION: f32 = 0.24;
 /// warm gold rather than being speckled blue (sharpening the arm/centre contrast).
 const GAS_R_MIN: f32 = 22.0;
 
+/// Default bulge fraction (bulge mass / [bulge + disk] mass) — ~10%, so the default
+/// bulge is ~40 000 sim-mass units against the disk's reference total
+/// `NUM_PARTICLES · STAR_MASS`. The bulge slider overrides it; it classifies the
+/// galaxy (low = a late-type spiral, high = a bulge-dominated early type).
+pub const DEFAULT_BULGE_FRAC: f32 = 0.104;
+
+/// Central bulge point mass for a given bulge fraction `f`: `m = D·f/(1−f)` with the
+/// disk reference total `D = NUM_PARTICLES · STAR_MASS`. Holds the disk fixed and
+/// grows/shrinks the bulge, so the bulge slider sweeps the bulge-to-disk ratio.
+fn bulge_mass_for(bulge_frac: f32) -> f32 {
+    let f = bulge_frac.clamp(0.0, 0.95);
+    let disk_total = NUM_PARTICLES as f32 * STAR_MASS;
+    disk_total * f / (1.0 - f)
+}
+
 /// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
 /// understates this disk's stability (the Plummer softening, the finite disk
 /// thickness, and the modest particle count all damp the instability), so a given
@@ -80,15 +95,15 @@ fn dispersion(q: f32) -> f32 {
 /// the epicyclic frequency `κ² = 2Ω(Ω + dv_c/dr)` from the rotation curve, and the
 /// softening/thickness correction `C` ([`TOOMRE_SOFT`]). This makes the disk-Q
 /// slider read a true (effective) Toomre Q.
-fn toomre_sigma(r: f32, q: f32, halo_kind: HaloKind) -> f32 {
+fn toomre_sigma(r: f32, q: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
     let r = r.max(1.0);
     let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
     let sigma0 = m_disk / (TAU * DISK_RD * DISK_RD);
     let surface = sigma0 * (-r / DISK_RD).exp();
     // Epicyclic frequency from a finite-difference of the circular-velocity curve.
     let dr = 0.5;
-    let vc = circular_velocity(r, halo_kind);
-    let dvdr = (circular_velocity(r + dr, halo_kind) - vc) / dr;
+    let vc = circular_velocity(r, bulge_frac, halo_kind);
+    let dvdr = (circular_velocity(r + dr, bulge_frac, halo_kind) - vc) / dr;
     let omega = vc / r;
     let kappa = (2.0 * omega * (omega + dvdr)).max(1e-4).sqrt();
     (q.max(0.0) * 3.36 * G * surface / (kappa * TOOMRE_SOFT)).max(0.0)
@@ -157,28 +172,37 @@ impl Scenario {
     /// piling on mass, so the dynamics and timescales stay put. (Core/bulge masses
     /// are fixed point masses and don't scale.)
     pub fn generate(self, count: u32, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
-        self.generate_with(count, temp, DEFAULT_GAS_FRACTION, halo_kind)
+        self.generate_with(
+            count,
+            temp,
+            DEFAULT_GAS_FRACTION,
+            DEFAULT_BULGE_FRAC,
+            halo_kind,
+        )
     }
 
-    /// As [`generate`], but with an explicit gas fraction (the gas-fraction slider).
-    /// Only the disk scenarios use it; the gas-free mergers ignore it.
+    /// As [`generate`], but with explicit gas and bulge fractions (the gas-fraction
+    /// and bulge sliders). Only the disk scenarios use them; the mergers ignore them.
     pub fn generate_with(
         self,
         count: u32,
         temp: f32,
         gas_fraction: f32,
+        bulge_frac: f32,
         halo_kind: HaloKind,
     ) -> Vec<Particle> {
         let star_mass = STAR_MASS * NUM_PARTICLES as f32 / count as f32;
         match self {
-            Scenario::Spiral => generate_disk(count, temp, gas_fraction, halo_kind, star_mass),
+            Scenario::Spiral => {
+                generate_disk(count, temp, gas_fraction, bulge_frac, halo_kind, star_mass)
+            }
             Scenario::Merger => generate_merger(count, temp, star_mass),
             Scenario::HeadOn => generate_head_on(count, temp, star_mass),
             Scenario::Retrograde => generate_retrograde(count, temp, star_mass),
             Scenario::MinorMerger => generate_minor(count, temp, star_mass),
             Scenario::Group => generate_group(count, temp, star_mass),
             Scenario::GrandDesign => {
-                generate_grand_design(count, temp, gas_fraction, halo_kind, star_mass)
+                generate_grand_design(count, temp, gas_fraction, bulge_frac, halo_kind, star_mass)
             }
         }
     }
@@ -203,11 +227,11 @@ struct DiskStar {
 /// Circular speed at radius `r`, from the bulge + enclosed disk mass + halo.
 /// The disk uses a spherical enclosed-mass approximation — not exact for a
 /// flat disk, but close enough that the disk settles and then ripples.
-fn circular_velocity(r: f32, halo_kind: HaloKind) -> f32 {
+fn circular_velocity(r: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
-    let v_bulge2 = G * BULGE_MASS * r2 / (r2 + eps2).powf(1.5);
+    let v_bulge2 = G * bulge_mass_for(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
     let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
     let x = r / DISK_RD;
     let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
@@ -219,20 +243,24 @@ fn circular_velocity(r: f32, halo_kind: HaloKind) -> f32 {
 /// seed-time default halo strength (`HALO_V0`). Used when seeding disks in
 /// equilibrium.
 fn halo_velocity_sq(r: f32, halo_kind: HaloKind) -> f32 {
-    halo_velocity_sq_at(r, HALO_V0, halo_kind)
+    halo_velocity_sq_at(r, HALO_V0, 1.0, halo_kind)
 }
 
 /// Halo circular velocity squared at `r` for an arbitrary characteristic speed
-/// `halo_v0` (the live, slider-driven value). Must match the force in
-/// `update.wgsl` for each profile.
-fn halo_velocity_sq_at(r: f32, halo_v0: f32, halo_kind: HaloKind) -> f32 {
+/// `halo_v0` (the live strength) and scale-radius multiplier `rc_scale` (the live
+/// concentration: <1 = more concentrated, >1 = more diffuse). Must match the force
+/// in `update.wgsl` for each profile (which reads the scaled `halo_rc2`).
+fn halo_velocity_sq_at(r: f32, halo_v0: f32, rc_scale: f32, halo_kind: HaloKind) -> f32 {
     match halo_kind {
         // Logarithmic: v_halo² = v0²·r² / (r² + rc²).
-        HaloKind::Logarithmic => halo_v0 * halo_v0 * r * r / (r * r + HALO_RC * HALO_RC),
+        HaloKind::Logarithmic => {
+            let rc = HALO_RC * rc_scale;
+            halo_v0 * halo_v0 * r * r / (r * r + rc * rc)
+        }
         // NFW: v_halo² = v0²·[ln(1+x) − x/(1+x)] / (x·NFW_G_MAX), with x = r/rs and
         // rs = NFW_RS; normalised so v0 is the halo's peak circular speed.
         HaloKind::Nfw => {
-            let x = r / NFW_RS;
+            let x = r / (NFW_RS * rc_scale);
             let mass_factor = (1.0 + x).ln() - x / (1.0 + x);
             halo_v0 * halo_v0 * mass_factor / (x * NFW_G_MAX)
         }
@@ -245,16 +273,23 @@ fn halo_velocity_sq_at(r: f32, halo_v0: f32, halo_kind: HaloKind) -> f32 {
 /// speed; drives the rotation-curve overlay. Same bulge + enclosed-disk + halo
 /// model as [`circular_velocity`], so the curve reflects the same physics the disk
 /// was built on.
-pub fn rotation_components(r: f32, gravity: f32, halo_v0: f32, halo_kind: HaloKind) -> [f32; 3] {
+pub fn rotation_components(
+    r: f32,
+    gravity: f32,
+    halo_v0: f32,
+    rc_scale: f32,
+    bulge_frac: f32,
+    halo_kind: HaloKind,
+) -> [f32; 3] {
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
-    let v_bulge2 = gravity * BULGE_MASS * r2 / (r2 + eps2).powf(1.5);
+    let v_bulge2 = gravity * bulge_mass_for(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
     let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
     let x = r / DISK_RD;
     let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
     let v_disk2 = gravity * m_enc / r;
-    let v_halo2 = halo_velocity_sq_at(r, halo_v0, halo_kind);
+    let v_halo2 = halo_velocity_sq_at(r, halo_v0, rc_scale, halo_kind);
     [v_bulge2.sqrt(), v_disk2.sqrt(), v_halo2.sqrt()]
 }
 
@@ -291,6 +326,7 @@ fn generate_disk(
     count: u32,
     temp: f32,
     gas_fraction: f32,
+    bulge_frac: f32,
     halo_kind: HaloKind,
     star_mass: f32,
 ) -> Vec<Particle> {
@@ -301,6 +337,7 @@ fn generate_disk(
         count,
         temp,
         gas_fraction,
+        bulge_frac,
         halo_kind,
         star_mass,
         &mut rng,
@@ -314,18 +351,23 @@ fn generate_disk(
 /// scaled by `temp`. Centred at the origin, at rest — shared by the spiral scenario
 /// and the M51 flyby's main galaxy. The render shader colours it by live
 /// galactocentric radius (warm core → blue arms).
+// Eight genuinely-distinct seeding inputs; bundling them into a single-use struct
+// would add indirection without clarity.
+#[allow(clippy::too_many_arguments)]
 fn seed_spiral_disk(
     out: &mut Vec<Particle>,
     count: u32,
     temp: f32,
     gas_fraction: f32,
+    bulge_frac: f32,
     halo_kind: HaloKind,
     star_mass: f32,
     rng: &mut StdRng,
 ) {
-    // Central bulge body, at rest at the origin (tint 0 → warm nucleus).
+    // Central bulge body, at rest at the origin (tint 0 → warm nucleus). Its mass is
+    // set by the bulge fraction (the bulge slider).
     out.push(Particle {
-        pos_mass: [0.0, 0.0, 0.0, BULGE_MASS],
+        pos_mass: [0.0, 0.0, 0.0, bulge_mass_for(bulge_frac)],
         vel: [0.0, 0.0, 0.0, 0.0],
     });
 
@@ -337,7 +379,7 @@ fn seed_spiral_disk(
         let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
         let theta = rng.random_range(0.0_f32..TAU);
         let z = gaussian(rng) * DISK_THICKNESS;
-        let vc = circular_velocity(r, halo_kind);
+        let vc = circular_velocity(r, bulge_frac, halo_kind);
         // A fraction is tagged as gas (vel.w = 1): the kick kernel cools it and the
         // render shader draws it blue. Stars keep vel.w = 0 (coloured by radius).
         // The gas-poor inner bulge stays gas-free, so the centre reads warm gold
@@ -352,7 +394,7 @@ fn seed_spiral_disk(
                 theta,
                 z,
                 vc,
-                sigma: toomre_sigma(r, temp, halo_kind),
+                sigma: toomre_sigma(r, temp, bulge_frac, halo_kind),
                 tint: if is_gas { 1.0 } else { 0.0 },
             },
             star_mass,
@@ -587,6 +629,7 @@ fn generate_grand_design(
     count: u32,
     temp: f32,
     gas_fraction: f32,
+    bulge_frac: f32,
     halo_kind: HaloKind,
     star_mass: f32,
 ) -> Vec<Particle> {
@@ -598,6 +641,7 @@ fn generate_grand_design(
         count - companion,
         temp,
         gas_fraction,
+        bulge_frac,
         halo_kind,
         star_mass,
         &mut rng,
@@ -648,7 +692,7 @@ mod tests {
     fn circular_velocity_is_positive_and_finite() {
         for halo in [HaloKind::Logarithmic, HaloKind::Nfw] {
             for r in [0.0, 1.0, 10.0, 35.0, 100.0, 170.0, 500.0] {
-                let v = circular_velocity(r, halo);
+                let v = circular_velocity(r, DEFAULT_BULGE_FRAC, halo);
                 assert!(v.is_finite(), "v({r}) for {halo:?} should be finite");
                 assert!(v > 0.0, "v({r}) for {halo:?} should be positive");
             }

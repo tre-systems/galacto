@@ -78,6 +78,9 @@ pub struct AppState {
     /// Fraction of the disk seeded as gas, staged for the next (re)seed (the
     /// gas-fraction slider). Only the disk scenarios use it.
     gas_fraction: f32,
+    /// Bulge mass fraction (bulge / [bulge + disk]), staged for the next (re)seed
+    /// (the bulge slider). Sets the central bulge point mass.
+    bulge_frac: f32,
     /// Active body count, set by the body-count slider and carried into every
     /// reseed (changing it re-seeds the scenario at the new resolution).
     particle_count: u32,
@@ -85,9 +88,11 @@ pub struct AppState {
     halo_kind: HaloKind,
     /// Whether to draw the dark-matter halo overlay (the "Show" toggle).
     halo_visible: bool,
-    /// Live physics/visual knobs (no re-seed): gravity, halo speed, star size.
+    /// Live physics/visual knobs (no re-seed): gravity, halo speed, halo
+    /// concentration (scale-radius multiplier, 1 = default), star size.
     gravity: f32,
     halo_v0: f32,
+    halo_rc_scale: f32,
     particle_size: f32,
     /// Generative soundscape, lazily created on first enable (so the AudioContext
     /// starts inside a user gesture). None until then, or if audio is unavailable.
@@ -144,11 +149,13 @@ impl AppState {
             scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
             gas_fraction: scenarios::DEFAULT_GAS_FRACTION,
+            bulge_frac: scenarios::DEFAULT_BULGE_FRAC,
             particle_count: simulation::NUM_PARTICLES,
             halo_kind: HaloKind::Logarithmic,
             halo_visible: false,
             gravity: simulation::G,
             halo_v0: simulation::HALO_V0,
+            halo_rc_scale: 1.0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
             audio: None,
             // Start at 10% of full volume so the soundscape opens gently; matches
@@ -261,7 +268,8 @@ impl AppState {
             let radius = match self.halo_kind {
                 HaloKind::Logarithmic => simulation::HALO_RC,
                 HaloKind::Nfw => simulation::NFW_RS,
-            } * 3.5;
+            } * 3.5
+                * self.halo_rc_scale;
             self.simulation.update_halo_view(
                 &self.graphics.queue,
                 right,
@@ -339,6 +347,13 @@ impl AppState {
         self.reseed();
     }
 
+    /// Set the bulge mass fraction (the bulge slider) and re-seed, shifting the
+    /// galaxy between disk-dominated (late-type) and bulge-dominated (early-type).
+    pub fn set_bulge_fraction(&mut self, fraction: f32) {
+        self.bulge_frac = fraction.clamp(0.0, 0.8);
+        self.reseed();
+    }
+
     /// Switch scenario (the dropdown) and re-seed from its initial conditions.
     pub fn set_scenario(&mut self, id: u32) {
         self.scenario = Scenario::from_id(id);
@@ -359,9 +374,11 @@ impl AppState {
                 scenario: self.scenario,
                 temp: self.disk_temp,
                 gas_fraction: self.gas_fraction,
+                bulge_frac: self.bulge_frac,
                 count: self.particle_count,
                 gravity: self.gravity,
                 halo_v0: self.halo_v0,
+                halo_rc_scale: self.halo_rc_scale,
                 halo_kind: self.halo_kind,
             },
         );
@@ -387,12 +404,21 @@ impl AppState {
         self.push_physics();
     }
 
+    /// Live dark-matter halo concentration — the scale-radius multiplier (the
+    /// halo-size slider; <1 = more concentrated, >1 = more diffuse). Live: it
+    /// reshapes the halo force (and the rotation curve) without re-seeding.
+    pub fn set_halo_concentration(&mut self, scale: f32) {
+        self.halo_rc_scale = scale.clamp(0.1, 5.0);
+        self.push_physics();
+    }
+
     fn push_physics(&self) {
         self.simulation.set_physics(
             &self.graphics.queue,
             self.scenario.softening(),
             self.gravity,
             self.halo_v0,
+            self.halo_rc_scale,
             self.halo_kind,
         );
     }
@@ -586,6 +612,17 @@ pub fn set_gas_fraction(fraction: f32) {
     });
 }
 
+/// Set the bulge mass fraction (the bulge slider, 0..0.8) and re-seed, shifting the
+/// galaxy between disk-dominated and bulge-dominated. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_bulge_fraction(fraction: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_bulge_fraction(fraction);
+        }
+    });
+}
+
 /// Switch the initial-condition scenario (0 = spiral disk, 1–5 = the multi-galaxy
 /// setups), re-seeding from its initial conditions. Called by the scenario dropdown.
 #[wasm_bindgen]
@@ -642,6 +679,19 @@ pub fn set_halo(halo_v0: f32) {
     });
 }
 
+/// Live dark-matter halo concentration — the scale-radius multiplier (the
+/// halo-size slider; <1 = more concentrated, >1 = more diffuse). Reshapes the halo
+/// force and the rotation curve without re-seeding. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_halo_concentration(scale: f32) {
+    let scale = scale.clamp(0.1, 5.0);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_halo_concentration(scale);
+        }
+    });
+}
+
 /// Switch the dark-matter halo profile (0 = logarithmic, 1 = NFW), re-seeding so
 /// the disk starts in equilibrium with it. Called by the halo-model dropdown.
 /// No-ops until ready.
@@ -684,8 +734,14 @@ pub fn rotation_curve(samples: u32) -> Vec<f32> {
         let mut out = Vec::with_capacity(n as usize * 5);
         for i in 0..n {
             let r = 1.0 + (r_max - 1.0) * (i as f32 / (n - 1) as f32);
-            let [vb, vd, vh] =
-                scenarios::rotation_components(r, app.gravity, app.halo_v0, app.halo_kind);
+            let [vb, vd, vh] = scenarios::rotation_components(
+                r,
+                app.gravity,
+                app.halo_v0,
+                app.halo_rc_scale,
+                app.bulge_frac,
+                app.halo_kind,
+            );
             let vt = (vb * vb + vd * vd + vh * vh).sqrt();
             out.push(r * units::KPC_PER_UNIT);
             out.push(vb * units::KMS_PER_UNIT);
