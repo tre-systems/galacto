@@ -12,8 +12,8 @@
 //! ```text
 //!   drone oscs ─▶ drone gain ─▶ drone LP ─┐
 //!   note osc ─▶ env ─▶ panner ────────────┼─▶ master gain ─▶ master LP ─▶ comp ─▶ out
-//!                          ├─▶ reverb in ─▶ convolver ─▶ reverb wet ─┤
-//!                          └─▶ delay in ─▶ delay ⇄ feedback ─▶ wet ──┘
+//!                          ├─▶ reverb in ─▶ convolver ─▶ reverb LP ─▶ reverb wet ─┤
+//!                          └─▶ delay in ─▶ delay ⇄ feedback ─▶ delay wet ─────────┘
 //! ```
 //! Only nodes that are modulated each frame (or that notes connect to) are kept
 //! in the struct; the fixed processing nodes stay alive through their graph
@@ -78,23 +78,28 @@ impl AudioEngine {
         connect(&master_lp, &comp);
         let _ = comp.connect_with_audio_node(&ctx.destination());
 
-        // Reverb bus: a short, bright, procedurally-generated impulse response.
+        // Reverb bus: a long, dark, diffuse impulse response — a huge cavern / the
+        // void of deep space. A low-pass on the return rolls off the tail's highs so
+        // it reads as a vast, distant room rather than a bright plate.
         let reverb_in = gain(&ctx, 1.0)?;
         let convolver = ConvolverNode::new(&ctx).ok()?;
         convolver.set_normalize(true);
-        if let Some(ir) = make_impulse_response(&ctx, 4.5) {
+        if let Some(ir) = make_impulse_response(&ctx, 8.0) {
             convolver.set_buffer(Some(&ir));
         }
+        let reverb_lp = lowpass(&ctx, 2600.0, 0.5)?;
         let reverb_wet = gain(&ctx, 0.6)?;
         connect(&reverb_in, &convolver);
-        let _ = convolver.connect_with_audio_node(&reverb_wet);
+        let _ = convolver.connect_with_audio_node(&reverb_lp);
+        connect(&reverb_lp, &reverb_wet);
         connect(&reverb_wet, &master_gain);
 
-        // Delay bus: a band-limited feedback echo for movement.
+        // Delay bus: a long, band-limited feedback echo — widely-spaced repeats that
+        // trail off into the cavern. The low-pass in the loop darkens each pass.
         let delay_in = gain(&ctx, 1.0)?;
         let delay = ctx.create_delay_with_max_delay_time(2.0).ok()?;
-        delay.delay_time().set_value(0.38);
-        let delay_tone = lowpass(&ctx, 2200.0, 0.7)?;
+        delay.delay_time().set_value(0.55);
+        let delay_tone = lowpass(&ctx, 1600.0, 0.7)?;
         let delay_feedback = gain(&ctx, 0.4)?;
         let delay_wet = gain(&ctx, 0.22)?;
         connect(&delay_in, &delay);
@@ -220,18 +225,21 @@ impl AudioEngine {
         let resonance = (1.0 + 4.0 * lfo_a + 3.0 * inflow).clamp(0.7, 8.0);
         ramp(&self.drone_lp.q(), resonance, now);
 
-        // Generous, washy reverb: deeper when pulled back, opening with core churn,
-        // and slowly swelling and ebbing on its own LFO.
-        let reverb = (0.4
+        // Cavernous, washy reverb: wet by default so the space feels vast even when
+        // the galaxy is still, deeper when pulled back, opening with core churn, and
+        // slowly swelling and ebbing on its own LFO.
+        let reverb = (0.6
             + 0.35 * (1.0 - state.zoom)
             + 0.2 * state.core_activity
-            + 0.25 * lfo_b
+            + 0.28 * lfo_b
             + 0.08 * state.motion)
-            .clamp(0.0, 1.15);
+            .clamp(0.0, 1.6);
         ramp(&self.reverb_wet.gain(), reverb, now);
-        let delay = (0.12 + 0.3 * state.motion + 0.08 * lfo_a).clamp(0.0, 0.6);
+        // Long, present echo with sustained, trailing repeats (feedback stays below 1
+        // and the loop's low-pass darkens each pass, so it always decays).
+        let delay = (0.22 + 0.32 * state.motion + 0.1 * lfo_a).clamp(0.0, 0.72);
         ramp(&self.delay_wet.gain(), delay, now);
-        let feedback = (0.3 + 0.35 * state.motion).clamp(0.0, 0.7);
+        let feedback = (0.46 + 0.3 * state.motion).clamp(0.0, 0.82);
         ramp(&self.delay_feedback.gain(), feedback, now);
 
         if self.enabled && !state.paused {
@@ -364,9 +372,11 @@ fn ramp(param: &web_sys::AudioParam, value: f32, now: f64) {
     let _ = param.set_target_at_time(value, now, 0.6);
 }
 
-/// Build a short, bright stereo reverb impulse procedurally: per-channel
-/// deterministic noise under an exponential decay with a soft early emphasis.
-/// No sample file — the reverb is generated in code at the context sample rate.
+/// Build a long, diffuse stereo reverb impulse procedurally: per-channel
+/// deterministic noise under a slow exponential decay — a big, cavernous tail. The
+/// decay time constant is long (a vast space) and the early emphasis is gentle, so
+/// the energy is spread out and distant rather than front-loaded and bright. No
+/// sample file — the reverb is generated in code at the context sample rate.
 fn make_impulse_response(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer> {
     let sr = ctx.sample_rate();
     let len = (sr * seconds) as u32;
@@ -382,9 +392,10 @@ fn make_impulse_response(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer
             seed ^= seed >> 17;
             seed ^= seed << 5;
             let n = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
-            let decay = (-t / 1.5).exp();
-            let early = (1.0 - (t / 0.35)).clamp(0.0, 1.0);
-            *sample = n * decay * (0.4 + 0.6 * early);
+            // Long ~3.2 s decay time constant → a huge, slowly-fading space.
+            let decay = (-t / 3.2).exp();
+            let early = (1.0 - (t / 0.5)).clamp(0.0, 1.0);
+            *sample = n * decay * (0.5 + 0.5 * early);
             t += dt;
         }
         let _ = ir.copy_to_channel(&buf, ch);

@@ -3,7 +3,10 @@
   if (!config?.dsn) return;
 
   const script = document.createElement("script");
-  script.src = "https://browser.sentry-cdn.com/10.57.0/bundle.tracing.min.js";
+  // Bundle with tracing + the user-feedback widget (replay is included but stays
+  // off via the 0 sample rates below).
+  script.src =
+    "https://browser.sentry-cdn.com/10.57.0/bundle.tracing.replay.feedback.min.js";
   script.crossOrigin = "anonymous";
   script.onload = () => {
     if (!window.Sentry) return;
@@ -16,16 +19,30 @@
         : config.environment === "production"
           ? 0.05
           : 0;
-    const integrations =
-      typeof window.Sentry.browserTracingIntegration === "function"
-        ? [
-            window.Sentry.browserTracingIntegration({
-              enableInp: true,
-              instrumentNavigation: true,
-              instrumentPageLoad: true,
-            }),
-          ]
-        : [];
+    const integrations = [];
+    if (typeof window.Sentry.browserTracingIntegration === "function") {
+      integrations.push(
+        window.Sentry.browserTracingIntegration({
+          enableInp: true,
+          instrumentNavigation: true,
+          instrumentPageLoad: true,
+        }),
+      );
+    }
+    // User-feedback widget, attached to the control panel's own button rather than
+    // auto-injecting a floating one (autoInject: false).
+    if (typeof window.Sentry.feedbackIntegration === "function") {
+      integrations.push(
+        window.Sentry.feedbackIntegration({
+          autoInject: false,
+          colorScheme: "dark",
+          showBranding: false,
+          submitButtonLabel: "Send feedback",
+          formTitle: "Send feedback",
+          messagePlaceholder: "What's working, what's broken, or what you'd love to see?",
+        }),
+      );
+    }
 
     window.Sentry.init({
       dsn: config.dsn,
@@ -53,6 +70,29 @@
         return event;
       },
     });
+
+    // Reveal the control panel's feedback button and make it open the form. The
+    // button stays hidden until this runs, so it never appears as a dead control
+    // when Sentry (or the feedback widget) is unavailable.
+    const feedback =
+      typeof window.Sentry.getFeedback === "function" ? window.Sentry.getFeedback() : null;
+    if (feedback) {
+      const attach = () => {
+        const btn = document.getElementById("feedback-btn");
+        if (!btn) return;
+        try {
+          feedback.attachTo(btn);
+          btn.hidden = false;
+        } catch {
+          /* keep the button hidden if attach fails */
+        }
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", attach, { once: true });
+      } else {
+        attach();
+      }
+    }
   };
   document.head.appendChild(script);
 })();

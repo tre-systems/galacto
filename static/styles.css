@@ -271,6 +271,40 @@ body {
   transform: translateY(-1px);
 }
 
+/* Feedback button — a quiet footer action that opens the Sentry feedback form.
+   Hidden until sentry.js wires it up. */
+.feedback {
+  appearance: none;
+  -webkit-appearance: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: none;
+  color: rgba(199, 210, 254, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.feedback[hidden] {
+  display: none;
+}
+
+.feedback:hover,
+.feedback:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
 /* Self-styled Ko-fi link — sits at the bottom of the controls panel */
 #kofi {
   display: inline-flex;

@@ -187,6 +187,12 @@
           </button>
         </div>
         <button id="restart-btn" type="button" class="restart">↻ Restart</button>
+        <!-- Opens the Sentry user-feedback form. Hidden until sentry.js wires it
+             up (so it never shows a dead button when Sentry isn't configured). -->
+        <button id="feedback-btn" type="button" class="feedback" hidden>
+          <span aria-hidden="true">💬</span>
+          Send feedback
+        </button>
         <a
           id="kofi"
           href="https://ko-fi.com/N4N31DPNUS"
