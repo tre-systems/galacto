@@ -4,7 +4,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 **Live:** [galacto.org](https://galacto.org/) — needs a [WebGPU-capable browser](#browser-support).
 
-![A self-gravitating disk galaxy with spiral arms](screenshot.png)
+![A grand-design spiral galaxy: a warm gold bulge, blue star-forming gas in the arms, and a companion drawing out a tidal bridge](screenshot.png)
 
 ## Features
 

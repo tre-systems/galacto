@@ -26,15 +26,18 @@ WebGPU crux (no recursion, no dynamic allocation, weak atomics): tree build is b
 
 Reality check: Barnes–Hut has high constant factors and divergent, scattered memory access — the opposite of the current branch-free, coalesced, tile-cooperative kernel, which is near-peak GPU efficiency. Honest crossover is ~`N = 100k–250k`; below ~64k the tiled all-pairs sum still wins, and it trades away a selling point (exact, every-pair self-gravity). Worth it only if 100k+ bodies becomes an explicit goal, and only after the headless + CPU-reference harness (P2) exists. **Effort: XL** (the GPU radix sort alone is M–L).
 
-### Dissipative gas — keep the disk cold
+### Gas physics — star formation and mergers
 
-Every body is collisionless (pure softened gravity + halo), so disks self-heat and the spiral arms fade; nothing shocks, cools, or settles into denser, star-forming structure.
+The disk scenarios carry a dissipative gas component: a fraction of bodies are tagged as gas (via `vel.w`, gated by a per-scenario `has_gas` flag), cooled each step in `kick_drift_half` toward circular, in-plane orbits, and drawn blue. Cold gas therefore gathers in and sustains the spiral arms. What's missing is the physics this only gestures at:
 
-Recommended first step — a **cheap local-dissipation hack, not full SPH**: tag a fraction of bodies as "gas" and each step nudge their velocity toward the local mean (a drag toward neighbours' bulk motion). That damps random motion — the thermodynamic role of cooling — for ~80% of the visual payoff (cooler, flatter, longer-lived arms) at a fraction of the cost. Full SPH (kernel density + pressure + artificial viscosity + equation of state + cooling) is the correct-physics version but is XL and fiddly to keep stable in single precision with no readback.
+- **Actual star formation** — convert gas to stars where it is densest, with fresh stars starting blue and reddening with age. Needs a per-body local-density estimate (the neighbour search below) plus an age field; the warm→blue colour ramp already exists.
+- **Gas in mergers** — the multi-galaxy scenarios are collisionless (gas-free). Real mergers shock-compress gas into blue tidal tails and central starbursts. The merger render path uses `vel.w` for galaxy-of-origin tint, so merger gas needs a second flag to disambiguate it (the `aux` buffer below).
+- **Velocity-mean drag** — the cooling damps each gas body's own non-circular motion (a stand-in); a truer sticky gas nudges each body toward its *neighbours'* bulk velocity, which also handles non-disk geometry (tails, mergers). Needs the neighbour search.
+- **Full SPH** — kernel density + pressure + artificial viscosity + equation of state + cooling: the correct-physics version. **XL** and fiddly in single precision with no readback.
 
-Neighbour-search crux (the genuinely hard part on WebGPU): reuse the existing tiled `O(N²)` sweep in `compute_accel` to also accumulate a kernel-weighted density and mean velocity — one extra compute pass, same shared-memory tiling, no atomics. At N=16k a second `O(N²)` pass is affordable. A uniform spatial-hash grid (atomic per-cell counters + counting sort) is the scalable answer but is the hard WGSL piece; defer it until the body count outgrows the all-pairs sweep.
+Neighbour-search crux (the shared prerequisite, the genuinely hard part on WebGPU): reuse the tiled `O(N²)` sweep in `compute_accel` to also accumulate a kernel-weighted density and mean velocity — one extra compute pass, same shared-memory tiling, no atomics. At N=16k a second `O(N²)` pass is affordable. A uniform spatial-hash grid (atomic per-cell counters + counting sort) is the scalable answer but is the hard WGSL piece; defer it until the body count outgrows the all-pairs sweep.
 
-Data layout: `Particle` is full — `pos_mass.w` is mass and `vel.w` is the colour tint (32 B, asserted by a layout test), so gas needs either a sign trick on `pos_mass.w` for the type flag or, cleaner, a parallel `aux` storage buffer (one `vec4`/body: type, density, scratch) plus a new compute bind-group entry. **Effort: M** for the hack (one extra pass, an aux buffer, a seed tweak, one slider); full SPH is a separate **XL**, with the spatial-hash grid an **L** prerequisite of its own.
+Data layout: gas rides in `vel.w` (shared with the colour tint), which is why merger gas would need disambiguating. A dedicated per-body state field (density, age, type) wants a parallel `aux` storage buffer (one `vec4`/body) plus a new compute bind-group entry. **Effort: M** for star formation given the neighbour pass; full SPH is a separate **XL**, with the spatial-hash grid an **L** prerequisite of its own.
 
 ## Audio — deeper coupling
 
