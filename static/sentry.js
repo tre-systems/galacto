@@ -43,6 +43,16 @@
           messagePlaceholder: "What's working, what's broken, or what you'd love to see?",
         }),
       );
+      // Register the modal + screenshot integrations eagerly. The default
+      // feedbackIntegration lazy-loads them when the dialog opens, which fails for
+      // a self-hosted bundle ("Missing feedback modal integration"); bundling them
+      // up front means opening the form needs no extra fetch.
+      if (typeof window.Sentry.feedbackModalIntegration === "function") {
+        integrations.push(window.Sentry.feedbackModalIntegration());
+      }
+      if (typeof window.Sentry.feedbackScreenshotIntegration === "function") {
+        integrations.push(window.Sentry.feedbackScreenshotIntegration());
+      }
     }
 
     window.Sentry.init({
