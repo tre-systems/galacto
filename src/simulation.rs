@@ -118,7 +118,7 @@ pub struct SimulationParams {
     pub halo_v0_sq: f32, // dark-matter halo: squared characteristic circular speed
     pub halo_rc2: f32,   // dark-matter halo: squared core / scale radius
     pub halo_kind: u32,  // dark-matter halo profile: 0 = logarithmic, 1 = NFW
-    pub _pad1: u32,
+    pub has_gas: u32,    // 1 if this scenario has a dissipative gas population
 }
 
 /// Uniform for the dark-matter halo overlay shader (`halo.wgsl`). `right`/`up` are
@@ -174,6 +174,9 @@ pub struct Simulation {
     /// buffers are sized for the maximum; only these many bodies are dispatched,
     /// drawn, and read back. Set by `reseed` from the body-count slider.
     count: u32,
+    /// Whether the current scenario has a dissipative gas population (the disk
+    /// scenarios); carried into the params uniform so the kick kernel cools the gas.
+    has_gas: bool,
     // Written at init and re-uploaded on reseed (temperature changes).
     particle_buffer: wgpu::Buffer,
     #[expect(dead_code)] // held only to keep the GPU resource alive
@@ -257,6 +260,7 @@ impl Simulation {
             HALO_V0,
             HaloKind::Logarithmic,
             NUM_PARTICLES,
+            scenario.has_gas(),
         );
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -624,6 +628,7 @@ impl Simulation {
 
         Self {
             count: NUM_PARTICLES,
+            has_gas: scenario.has_gas(),
             particle_buffer,
             accel_buffer,
             params_buffer,
@@ -654,6 +659,7 @@ impl Simulation {
         halo_v0: f32,
         halo_kind: HaloKind,
         count: u32,
+        has_gas: bool,
     ) -> SimulationParams {
         SimulationParams {
             dt: FIXED_DT,
@@ -668,7 +674,7 @@ impl Simulation {
                 HaloKind::Nfw => NFW_RS * NFW_RS,
             },
             halo_kind: halo_kind.as_u32(),
-            _pad1: 0,
+            has_gas: has_gas as u32,
         }
     }
 
@@ -680,6 +686,7 @@ impl Simulation {
         // then regenerate. The spiral disk balances its circular velocities against
         // the active halo, so seeding takes `halo_kind` too — born in equilibrium.
         self.count = clamp_particle_count(r.count);
+        self.has_gas = r.scenario.has_gas();
         let particles = r.scenario.generate(self.count, r.temp, r.halo_kind);
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
         self.set_physics(
@@ -701,7 +708,14 @@ impl Simulation {
         halo_v0: f32,
         halo_kind: HaloKind,
     ) {
-        let params = Self::build_params(softening, gravity, halo_v0, halo_kind, self.count);
+        let params = Self::build_params(
+            softening,
+            gravity,
+            halo_v0,
+            halo_kind,
+            self.count,
+            self.has_gas,
+        );
         queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[params]));
     }
 

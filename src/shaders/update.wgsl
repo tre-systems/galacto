@@ -26,7 +26,7 @@ struct Params {
     halo_v0_sq: f32, // dark-matter halo: squared characteristic circular speed
     halo_rc2: f32,   // dark-matter halo: squared core / scale radius
     halo_kind: u32,  // dark-matter halo profile: 0 = logarithmic, 1 = NFW
-    _pad1: u32,
+    has_gas: u32,    // 1 if this scenario has a dissipative gas population
 }
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -166,9 +166,16 @@ fn drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
     particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), p.vel);
 }
 
+// Per-step retention of a gas particle's non-circular (radial + vertical) motion.
+// < 1 dissipates random motion each step, so the gas stays a thin, cold disk that
+// sharpens and sustains the spiral arms (a sticky-gas stand-in for shock cooling).
+const GAS_DAMP: f32 = 0.99;
+
 // Leapfrog, part 2 — full kick + second half-drift: with acceleration now sampled
 // at the midpoint, apply the whole-step velocity kick, then drift the second half
-// with the updated velocity. vel.w carries the colour tint, so preserve it.
+// with the updated velocity. vel.w carries the colour tint / gas flag, so preserve
+// it. Gas particles (vel.w > 0.5, in gas scenarios) also dissipate their random
+// motion here — the one thing that distinguishes collisional gas from the stars.
 @compute @workgroup_size(256)
 fn kick_drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
@@ -176,7 +183,16 @@ fn kick_drift_half(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let p = particles[i];
-    let v = p.vel.xyz + accel[i].xyz * params.dt;
+    var v = p.vel.xyz + accel[i].xyz * params.dt;
+    if params.has_gas == 1u && p.vel.w > 0.5 {
+        // Keep the circular (tangential) component; damp the radial and vertical
+        // parts toward zero so the gas cools onto near-circular, planar orbits.
+        let rxy = p.pos_mass.xy;
+        let rhat = rxy / max(length(rxy), 1e-3);
+        let v_rad = dot(v.xy, rhat);
+        let v_tan = v.xy - v_rad * rhat;
+        v = vec3<f32>(v_tan + (v_rad * GAS_DAMP) * rhat, v.z * GAS_DAMP);
+    }
     let x = p.pos_mass.xyz + v * (0.5 * params.dt);
     particles[i] = Particle(vec4<f32>(x, p.pos_mass.w), vec4<f32>(v, p.vel.w));
 }

@@ -55,12 +55,18 @@ fn vs_main(
     // Warm yellow-white core fading to cool blue. The spiral disk tints by live
     // galactocentric radius (a warm bulge → blue arms, like a real spiral); the
     // merger tints by each body's vel.w (galaxy of origin) so the two populations
-    // stay distinguishable as they mix.
-    var tint = clamp(particle.vel.w, 0.0, 1.0);
-    if camera.color_mode < 0.5 {
-        tint = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
+    // stay distinguishable as they mix. In disk scenarios, vel.w > 0.5 flags the
+    // cold gas (star-forming) population, drawn a bright cyan-blue.
+    var base: vec3<f32>;
+    if camera.color_mode < 0.5 && particle.vel.w > 0.5 {
+        base = vec3<f32>(0.35, 0.7, 1.25);
+    } else {
+        var tint = clamp(particle.vel.w, 0.0, 1.0);
+        if camera.color_mode < 0.5 {
+            tint = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
+        }
+        base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
     }
-    let base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
     let speed = length(particle.vel.xyz);
     let boost = 1.0 + min(speed / SPEED_REF, SPEED_BOOST_MAX);
     let color = base * boost;

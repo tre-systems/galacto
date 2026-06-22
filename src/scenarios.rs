@@ -52,6 +52,12 @@ const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 const DISP_FRAC: f32 = 0.0277; // merger-disk σ as a fraction of v_c, per unit Q
 pub const DEFAULT_TEMP: f32 = 1.3; // default Toomre Q — the spiral sweet spot
 
+/// Fraction of the spiral disk seeded as dissipative gas (tagged via `vel.w`). The
+/// gas cools onto the plane (see the kick kernel) and concentrates in the spiral
+/// arms — the cold, blue, star-forming component over the older stellar disk.
+/// ~20% is galaxy-plausible.
+const GAS_FRACTION: f32 = 0.22;
+
 /// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
 /// understates this disk's stability (the Plummer softening, the finite disk
 /// thickness, and the modest particle count all damp the instability), so a given
@@ -128,6 +134,14 @@ impl Scenario {
             Scenario::Spiral | Scenario::GrandDesign => SPIRAL_SOFTENING,
             _ => MERGER_SOFTENING,
         }
+    }
+
+    /// Whether this scenario seeds a dissipative gas population. Only the
+    /// halo-supported exponential disks (the spiral and the M51 main disk) do — the
+    /// gas cools onto the plane and sharpens/sustains the spiral arms. The compact
+    /// merger disks are treated as gas-free (collisionless stars only).
+    pub fn has_gas(self) -> bool {
+        matches!(self, Scenario::Spiral | Scenario::GrandDesign)
     }
 
     /// Generate `count` initial bodies for this scenario at a given disk
@@ -292,6 +306,9 @@ fn seed_spiral_disk(
         let theta = rng.random_range(0.0_f32..TAU);
         let z = gaussian(rng) * DISK_THICKNESS;
         let vc = circular_velocity(r, halo_kind);
+        // A fraction is tagged as gas (vel.w = 1): the kick kernel cools it and the
+        // render shader draws it blue. Stars keep vel.w = 0 (coloured by radius).
+        let is_gas = rng.random_range(0.0_f32..1.0) < GAS_FRACTION;
         push_disk_star(
             out,
             &DiskStar {
@@ -302,7 +319,7 @@ fn seed_spiral_disk(
                 z,
                 vc,
                 sigma: toomre_sigma(r, temp, halo_kind),
-                tint: 0.0,
+                tint: if is_gas { 1.0 } else { 0.0 },
             },
             star_mass,
             rng,
