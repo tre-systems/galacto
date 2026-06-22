@@ -86,8 +86,10 @@ body {
    place whether the panel is open or closed; it stays put when dragged too. */
 #controls {
   position: fixed;
-  top: 14px;
-  left: 14px;
+  /* Offset by the safe-area insets so the cog clears the iPhone status bar/notch
+     (we render under it via viewport-fit=cover). env() is 0 on desktop. */
+  top: calc(14px + env(safe-area-inset-top));
+  left: calc(14px + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -459,7 +461,7 @@ body {
    waiting; the Reload button takes it live. */
 #update-toast {
   position: fixed;
-  top: 16px;
+  top: calc(16px + env(safe-area-inset-top));
   left: 50%;
   display: flex;
   align-items: center;
@@ -540,8 +542,8 @@ body {
    Toggled from the Dark matter halo group; off by default to keep the view clean. */
 #rotcurve {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 6px;
