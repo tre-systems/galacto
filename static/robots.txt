@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://galacto.org/sitemap.xml

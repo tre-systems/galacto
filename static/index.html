@@ -405,10 +405,11 @@
 
       // Rotation-curve overlay: a small chart of circular speed v(r) decomposed into
       // disk + bulge + dark-matter halo (km/s vs kpc), from the WASM in physical
-      // units. The flat outer curve held up by the halo is the classic evidence for
-      // dark matter — drag the Halo/Gravity sliders and watch it respond. Off by
-      // default (the toggle lives in the Dark matter halo group); a clock shows the
-      // elapsed simulated time. All physics comes from the sim — JS only draws.
+      // units. The flat outer curve held up by the halo is the classic observational
+      // clue behind dark matter — drag the Halo/Gravity sliders and watch it respond.
+      // Off by default (the toggle lives in the Dark matter halo group); a clock
+      // shows the elapsed simulated time. All physics comes from the sim — JS only
+      // draws.
       function setupRotationCurve(mod) {
         const wrap = document.getElementById("rotcurve");
         const toggle = document.getElementById("rc-toggle");
@@ -673,7 +674,7 @@
           "halo-show":
             "Overlays the otherwise-invisible dark-matter halo as a soft violet cloud, sized to the active profile's scale radius.",
           "rc-toggle":
-            "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic evidence for dark matter.",
+            "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic observational clue behind dark matter.",
           "size-slider":
             "On-screen size of each star. Purely visual — larger looks brighter and more diffuse, smaller is sharper — and never touches the physics.",
           "volume-slider":
