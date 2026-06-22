@@ -386,13 +386,21 @@ body {
 }
 
 /* Footer — feedback + support share one centred row (wrapping only if forced). */
+/* Two stacked rows: the doc links above, the Feedback / Support actions below. */
 .panel-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.footer-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 6px;
 }
 
 /* Feedback button — a quiet footer action that opens the Sentry feedback form.

@@ -248,25 +248,29 @@
           </button>
         </div>
         <div class="panel-footer">
-          <!-- Quiet links to the illustrated docs; open in a new tab so the running
-               simulation isn't torn down. -->
-          <a class="doclink" href="physics.html" target="_blank" rel="noopener">Physics</a>
-          <a class="doclink" href="engineering.html" target="_blank" rel="noopener">Engineering</a>
-          <!-- Opens the Sentry user-feedback form. Hidden until sentry.js wires it
-               up (so it never shows a dead button when Sentry isn't configured). -->
-          <button id="feedback-btn" type="button" class="feedback" hidden>
-            <span aria-hidden="true">💬</span>
-            Feedback
-          </button>
-          <a
-            id="kofi"
-            href="https://ko-fi.com/N4N31DPNUS"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span aria-hidden="true">♥</span>
-            Support this project
-          </a>
+          <!-- Row 1: quiet links to the illustrated docs; open in a new tab so the
+               running simulation isn't torn down. -->
+          <div class="footer-row">
+            <a class="doclink" href="physics.html" target="_blank" rel="noopener">Physics</a>
+            <a class="doclink" href="engineering.html" target="_blank" rel="noopener">Engineering</a>
+          </div>
+          <!-- Row 2: actions. The feedback button opens the Sentry form; it stays
+               hidden until sentry.js wires it up (so it never shows a dead button). -->
+          <div class="footer-row">
+            <button id="feedback-btn" type="button" class="feedback" hidden>
+              <span aria-hidden="true">💬</span>
+              Feedback
+            </button>
+            <a
+              id="kofi"
+              href="https://ko-fi.com/N4N31DPNUS"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span aria-hidden="true">♥</span>
+              Support this project
+            </a>
+          </div>
         </div>
       </div>
     </div>
