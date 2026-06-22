@@ -686,3 +686,37 @@ body {
 .rc-halo {
   color: #b18cff;
 }
+
+/* --- Mobile / narrow viewports ---------------------------------------------
+   The control rows use a fixed 72px label + 200px slider + readout, which is
+   ~430px wide — wider than a phone. On narrow screens, cap the panel to the
+   viewport (minus the 14px inset margins, accounting for the notch safe areas)
+   and let the sliders and dropdowns flex to fill instead of holding 200px, so
+   the readouts stay on-screen. Cap the height too, with internal scroll, so a
+   short or landscape screen can still reach every control. */
+@media (max-width: 480px) {
+  #controls-body {
+    width: calc(
+      100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right)
+    );
+    padding: 12px 14px;
+    max-height: calc(100vh - 78px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .control {
+    gap: 10px;
+  }
+
+  .control label {
+    width: 58px;
+  }
+
+  .control input[type="range"],
+  .control select {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
