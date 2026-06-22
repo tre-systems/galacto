@@ -1,21 +1,22 @@
 #!/usr/bin/env node
-// Rasterise the PWA icon sources (assets/icons/*.svg) into the PNGs the manifest
-// references (static/icons/*.png). Like the diagrams, the output is committed and
-// this runs locally on demand; it needs librsvg's `rsvg-convert` on PATH
-// (`brew install librsvg`). Re-run after editing the icon SVGs: `npm run icons`.
+// Rasterise the brand SVG sources (assets/) into the PNGs the page references:
+// the PWA icons (static/icons/*.png) and the Open Graph social card
+// (static/og-card.png). Like the diagrams, the output is committed and this runs
+// locally on demand; it needs librsvg's `rsvg-convert` on PATH
+// (`brew install librsvg`). Re-run after editing the SVGs: `npm run icons`.
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const src = join(process.cwd(), 'assets', 'icons');
-const out = join(process.cwd(), 'static', 'icons');
+const root = process.cwd();
 
-// [source svg, output png, pixel size]
+// [source svg, output png, width, height]
 const targets = [
-  ['icon.svg', 'icon-192.png', 192],
-  ['icon.svg', 'icon-512.png', 512],
-  ['icon.svg', 'apple-touch-icon.png', 180],
-  ['icon-maskable.svg', 'icon-maskable-512.png', 512],
+  ['icons/icon.svg', 'icons/icon-192.png', 192, 192],
+  ['icons/icon.svg', 'icons/icon-512.png', 512, 512],
+  ['icons/icon.svg', 'icons/apple-touch-icon.png', 180, 180],
+  ['icons/icon-maskable.svg', 'icons/icon-maskable-512.png', 512, 512],
+  ['og-card.svg', 'og-card.png', 1200, 630],
 ];
 
 try {
@@ -25,17 +26,17 @@ try {
   process.exit(1);
 }
 
-for (const [svg, png, size] of targets) {
-  const input = join(src, svg);
+for (const [svg, png, w, h] of targets) {
+  const input = join(root, 'assets', svg);
   if (!existsSync(input)) {
     console.error(`gen-icons: missing source ${input}`);
     process.exit(1);
   }
   execFileSync('rsvg-convert', [
-    '-w', String(size),
-    '-h', String(size),
+    '-w', String(w),
+    '-h', String(h),
     input,
-    '-o', join(out, png),
+    '-o', join(root, 'static', png),
   ]);
-  console.log(`gen-icons: ${svg} -> icons/${png} (${size}×${size})`);
+  console.log(`gen-icons: ${svg} -> ${png} (${w}×${h})`);
 }

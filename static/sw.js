@@ -21,13 +21,23 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Note: no skipWaiting() here — a new worker stays "waiting" so the page can
+  // prompt the user before it takes over (see the SKIP_WAITING message below),
+  // rather than swapping the running sim out from under them.
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       // Best-effort: a single missing optional URL must not fail the whole install.
-      .then((cache) => Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {}))))
-      .then(() => self.skipWaiting()),
+      .then((cache) => Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {})))),
   );
+});
+
+// The page sends this when the user accepts the "update available" prompt: take
+// over now, which fires controllerchange in the page and it reloads.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

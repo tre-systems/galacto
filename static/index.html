@@ -13,6 +13,31 @@
       name="description"
       content="A GPU-accelerated self-gravitating N-body galaxy sandbox: a spiral disk and galaxy collisions (merger, head-on, retrograde, minor merger, a galaxy group, a grand-design M51 flyby), with live speed and disk-temperature controls and a generative soundscape driven by the simulation. Built with Rust, WebAssembly, and WebGPU."
     />
+    <link rel="canonical" href="https://galacto.org/" />
+
+    <!-- Open Graph / Twitter social card -->
+    <meta property="og:title" content="Galacto — N-body galaxy sandbox" />
+    <meta
+      property="og:description"
+      content="A GPU-accelerated self-gravitating N-body galaxy sandbox — spiral disks and galaxy collisions in Rust, WebAssembly, and WebGPU, with a generative soundscape."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://galacto.org/" />
+    <meta property="og:image" content="https://galacto.org/og-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The Galacto wordmark beside its galaxy mark on a deep-space background."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Galacto — N-body galaxy sandbox" />
+    <meta
+      name="twitter:description"
+      content="A self-gravitating N-body galaxy sandbox in Rust, WebAssembly, and WebGPU, with a generative soundscape."
+    />
+    <meta name="twitter:image" content="https://galacto.org/og-card.png" />
+
     <link rel="stylesheet" href="styles.css?v=__CACHE_BUST__" />
 
     <!-- PWA: installable, offline-capable app shell -->
@@ -172,6 +197,13 @@
           Support this project
         </a>
       </div>
+    </div>
+
+    <!-- Update prompt: shown when the service worker has a new version waiting. -->
+    <div id="update-toast" role="status" aria-live="polite" hidden>
+      <span class="update-text">A new version is available.</span>
+      <button id="update-reload" type="button">Reload</button>
+      <button id="update-dismiss" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
     </div>
 
     <script type="module">
@@ -518,15 +550,74 @@
         );
       }
 
-      // Register the service worker so the app installs and launches offline.
-      // Non-blocking and best-effort — the sim runs fine without it (and it's a
-      // no-op on the dev file server if unsupported). The ?v= keeps it fresh per
-      // deploy, matching the cache-busted shell.
+      // Reveal the "update available" toast and wire its Reload button to take
+      // the waiting service worker live (which triggers the reload below).
+      function showUpdateToast(applyUpdate) {
+        const toast = document.getElementById("update-toast");
+        if (!toast || toast.dataset.shown === "1") return; // show at most once
+        toast.dataset.shown = "1";
+        toast.hidden = false;
+        // Force a reflow so the transition runs, then slide it in.
+        void toast.offsetWidth;
+        toast.classList.add("show");
+        document.getElementById("update-reload").addEventListener(
+          "click",
+          (e) => {
+            e.currentTarget.disabled = true;
+            e.currentTarget.textContent = "Updating…";
+            applyUpdate();
+          },
+          { once: true },
+        );
+        document.getElementById("update-dismiss").addEventListener(
+          "click",
+          () => toast.classList.remove("show"),
+          { once: true },
+        );
+      }
+
+      // Register the service worker so the app installs and launches offline, and
+      // surface an update prompt when a new version is deployed. Best-effort — the
+      // sim runs fine without it (and it's a no-op where unsupported). The ?v=
+      // keeps the worker fresh per deploy, matching the cache-busted shell.
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker
-            .register("./sw.js?v=__CACHE_BUST__")
-            .catch((e) => console.warn("Service worker registration failed:", e));
+        window.addEventListener("load", async () => {
+          try {
+            const reg = await navigator.serviceWorker.register(
+              "./sw.js?v=__CACHE_BUST__",
+            );
+
+            const promptFor = (worker) => {
+              if (worker) showUpdateToast(() => worker.postMessage({ type: "SKIP_WAITING" }));
+            };
+
+            // A new version already finished installing and is waiting.
+            if (reg.waiting && navigator.serviceWorker.controller) promptFor(reg.waiting);
+
+            // A new version arrives while the page is open.
+            reg.addEventListener("updatefound", () => {
+              const installing = reg.installing;
+              if (!installing) return;
+              installing.addEventListener("statechange", () => {
+                if (installing.state === "installed" && navigator.serviceWorker.controller) {
+                  promptFor(reg.waiting || installing);
+                }
+              });
+            });
+
+            // Only reload once the user accepts (the new worker takes control).
+            // On the very first install there is no prior controller, so that
+            // claim must not trigger a reload.
+            const hadController = !!navigator.serviceWorker.controller;
+            let reloading = false;
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              if (!hadController || reloading) return;
+              reloading = true;
+              window.location.reload();
+            });
+          } catch (e) {
+            console.warn("Service worker registration failed:", e);
+          }
         });
       }
 

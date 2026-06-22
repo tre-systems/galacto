@@ -308,3 +308,85 @@ body {
   line-height: 1;
   transform: translateY(1px);
 }
+
+/* "Update available" toast — top-centre so it never collides with the controls
+   (which live at the bottom). Slides in when the service worker has a new version
+   waiting; the Reload button takes it live. */
+#update-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px 9px 16px;
+  background: rgba(10, 14, 28, 0.72);
+  border: 1px solid rgba(122, 162, 247, 0.45);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #e6ecff;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  z-index: 200;
+  opacity: 0;
+  transform: translate(-50%, -160%);
+  transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+/* Keep the `hidden` attribute authoritative despite the id-level display above. */
+#update-toast[hidden] {
+  display: none;
+}
+
+#update-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#update-toast .update-text {
+  white-space: nowrap;
+}
+
+#update-reload {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 14px;
+  background: rgba(122, 162, 247, 0.22);
+  color: #dbe4ff;
+  border: 1px solid rgba(122, 162, 247, 0.6);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+#update-reload:hover {
+  background: rgba(122, 162, 247, 0.36);
+}
+
+#update-reload:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#update-dismiss {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+#update-dismiss:hover {
+  opacity: 1;
+}

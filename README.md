@@ -19,7 +19,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
 - **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent.
 - **Collapsible controls** — the control panel folds away to a small ⚙ button so it stays out of the view.
-- **Installable PWA** — a web manifest, maskable icons, and a service worker make it installable to the home screen and launchable offline; the precached app shell (glue, WASM, styles) also loads instantly on repeat visits, while navigation stays network-first so a new deploy shows immediately.
+- **Installable PWA** — a web manifest, maskable icons, and a service worker make it installable to the home screen and launchable offline; the precached app shell (glue, WASM, styles) also loads instantly on repeat visits, while navigation stays network-first so a new deploy shows immediately. When a new version is deployed, an in-app prompt offers a one-click reload, and an Open Graph card gives it a proper preview when shared.
 - **Edge-deployed** — ships as a static site on Cloudflare Pages.
 
 ## Controls
