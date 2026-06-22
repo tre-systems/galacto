@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Building Galacto — a GPU N-body galaxy in Rust + WebGPU</title>
+    <title>Building Galacto — a GPU N-body galaxy in Rust and WebGPU</title>
     <meta
       name="description"
-      content="A technical walkthrough of building a real-time, self-gravitating N-body galaxy simulation in the browser with Rust, WebAssembly and WebGPU (wgpu/WGSL): GPU-resident state, the tiled all-pairs gravity kernel, a symplectic leapfrog as three compute passes, instanced billboard rendering, and the patterns and gotchas that make it work."
+      content="A technical walkthrough of a real-time, self-gravitating N-body galaxy simulation in the browser with Rust, WebAssembly and WebGPU: GPU-resident state, the tiled all-pairs gravity kernel, a symplectic leapfrog as three compute passes, and instanced billboard rendering."
     />
     <link rel="canonical" href="https://galacto.org/engineering" />
     <style>
@@ -139,10 +139,9 @@
       <p class="eyebrow">The engineering</p>
       <h1>Building a galaxy in Rust &amp; WebGPU</h1>
       <p class="lede">
-        How to run a real-time, self-gravitating <em>N</em>-body galaxy entirely on the GPU, in a browser
-        tab — written in Rust, compiled to WebAssembly, and driven by WebGPU compute and render shaders.
-        This is the architecture and the iconic pieces of code that make it work, with the patterns and
-        gotchas worth stealing.
+        How Galacto keeps a self-gravitating <em>N</em>-body galaxy on the GPU, frame after frame, inside a
+        browser tab. The interesting parts are not big abstractions; they are a handful of small contracts
+        between Rust, WebAssembly, WebGPU, and WGSL that have to stay exact.
       </p>
     </header>
 
@@ -153,14 +152,19 @@
           The whole thing is one Rust crate compiled to WebAssembly with
           <code>wasm-pack build --target web</code>, talking to the GPU through
           <a href="https://wgpu.rs/">wgpu</a> (the Rust implementation of the WebGPU standard) with shaders
-          written in WGSL. The dependency list is deliberately small:
+          written in WGSL. The dependency list is deliberately small; this is the core of it:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">toml</span><span class="path">Cargo.toml</span></figcaption>
+          <figcaption><span class="lang">toml</span><span class="path">Cargo.toml — abridged</span></figcaption>
           <pre><code><span class="k">[dependencies]</span>
 wgpu = <span class="t">"29.0"</span>              <span class="c"># WebGPU: compute + render</span>
 wasm-bindgen = <span class="t">"0.2"</span>       <span class="c"># the JS &lt;-&gt; Rust boundary</span>
 wasm-bindgen-futures = <span class="t">"0.4"</span>
+web-sys = { version = <span class="t">"0.3"</span>, features = [
+    <span class="t">"HtmlCanvasElement"</span>,
+    <span class="t">"AudioContext"</span>,
+    <span class="c"># DOM, input events, and the Web Audio nodes the app uses.</span>
+] }
 bytemuck = { version = <span class="t">"1.0"</span>, features = [<span class="t">"derive"</span>] }  <span class="c"># zero-copy GPU uploads</span>
 cgmath = <span class="t">"0.18"</span>             <span class="c"># camera math</span>
 rand = { version = <span class="t">"0.10"</span>, default-features = <span class="k">false</span>, features = [<span class="t">"std"</span>, <span class="t">"std_rng"</span>] }</code></pre>
@@ -169,19 +173,20 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           The architecture rests on one rule: <strong>body state lives only on the GPU</strong>. Positions
           and velocities sit in GPU storage buffers and are never copied back to the CPU each frame (the one
           exception is a tiny, throttled, asynchronous reduction that drives the audio). A single
-          <code>requestAnimationFrame</code> callback advances the camera, runs the physics as GPU compute
-          passes, and issues one instanced draw that reads the very same buffer:
+          <code>requestAnimationFrame</code> callback updates input and audio, then records the GPU work for
+          that frame. The compute passes and the draw read and write the same GPU-resident particle buffer:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — the per-frame driver</span></figcaption>
           <pre><code><span class="k">fn</span> <span class="f">animation_frame</span>(time: <span class="t">f32</span>) {
-    <span class="c">// APP_STATE is a thread_local RefCell — fine because wasm in the</span>
-    <span class="c">// browser is single-threaded, so there is never contention.</span>
-    <span class="k">if let</span> <span class="t">Some</span>(app_state) = APP_STATE.with(|cell| cell.borrow().clone()) {
+    <span class="k">let</span> app_state = APP_STATE.<span class="f">with</span>(|cell| cell.<span class="f">borrow</span>().<span class="f">clone</span>());
+    <span class="k">if let</span> <span class="t">Some</span>(app_state) = app_state {
         <span class="k">let mut</span> app = app_state.borrow_mut();
-        app.<span class="f">update</span>(time);        <span class="c">// camera + the fixed-step physics passes</span>
-        app.<span class="f">update_audio</span>();      <span class="c">// consume the async core readback</span>
-        <span class="k">let</span> _ = app.<span class="f">render</span>();      <span class="c">// one instanced billboard draw</span>
+        app.<span class="f">update</span>(time);        <span class="c">// input + fixed-step accumulator</span>
+        app.<span class="f">update_audio</span>();      <span class="c">// consume the latest async core readback</span>
+        <span class="k">if let</span> <span class="t">Err</span>(e) = app.<span class="f">render</span>() {
+            <span class="f">console_log!</span>(<span class="t">"Render error: {:?}"</span>, e);
+        }
     }
     <span class="f">request_animation_frame</span>();  <span class="c">// schedule the next frame</span>
 }</code></pre>
@@ -216,14 +221,16 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <p>
           <code>#[repr(C)]</code> fixes the field order and <code>bytemuck</code>'s <code>Pod</code>/<code>Zeroable</code>
           let the struct be cast to bytes with zero copying for upload. And rather than <em>hope</em> the two
-          layouts match, a unit test asserts it — so a future field change can't silently corrupt the buffer:
+          layouts match, unit tests assert the buffer contract. A future field change has to update both
+          sides, or it fails before it reaches a browser:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/simulation.rs — a test that guards the layout</span></figcaption>
           <pre><code><span class="f">#[test]</span>
 <span class="k">fn</span> <span class="f">buffer_layout_matches_wgsl</span>() {
-    <span class="c">// Two vec4&lt;f32&gt; = 32 bytes, matching the WGSL struct's stride.</span>
+    <span class="c">// Mirrored byte-for-byte by the structs in update.wgsl.</span>
     <span class="f">assert_eq!</span>(std::mem::<span class="f">size_of</span>::&lt;<span class="t">Particle</span>&gt;(), <span class="t">32</span>);
+    <span class="f">assert_eq!</span>(std::mem::<span class="f">size_of</span>::&lt;<span class="t">SimulationParams</span>&gt;(), <span class="t">32</span>);
 }</code></pre>
         </figure>
       </section>
@@ -234,19 +241,19 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           The expensive kernel is the <span class="pill">O(<var>N</var>²)</span> gravity sum: every body
           accumulates the pull of every other. Done naïvely, each of the <var>N</var> threads reads all
           <var>N</var> bodies from global memory — <var>N</var>² global reads, and the kernel is starved on
-          memory bandwidth, not maths.
+          memory bandwidth, not arithmetic.
         </p>
         <p>
           The fix is the classic GPU <em>N</em>-body tiling pattern. The workgroup walks the body array in
           <strong>tiles</strong>: all 256 threads cooperatively stage one tile into fast
           <code>var&lt;workgroup&gt;</code> shared memory, hit a barrier, then every thread accumulates that
           whole tile's pull on its own body from shared memory before moving to the next tile. Global memory
-          is touched once per tile instead of once per body:
+          is touched once per workgroup per tile, not once per body per thread:
         </p>
         <figure class="code">
           <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl — compute_accel (core)</span></figcaption>
-          <pre><code><span class="c">// Tile size == workgroup size; particle_count must be a multiple of it, so</span>
-<span class="c">// the tile loop never needs a tail guard.</span>
+          <pre><code><span class="c">// Tile size == workgroup size; particle_count is clamped to a multiple of it,</span>
+<span class="c">// so the tile loop never needs a tail guard.</span>
 <span class="k">const</span> TILE: <span class="t">u32</span> = <span class="t">256u</span>;
 <span class="k">var&lt;workgroup&gt;</span> shared_pm: <span class="t">array&lt;vec4&lt;f32&gt;, 256&gt;</span>;
 
@@ -279,8 +286,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <span class="f">workgroupBarrier</span>();
         base = base + TILE;
     }
-    <span class="c">// (+ a static dark-matter halo force, and a Chandrasekhar dynamical-</span>
-    <span class="c">//  friction drag, are added here before writing the result)</span>
+    <span class="c">// Static halo force + Chandrasekhar dynamical friction are added here.</span>
     accel[i] = <span class="t">vec4&lt;f32&gt;</span>(a, <span class="t">0.0</span>);
 }</code></pre>
         </figure>
@@ -288,7 +294,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           <span class="tag">Why it's quick to read, fast to run</span>
           <p>
             The softened denominator means the self-term (where <code>d == 0</code>) is finite and adds zero,
-            so the inner loop needs <em>no</em> <code>if i != j</code> branch — branchless and warp-friendly.
+            so the inner loop needs <em>no</em> <code>if i != j</code> branch.
             Two <code>workgroupBarrier()</code>s bracket each tile: one so every thread sees the staged tile,
             one so no thread overwrites it while others still read.
           </p>
@@ -353,21 +359,31 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <h2><span class="num">05</span>Frame-rate-independent time</h2>
         <p>
           Physics steps at a fixed <code>dt</code> (1/60), decoupled from the display via an
-          <strong>accumulator</strong>: bank the real elapsed time (scaled by the speed slider), then spend it
-          in whole fixed steps. A 30&nbsp;Hz and a 144&nbsp;Hz machine integrate the identical trajectory;
-          only the animation smoothness differs.
+          <strong>accumulator</strong>: bank the real elapsed time, scaled by the speed slider, then spend it
+          in whole fixed steps. Refresh rate changes how many frames you see, not the size of a physics step.
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — the accumulator</span></figcaption>
           <pre><code><span class="c">// Bank real elapsed time (clamped against a stall), scaled by the speed knob.</span>
 <span class="k">self</span>.accumulator += frame_dt.<span class="f">clamp</span>(<span class="t">0.0</span>, MAX_FRAME_DT) * <span class="k">self</span>.speed;
 
-<span class="c">// Spend it in whole FIXED_DT steps (a burst is capped to avoid a</span>
-<span class="c">// "spiral of death" after a long pause).</span>
-<span class="k">let</span> steps = (<span class="k">self</span>.accumulator / simulation::FIXED_DT) <span class="k">as</span> <span class="t">u32</span>;
-<span class="k">self</span>.accumulator -= steps <span class="k">as</span> <span class="t">f32</span> * simulation::FIXED_DT;
-<span class="k">self</span>.sim_time   += steps <span class="k">as</span> <span class="t">f32</span> * simulation::FIXED_DT;  <span class="c">// drives the Myr clock</span></code></pre>
+<span class="c">// Spend it in whole FIXED_DT steps. Cap catch-up after a stall because each</span>
+<span class="c">// substep is a full O(N²) gravity pass.</span>
+<span class="k">let mut</span> steps = (<span class="k">self</span>.accumulator / simulation::FIXED_DT) <span class="k">as</span> <span class="t">u32</span>;
+<span class="k">if</span> steps &gt; MAX_SUBSTEPS {
+    steps = MAX_SUBSTEPS;
+    <span class="k">self</span>.accumulator = <span class="t">0.0</span>;
+} <span class="k">else</span> {
+    <span class="k">self</span>.accumulator -= steps <span class="k">as</span> <span class="t">f32</span> * simulation::FIXED_DT;
+}
+<span class="k">self</span>.steps_this_frame = steps;
+<span class="k">self</span>.sim_time += steps <span class="k">as</span> <span class="t">f32</span> * simulation::FIXED_DT;</code></pre>
         </figure>
+        <p class="dim">
+          The seed is deterministic, but the long-run trajectory is not a cross-GPU bit-for-bit promise:
+          the all-pairs sum is massively parallel floating point, and tiny ordering differences eventually
+          matter in a chaotic system.
+        </p>
       </section>
 
       <section>
@@ -399,14 +415,15 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
         <h2><span class="num">07</span>The wasm-bindgen boundary</h2>
         <p>
           The page owns a single <code>AppState</code> behind a <code>thread_local</code> cell. WebAssembly in
-          the browser is single-threaded, so a <code>RefCell&lt;Option&lt;Rc&lt;...&gt;&gt;&gt;</code> is the
-          right tool — no locks, no <code>Send</code> bounds to satisfy. Every UI control is just a small
+          the browser is single-threaded, so a <code>RefCell&lt;Option&lt;Rc&lt;...&gt;&gt;&gt;</code> is enough:
+          no locks, no <code>Send</code> bounds to satisfy. Every UI control is just a small
           <code>#[wasm_bindgen]</code> free function the JavaScript calls:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — exported controls</span></figcaption>
           <pre><code><span class="f">#[wasm_bindgen]</span>
 <span class="k">pub fn</span> <span class="f">set_halo</span>(halo_v0: <span class="t">f32</span>) {
+    <span class="k">let</span> halo_v0 = halo_v0.<span class="f">clamp</span>(<span class="t">0.0</span>, <span class="t">400.0</span>);
     APP_STATE.<span class="f">with</span>(|cell| {
         <span class="k">if let</span> <span class="t">Some</span>(app) = cell.<span class="f">borrow</span>().<span class="f">as_ref</span>() {
             app.<span class="f">borrow_mut</span>().<span class="f">set_halo</span>(halo_v0);  <span class="c">// rewrites the params uniform — live, no re-seed</span>
@@ -421,22 +438,22 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
       </section>
 
       <section>
-        <h2><span class="num">08</span>Patterns &amp; gotchas worth stealing</h2>
+        <h2><span class="num">08</span>Patterns that paid off</h2>
         <ul>
-          <li><strong>Mind WGSL alignment.</strong> <code>vec3</code> takes a 16-byte slot; pack with <code>vec4</code> or pad uniforms, and <em>assert</em> the layout in a test (§02). The most common WebGPU bug is a silent struct-stride mismatch.</li>
+          <li><strong>Mind WGSL alignment.</strong> <code>vec3</code> takes a 16-byte slot; pack with <code>vec4</code> or pad uniforms, and <em>assert</em> the layout in a test (§02). Silent stride mismatches are miserable to debug.</li>
           <li><strong>Keep state on the GPU.</strong> A per-frame readback stalls the pipeline waiting for the device. The only readback here is asynchronous and single-in-flight: a flag skips it while a previous map is pending, which naturally throttles it to the GPU round-trip rate and keeps it off the hot path.</li>
           <li><strong>Separate passes for read/write hazards.</strong> Gravity reads what drift wrote — distinct compute passes give you the ordering guarantee for free (§04).</li>
           <li><strong>Make the count a multiple of the workgroup size.</strong> Then the inner tile loop needs no bounds check, and every dispatch divides evenly.</li>
-          <li><strong>Fixed timestep + accumulator</strong> for deterministic, frame-rate-independent, reproducible physics (§05).</li>
-          <li><strong>Deterministic RNG.</strong> A fixed-seed <code>StdRng</code> with <code>getrandom</code> disabled — the same scenario always evolves the same way, and there's no OS-entropy dependency to configure for wasm.</li>
+          <li><strong>Fixed timestep + accumulator.</strong> The display rate never changes integration accuracy (§05).</li>
+          <li><strong>Deterministic RNG.</strong> A fixed-seed <code>StdRng</code> with <code>getrandom</code> disabled gives repeatable initial conditions and no OS-entropy dependency to configure for wasm.</li>
           <li><strong>Cast, don't serialise.</strong> <code>bytemuck</code> turns <code>#[repr(C)]</code> structs into byte slices for buffer writes with zero copies.</li>
         </ul>
         <div class="note warn">
           <span class="tag">A WebGPU reality check</span>
           <p>
-            WebGPU needs a recent browser. Chrome and Edge ship it by default; Firefox and Safari are catching
-            up by version. Feature-detect <code>navigator.gpu</code> and show a friendly message rather than a
-            blank canvas when it's missing.
+            WebGPU is broadly available now, but exact support still depends on browser, OS, GPU and driver.
+            Feature-detect <code>navigator.gpu</code> and show a friendly message rather than a blank canvas
+            when it is missing.
           </p>
         </div>
       </section>
@@ -451,14 +468,14 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
           <pre><code><span class="c"># Rust + shaders -&gt; WebAssembly + JS glue, into pkg/</span>
 wasm-pack build --target web --release --out-dir pkg --out-name galacto
 
-<span class="c"># Copy the HTML/CSS shell next to it, then fingerprint assets for cache-busting</span>
+<span class="c"># Copy the HTML/CSS shell next to it, then stamp ?v=&lt;git-sha&gt; URLs</span>
 cp -r static/* pkg/ &amp;&amp; node scripts/cache-bust.mjs</code></pre>
         </figure>
         <p>
           The output in <code>pkg/</code> is a plain static site — no server, no backend — so it deploys to any
-          static host (Galacto runs on Cloudflare Pages). Assets are fingerprinted by content hash for
-          long-cache immutability, a service worker precaches the app shell for instant repeat loads and
-          offline launch, and navigation stays network-first so a new deploy shows up immediately.
+          static host (Galacto runs on Cloudflare Pages). The build stamps the JS and CSS URLs with the git
+          SHA and gives the service worker a per-deploy cache name, so repeat visits are quick, offline launch
+          works, and the next navigation can still see a fresh deploy.
         </p>
       </section>
 

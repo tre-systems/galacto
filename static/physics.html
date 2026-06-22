@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>The Physics of Galacto — a real galaxy, simulated in your browser</title>
+    <title>The Physics of Galacto — real gravity in a browser-sized galaxy</title>
     <meta
       name="description"
-      content="How Galacto works as physics: self-gravity, leapfrog integration, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction in galaxy mergers — and an honest account of what is real versus illustrative."
+      content="How Galacto works as physics: self-gravity, leapfrog integration, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction in galaxy mergers — with a clear split between the real dynamics and the deliberate approximations."
     />
     <link rel="canonical" href="https://galacto.org/physics" />
     <style>
@@ -166,13 +166,13 @@
 
     <header class="hero">
       <p class="eyebrow">The science</p>
-      <h1>A real galaxy, simulated in your browser</h1>
+      <h1>Real gravity, browser-sized galaxy</h1>
       <p class="lede">
         Galacto is a self-gravitating <em>N</em>-body galaxy sandbox: tens of thousands of stars,
-        each pulling on every other, evolving under the same gravity that shapes real galaxies. No
-        scripted arms, no canned animation — the spirals, bars, tidal bridges and merger remnants all
-        <em>emerge</em>. Here is the physics behind what you see, and an honest account of where the
-        model is exact and where it is a deliberate, illustrative approximation.
+        each pulling on every other through the same Newtonian gravity used in real galaxy simulations,
+        scaled down for a browser. No scripted arms, no canned animation — the spirals, bars, tidal
+        bridges and merger remnants are consequences of the dynamics. This page is the split between
+        what is really being simulated and what is deliberately approximate.
       </p>
     </header>
 
@@ -181,8 +181,8 @@
         <h2><span class="num">01</span>Gravity, all of it</h2>
         <p>
           Every body carries a mass and feels the pull of <em>every</em> other body — the full
-          <strong>all-pairs</strong> sum, with no tree code or particle-mesh approximation cutting
-          corners. The acceleration of body <var>i</var> is Newtonian gravity summed over all <var>j</var>:
+          <strong>all-pairs</strong> sum, with no tree code or particle-mesh approximation to the force.
+          The acceleration of body <var>i</var> is Newtonian gravity summed over all <var>j</var>:
         </p>
         <div class="eq">
           <var>a</var><sub><var>i</var></sub> = <var>G</var> ∑<sub><var>j</var></sub> <var>m</var><sub><var>j</var></sub>
@@ -230,8 +230,9 @@
         </p>
         <p class="dim">
           The step is fixed at <var>dt</var> = 1/60 in simulation time and decoupled from your screen's
-          refresh rate by an accumulator, so the physics is identical at 30, 60, or 144&nbsp;Hz — only
-          the smoothness of the animation changes.
+          refresh rate by an accumulator, so a slow display does not make the integrator take bigger,
+          less accurate steps. The seeded initial conditions are repeatable; the long-run path is not
+          promised bit-for-bit across different GPUs.
         </p>
       </section>
 
@@ -288,8 +289,8 @@
           <var>v</var><sub>c</sub>²(<var>r</var>) = <var>v</var><sub>bulge</sub>² + <var>v</var><sub>disk</sub>² + <var>v</var><sub>halo</sub>²
         </div>
         <p>
-          The flat outer part is held up almost entirely by the halo — the classic, visible-in-real-time
-          evidence for dark matter. Drag the <strong>Strength</strong> slider (in km/s) or the
+          The flat outer part is held up almost entirely by the halo — the classic observational clue
+          behind dark matter, made visible as a live decomposition. Drag the <strong>Strength</strong> slider (in km/s) or the
           <strong>Size</strong> slider (the halo's scale radius, in kpc) and watch the curve respond: a
           concentrated halo rises steeply in the centre, a diffuse one gently.
         </p>
@@ -319,9 +320,9 @@
           <li><strong><var>Q</var> ≫ 2</strong> — pressure and rotation win; a smooth, featureless disk.</li>
         </ul>
         <p>
-          The <strong>Toomre Q</strong> slider sets <var>Q</var> directly. The sim inverts the relation to
+          The <strong>Toomre Q</strong> slider sets the target <var>Q</var> for the next seed. The sim inverts the relation to
           assign each radius the dispersion it needs — <var>σ</var><sub>R</sub>(<var>r</var>) = <var>Q</var> · 3.36 <var>G</var> <var>Σ</var>(<var>r</var>) / <var>κ</var>(<var>r</var>) —
-          so the disk is <em>born</em> at your chosen stability and then evolves on its own.
+          so the disk is <em>born</em> at your chosen stability and then evolves on its own after Restart or a scenario switch.
         </p>
         <div class="note honesty">
           <span class="tag">Honest about the model</span>
@@ -339,16 +340,17 @@
         <h2><span class="num">06</span>Cold gas, and the blue arms</h2>
         <p>
           Stars are <em>collisionless</em> — they pass through one another's neighbourhoods without
-          colliding — so a purely stellar disk slowly heats up and its arms fade. Real galaxies stay
-          spirally because of their <strong>cold gas</strong>, which <em>is</em> collisional: it radiates
+          colliding — so a purely stellar disk slowly heats up and its arms fade. Spiral galaxies keep
+          sharp arms because of their <strong>cold gas</strong>, which <em>is</em> collisional: it radiates
           energy away, shocks, and settles into a thin, cold layer that keeps responding sharply to the
           disk's gravity. That gas is where new, hot, blue stars are born — which is why the arms of real
           spirals glow blue.
         </p>
         <p>
-          Galacto seeds about a quarter of the disk as a gas component (set it with the <strong>Gas</strong>
-          slider). Each step, the gas sheds its random, non-circular motion toward smooth circular orbits in
-          the plane — a "sticky gas" stand-in for radiative cooling — so it stays cold while the stars heat
+          In the spiral and M51 scenarios, Galacto seeds about a quarter of the disk as a gas component
+          by default (set it with the <strong>Gas</strong> slider). Each step, the gas damps radial and
+          vertical motion while keeping its tangential circulation — a "sticky gas" stand-in for radiative
+          cooling — so it stays cold while the stars heat
           and blur. It gathers into the arms and is drawn a bright blue, tracing the star-forming ridges over
           a warmer, redder stellar disk.
         </p>
@@ -366,8 +368,8 @@
       <section>
         <h2><span class="num">07</span>Mergers, and why galaxies fall together</h2>
         <p>
-          When two galaxies pass close, why do they merge into one remnant rather than swinging past and
-          escaping? The answer is <strong>dynamical friction</strong>. A massive body ploughing through a
+          When two galaxies pass close, why can they merge into one remnant rather than simply swinging
+          past? One key mechanism is <strong>dynamical friction</strong>. A massive body ploughing through a
           sea of lighter ones — here, the dark-matter halo — gathers an over-dense gravitational
           <em>wake</em> behind it, and that wake pulls back, draining the body's orbital energy.
           Chandrasekhar's classic result gives the drag:
@@ -381,7 +383,7 @@
         <p>
           Because the drag scales with the perturber's <em>mass</em>, it bites hard on the heavy galaxy
           cores and is negligible for the featherweight disk stars. So colliding galaxies genuinely lose
-          orbital energy and spiral together — the real merger mechanism — rather than sailing past. The
+          orbital energy and spiral together — one real merger mechanism — rather than sailing past. The
           <strong>Grand-design (M51)</strong> scenario layers a second classic effect on top: a companion's
           tidal field sweeping past a disk draws out a two-armed grand-design pattern and a luminous bridge,
           just like the real M51.
@@ -412,8 +414,8 @@
       <section>
         <h2><span class="num">09</span>What's real, and what's illustrative</h2>
         <p>
-          Galacto is built to be scientifically <em>honest</em> as well as beautiful, which means being
-          clear about its approximations. The deliberate simplifications:
+          Galacto is a compact model, not a claim to simulate every piece of galaxy physics. The deliberate
+          simplifications are:
         </p>
         <ul>
           <li><strong>Finite <var>N</var>.</strong> Tens of thousands of bodies stand in for ~10<sup>11</sup> stars, so each "star" is enormously massive and two-body scattering is artificially fast — softening mitigates it, but this is a collisionless approximation, not a star-by-star model.</li>
@@ -423,19 +425,19 @@
           <li><strong>Static halo</strong> — a fixed background potential, so the halo neither responds to the disk nor sloshes during a merger.</li>
           <li><strong>Spherical enclosed-mass approximation</strong> for the disk's equilibrium circular speeds — close enough that the disk settles and ripples, but not the exact potential of a flattened disk.</li>
         </ul>
-        <p>And what is genuinely <strong>emergent</strong>, arising from the gravitating dynamics with nothing scripted:</p>
+        <p>And what is genuinely <strong>dynamic</strong>, arising from the gravitating bodies with nothing scripted:</p>
         <ul>
           <li>spiral arms and bars from disk instability and swing amplification;</li>
           <li>tidal tails and bridges in close encounters;</li>
-          <li>violent relaxation of two galaxies into a single rotating remnant;</li>
-          <li>a flat rotation curve held up by an unseen halo.</li>
+          <li>violent relaxation of galaxies into a single rotating remnant;</li>
+          <li>gas collecting into the same spiral ridges the stellar disk raises.</li>
         </ul>
         <div class="note key">
           <span class="tag">The takeaway</span>
           <p>
-            The structures you watch form are real consequences of real gravity, integrated honestly. The
-            approximations are the price of running a galaxy in real time in a browser tab — chosen so that
-            the <em>physics you can see</em> stays faithful to how galaxies actually behave.
+            The visible structures are consequences of the simulated gravity, not animation. The
+            approximations are the price of running the model in real time in a browser tab, and they are
+            chosen to preserve the behaviours that matter on screen.
           </p>
         </div>
       </section>
