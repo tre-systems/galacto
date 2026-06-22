@@ -58,17 +58,23 @@ fn vs_main(
     // stay distinguishable as they mix. In disk scenarios, vel.w > 0.5 flags the
     // cold gas (star-forming) population, drawn a bright cyan-blue.
     var base: vec3<f32>;
-    if camera.color_mode < 0.5 && particle.vel.w > 0.5 {
-        base = vec3<f32>(0.25, 0.6, 1.35);
-    } else {
-        var tint = clamp(particle.vel.w, 0.0, 1.0);
-        if camera.color_mode < 0.5 {
-            // Steepen the radial ramp (pow > 1) so the bulge holds a saturated gold
-            // and only the outer disk cools to blue — strong centre/arm contrast.
+    if camera.color_mode < 0.5 {
+        // Disk scenarios: the stellar disk is warm (a saturated gold bulge fading to
+        // a warm cream) and is never blue — so all the blue comes from the cold gas
+        // (vel.w > 0.5), which has cooled and gathered into the arms. The result is
+        // a warm centre with blue, star-forming arms standing out against it.
+        if particle.vel.w > 0.5 {
+            base = vec3<f32>(0.30, 0.62, 1.35);
+        } else {
             let rr = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
-            tint = pow(rr, 1.7);
+            let tint = pow(rr, 1.6);
+            base = mix(vec3<f32>(1.0, 0.66, 0.24), vec3<f32>(0.95, 0.84, 0.70), tint);
         }
-        base = mix(vec3<f32>(1.0, 0.68, 0.26), vec3<f32>(0.45, 0.6, 1.0), tint);
+    } else {
+        // Merger: tint by each body's galaxy of origin (vel.w) so the two
+        // populations stay distinguishable as they mix.
+        let tint = clamp(particle.vel.w, 0.0, 1.0);
+        base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
     }
     let speed = length(particle.vel.xyz);
     let boost = 1.0 + min(speed / SPEED_REF, SPEED_BOOST_MAX);
