@@ -43,19 +43,46 @@ const FLYBY_COMPANION_RADIUS: f32 = 36.0;
 const FLYBY_COMPANION_CENTER: [f32; 3] = [210.0, 150.0, 25.0];
 const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 
-/// Disk "temperature": the initial random velocity dispersion as a fraction of
-/// the local circular speed, scaled by the temperature slider. Too cold and the
-/// disk fragments into clumps; too hot and it stays a featureless smear; spiral
-/// arms live in between. `DISP_FRAC` is tuned so temperature ≈ 1.0 sits in the
-/// spiral sweet spot; the default (0.5) runs a touch colder for more structure,
-/// and the slider explores either side.
-const DISP_FRAC: f32 = 0.072;
-pub const DEFAULT_TEMP: f32 = 0.5;
+/// The disk "temperature" is expressed as the **Toomre stability parameter Q** (the
+/// disk-Q slider). Q≲1 → the disk fragments into clumps; Q≈1–2 → it swing-amplifies
+/// into spiral arms; Q≫2 → a smooth, featureless disk. The exponential spiral disk
+/// sets its radial velocity dispersion from Q via [`toomre_sigma`]; the compact
+/// merger disks (point-mass-dominated, with no clean Q) just scale their dispersion
+/// linearly with it.
+const DISP_FRAC: f32 = 0.0277; // merger-disk σ as a fraction of v_c, per unit Q
+pub const DEFAULT_TEMP: f32 = 1.3; // default Toomre Q — the spiral sweet spot
 
-/// Initial velocity dispersion (a fraction of the local circular speed) for a
-/// disk temperature; clamped non-negative. The single home for the temp→σ rule.
-fn dispersion(temp: f32) -> f32 {
-    DISP_FRAC * temp.max(0.0)
+/// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
+/// understates this disk's stability (the Plummer softening, the finite disk
+/// thickness, and the modest particle count all damp the instability), so a given
+/// visual regime corresponds to a higher Q than the thin-disk formula returns.
+/// Calibrated so Q ≈ 1.3 sits in the spiral sweet spot.
+const TOOMRE_SOFT: f32 = 11.0;
+
+/// Velocity dispersion (a fraction of the local circular speed) for the merger
+/// disks at Toomre parameter `q`; clamped non-negative.
+fn dispersion(q: f32) -> f32 {
+    DISP_FRAC * q.max(0.0)
+}
+
+/// Radial velocity dispersion (sim units) for a spiral-disk star at radius `r`,
+/// set from a target Toomre parameter `q`: `σ_R = Q · 3.36 G Σ(r) / (κ(r)·C)`, with
+/// the exponential-disk surface density `Σ(r) = Σ₀ e^(−r/Rd)` (`Σ₀ = M_disk/2πRd²`),
+/// the epicyclic frequency `κ² = 2Ω(Ω + dv_c/dr)` from the rotation curve, and the
+/// softening/thickness correction `C` ([`TOOMRE_SOFT`]). This makes the disk-Q
+/// slider read a true (effective) Toomre Q.
+fn toomre_sigma(r: f32, q: f32, halo_kind: HaloKind) -> f32 {
+    let r = r.max(1.0);
+    let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
+    let sigma0 = m_disk / (TAU * DISK_RD * DISK_RD);
+    let surface = sigma0 * (-r / DISK_RD).exp();
+    // Epicyclic frequency from a finite-difference of the circular-velocity curve.
+    let dr = 0.5;
+    let vc = circular_velocity(r, halo_kind);
+    let dvdr = (circular_velocity(r + dr, halo_kind) - vc) / dr;
+    let omega = vc / r;
+    let kappa = (2.0 * omega * (omega + dvdr)).max(1e-4).sqrt();
+    (q.max(0.0) * 3.36 * G * surface / (kappa * TOOMRE_SOFT)).max(0.0)
 }
 
 /// Which initial-condition scenario to seed. Chosen from the page's dropdown.
@@ -256,7 +283,7 @@ fn seed_spiral_disk(
         vel: [0.0, 0.0, 0.0, 0.0],
     });
 
-    let disp = dispersion(temp);
+    // `temp` is the target Toomre Q; the dispersion is set per-radius from it.
     for _ in 1..count {
         // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
         let u1: f32 = rng.random_range(1e-4_f32..1.0);
@@ -274,7 +301,7 @@ fn seed_spiral_disk(
                 theta,
                 z,
                 vc,
-                sigma: disp * vc,
+                sigma: toomre_sigma(r, temp, halo_kind),
                 tint: 0.0,
             },
             star_mass,

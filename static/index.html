@@ -147,17 +147,17 @@
           <span id="speed-readout">1.0×</span>
         </div>
         <div class="control">
-          <label for="temp-slider">Disk temp</label>
+          <label for="temp-slider">Toomre Q</label>
           <input
             id="temp-slider"
             type="range"
             min="0"
             max="100"
-            value="70"
+            value="32"
             step="1"
-            title="Disk temperature — staged; applied on Restart"
+            title="Disk stability (Toomre Q): ≲1 clumps, ~1–2 spirals, ≫2 smooth — staged, applied on Restart"
           />
-          <span id="temp-readout">0.50</span>
+          <span id="temp-readout">1.30</span>
         </div>
         <div class="control">
           <label for="gravity-slider">Gravity</label>
@@ -598,18 +598,18 @@
         return { collapse: () => setCollapsed(true) };
       }
 
-      // Disk-temperature slider (0–100) → log scale (0.02 … 2.0). It's a seed-time
-      // property, so it doesn't touch the running sim — it's staged and applied on
-      // the next Restart or scenario switch.
+      // Disk stability slider (0–100) → Toomre Q (0.5 … 3.0): ≲1 fragments into
+      // clumps, ~1–2 swing-amplifies into spiral arms, ≫2 stays smooth. A seed-time
+      // property, so it's staged and applied on the next Restart or scenario switch.
       function setupTempControl(mod) {
         const slider = document.getElementById("temp-slider");
         const readout = document.getElementById("temp-readout");
-        const MIN = 0.02;
-        const MAX = 2.0;
+        const MIN = 0.5;
+        const MAX = 3.0;
         const apply = () => {
-          const temp = MIN * Math.pow(MAX / MIN, slider.value / 100);
-          mod.set_disk_temperature(temp);
-          readout.textContent = temp.toFixed(2);
+          const q = MIN + (slider.value / 100) * (MAX - MIN);
+          mod.set_disk_temperature(q);
+          readout.textContent = q.toFixed(2);
         };
         slider.addEventListener("input", apply);
         apply();

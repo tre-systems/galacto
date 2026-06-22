@@ -1,6 +1,6 @@
 # 🌌 Galaxy Sandbox
 
-A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10×) where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk temperature and speed live. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
+A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10×) where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk's stability (Toomre Q), speed, gravity, and dark-matter halo. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
 **Live:** [galacto.org](https://galacto.org/) — needs a [WebGPU-capable browser](#browser-support).
 
@@ -15,7 +15,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 - **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
 - **Visualize the dark matter** — the otherwise-invisible halo can be toggled on as a soft violet glow centred on the galaxy, sized to the active profile's scale radius (broad for the logarithmic halo, tighter for NFW) so you can see the cloud the stars orbit within.
 - **Live rotation curve** — an optional overlay plots the circular speed _v(r)_ in physical units (km/s vs kpc), decomposed into disk + bulge + dark-matter halo. The flat outer curve held up by the halo is the classic evidence for dark matter — drag the **Halo** or **Gravity** sliders and watch it respond. A clock shows the elapsed simulated time (the run is calibrated so one length unit ≈ 0.1 kpc and the default halo flattens at ~220 km/s).
-- **Disk temperature** — sets the disk's velocity dispersion (≈ Toomre Q). It's a seed-time property, so it's *staged* and applied on **Restart** rather than disturbing the running sim.
+- **Toomre Q (disk stability)** — the disk slider is the actual **Toomre stability parameter**: the radial velocity dispersion is set per-radius from Q (σ_R = Q·3.36GΣ/κ). Q≲1 fragments into clumps, Q≈1–2 swing-amplifies into spiral arms, Q≫2 stays a smooth smear — the textbook stability sequence, live. It's a seed-time property, so it's *staged* and applied on **Restart**.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
 - **Generative soundscape** — a cosmic ambient bed that starts on your first interaction (browsers block audio until then), entirely synthesized in the browser (Web Audio oscillators, a code-generated reverb, a feedback delay — no sample files). It's driven by the galaxy itself: a tiny GPU readback tracks how much **mass has gathered at the centre** and how fast it's **moving in or out**, so the pad swells and brightens into tension as the core collapses and settles back as it disperses, with note density following the churn. Each **scenario** sets the scale and mood (serene for the lone disks, tense and dissonant for the collisions), and the camera (**zoom**, **rotation**) and physics knobs layer on top. Everything is slew-limited, so the sound always glides — cinematic, never abrupt.
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
@@ -40,7 +40,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 | **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
 | **Dark matter halo** | A grouped section — **Model** (**Logarithmic**, flat curve, confines / **NFW**, rising-then-falling curve, debris can escape; re-seeds), **Strength** (0–2× — live; confine or release the bodies), **Show** (toggle a glowing violet overlay of the halo), and **Curve** (toggle the live rotation-curve chart) |
 | **Star-size slider** | On-screen star size — live |
-| **Disk-temp slider** | Disk velocity dispersion (≈ Toomre Q, 0.02–2.0); staged, applied on **Restart** |
+| **Toomre Q slider** | Disk stability — the Toomre Q parameter (0.5–3.0): ≲1 clumps, ~1–2 spirals, ≫2 smooth; staged, applied on **Restart** |
 | **Restart** button   | Re-seed the current scenario from fresh initial conditions |
 
 ### Touch
@@ -107,7 +107,7 @@ The model is a full **N-body** system: every body has mass and attracts every ot
 - **All-pairs gravity** — each body's acceleration is the Plummer-softened sum of the pull of every other body.
 - **Dark-matter halo** — a static halo adds an inward pull, in one of two selectable profiles: a **logarithmic** halo (the default — an unbounded potential that keeps the system bound, with a flat outer rotation curve) or an **NFW** halo (the cold-dark-matter profile — a rotation curve that rises then falls, with a finite potential that lets fast debris escape). The spiral disk is seeded in equilibrium with whichever is active.
 - **Symplectic leapfrog (drift–kick–drift)** — computed in three passes per step (half-drift, gravity at the midpoint, then kick + half-drift): `x += v·dt/2; v += a·dt; x += v·dt/2`. It is 2nd-order and conserves energy far better than plain Euler, so the cold disk and orbits hold their structure over many more rotations.
-- **Spiral disk** — a heavy central bulge plus an exponential disk on near-circular prograde orbits, each given a random thermal kick scaled by the temperature slider (≈ Toomre Q). Cold fragments into clumps, hot stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
+- **Spiral disk** — a heavy central bulge plus an exponential disk on near-circular prograde orbits. The radial velocity dispersion is set per-radius from the **Toomre Q** slider (σ_R = Q·3.36GΣ/κ, with a softening/thickness correction for this finite, softened disk). Q≲1 fragments into clumps, Q≫2 stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
 - **Galaxy merger** — two such disks, each anchored by a heavy core, on a bound prograde approach. Self-gravity and dynamical friction pull them together into one spinning remnant.
 
 Everything derives from a fixed RNG seed, so a given scenario and temperature always evolve the same way. See [ARCHITECTURE § Simulation & Physics](docs/ARCHITECTURE.md#simulation--physics) for the kernels, the exact formulas, and the tuning constants.
