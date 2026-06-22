@@ -255,7 +255,11 @@
         try {
           await checkWebGPUSupport();
           const mod = await import("./galacto.js?v=__CACHE_BUST__");
-          await mod.default();
+          // Load the wasm with the same per-deploy ?v= as the glue JS. Without
+          // this the wasm URL is unversioned, so a service worker can serve a
+          // stale cached wasm against fresh glue after a deploy (a version
+          // mismatch that breaks init); versioning keeps the pair in lockstep.
+          await mod.default({ module_or_path: "./galacto_bg.wasm?v=__CACHE_BUST__" });
           loadingEl.style.display = "none";
           const panel = setupControlPanel();
           setupScenarioControl(mod, panel.collapse);
