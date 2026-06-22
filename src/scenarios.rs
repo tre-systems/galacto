@@ -56,7 +56,10 @@ pub const DEFAULT_TEMP: f32 = 1.3; // default Toomre Q — the spiral sweet spot
 /// gas cools onto the plane (see the kick kernel) and concentrates in the spiral
 /// arms — the cold, blue, star-forming component over the older stellar disk.
 /// ~20% is galaxy-plausible.
-const GAS_FRACTION: f32 = 0.22;
+const GAS_FRACTION: f32 = 0.24;
+/// No gas inside this radius: the bulge-dominated centre is gas-poor, so it stays
+/// warm gold rather than being speckled blue (sharpening the arm/centre contrast).
+const GAS_R_MIN: f32 = 22.0;
 
 /// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
 /// understates this disk's stability (the Plummer softening, the finite disk
@@ -308,7 +311,9 @@ fn seed_spiral_disk(
         let vc = circular_velocity(r, halo_kind);
         // A fraction is tagged as gas (vel.w = 1): the kick kernel cools it and the
         // render shader draws it blue. Stars keep vel.w = 0 (coloured by radius).
-        let is_gas = rng.random_range(0.0_f32..1.0) < GAS_FRACTION;
+        // The gas-poor inner bulge stays gas-free, so the centre reads warm gold
+        // against the blue, star-forming arms (the contrast of a real spiral).
+        let is_gas = r > GAS_R_MIN && rng.random_range(0.0_f32..1.0) < GAS_FRACTION;
         push_disk_star(
             out,
             &DiskStar {

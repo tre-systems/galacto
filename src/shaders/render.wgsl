@@ -59,13 +59,16 @@ fn vs_main(
     // cold gas (star-forming) population, drawn a bright cyan-blue.
     var base: vec3<f32>;
     if camera.color_mode < 0.5 && particle.vel.w > 0.5 {
-        base = vec3<f32>(0.35, 0.7, 1.25);
+        base = vec3<f32>(0.25, 0.6, 1.35);
     } else {
         var tint = clamp(particle.vel.w, 0.0, 1.0);
         if camera.color_mode < 0.5 {
-            tint = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
+            // Steepen the radial ramp (pow > 1) so the bulge holds a saturated gold
+            // and only the outer disk cools to blue — strong centre/arm contrast.
+            let rr = clamp(length(particle.pos_mass.xy) / TINT_RADIUS, 0.0, 1.0);
+            tint = pow(rr, 1.7);
         }
-        base = mix(vec3<f32>(1.0, 0.85, 0.55), vec3<f32>(0.45, 0.6, 1.0), tint);
+        base = mix(vec3<f32>(1.0, 0.68, 0.26), vec3<f32>(0.45, 0.6, 1.0), tint);
     }
     let speed = length(particle.vel.xyz);
     let boost = 1.0 + min(speed / SPEED_REF, SPEED_BOOST_MAX);
