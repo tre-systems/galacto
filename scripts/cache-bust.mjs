@@ -50,8 +50,14 @@ writeFileSync(
       dsn: process.env.SENTRY_DSN || '',
       environment: process.env.SENTRY_ENVIRONMENT || 'production',
       release: process.env.SENTRY_RELEASE || process.env.GITHUB_SHA || version,
+      tracesSampleRate: parseTracesSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE),
     },
     null,
     2,
   )};\n`,
 );
+
+function parseTracesSampleRate(value) {
+  const rate = Number(value || 0.05);
+  return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0.05;
+}
