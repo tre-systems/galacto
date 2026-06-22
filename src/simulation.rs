@@ -121,6 +121,19 @@ pub struct SimulationParams {
     pub _pad1: u32,
 }
 
+/// Uniform for the dark-matter halo overlay shader (`halo.wgsl`). `right`/`up` are
+/// the camera's world axes (for billboarding); `color` packs the halo colour in
+/// rgb and the on/off intensity in a; `radius` is the quad's world half-extent.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct HaloVizParams {
+    pub right: [f32; 4],
+    pub up: [f32; 4],
+    pub color: [f32; 4],
+    pub radius: f32,
+    pub _pad: [f32; 3],
+}
+
 /// Aggregate core statistics read back from the GPU on a throttled, async cadence
 /// to drive the audio (`src/audio.rs`) — never consumed by the simulation itself.
 /// `mass` is window-weighted mass near the origin (how much sits at the centre);
@@ -176,6 +189,11 @@ pub struct Simulation {
     compute_bind_group: wgpu::BindGroup,
     render_bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
+    // Optional dark-matter halo overlay (the "Show" toggle): a single billboard
+    // glow at the origin, sized to the active halo's scale radius.
+    halo_pipeline: wgpu::RenderPipeline,
+    halo_viz_buffer: wgpu::Buffer,
+    halo_bind_group: wgpu::BindGroup,
     // Core-statistics reduction for the audio: a compute pass writes per-workgroup
     // partials, copied to a mappable staging buffer and read back asynchronously.
     reduce_pipeline: wgpu::ComputePipeline,
@@ -491,6 +509,113 @@ impl Simulation {
             ],
         });
 
+        // Dark-matter halo overlay: camera uniform + a small halo uniform, one
+        // additive billboard quad. Shares the HDR target and blend with the
+        // particles; drawn only when the page enables it.
+        let halo_viz_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Halo Viz Buffer"),
+            size: std::mem::size_of::<HaloVizParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let halo_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Halo Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/halo.wgsl").into()),
+        });
+        let halo_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Halo Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let halo_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Halo Pipeline Layout"),
+            bind_group_layouts: &[Some(&halo_bind_group_layout)],
+            immediate_size: 0,
+        });
+        let halo_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Halo Pipeline"),
+            layout: Some(&halo_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &halo_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &halo_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: color_format,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            cache: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: None,
+        });
+        let halo_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Halo Bind Group"),
+            layout: &halo_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: halo_viz_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         console_log!(
             "✨ Self-gravitating galaxy ({} bodies) initialized!",
             NUM_PARTICLES
@@ -509,6 +634,9 @@ impl Simulation {
             compute_bind_group,
             render_bind_group,
             camera_buffer,
+            halo_pipeline,
+            halo_viz_buffer,
+            halo_bind_group,
             reduce_pipeline,
             reductions_buffer,
             reduction_staging,
@@ -695,6 +823,37 @@ impl Simulation {
         render_pass.set_bind_group(0, &self.render_bind_group, &[]);
         // One triangle-strip quad (4 verts) per particle, instanced.
         render_pass.draw(0..4, 0..self.count);
+    }
+
+    /// Update the halo-overlay uniform with the camera's billboard basis and the
+    /// active halo's colour/size. Cheap (a 64-byte write); call each frame the
+    /// overlay is shown.
+    pub fn update_halo_view(
+        &self,
+        queue: &wgpu::Queue,
+        right: [f32; 3],
+        up: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        intensity: f32,
+    ) {
+        let params = HaloVizParams {
+            right: [right[0], right[1], right[2], 0.0],
+            up: [up[0], up[1], up[2], 0.0],
+            color: [color[0], color[1], color[2], intensity],
+            radius,
+            _pad: [0.0; 3],
+        };
+        queue.write_buffer(&self.halo_viz_buffer, 0, bytemuck::cast_slice(&[params]));
+    }
+
+    /// Draw the dark-matter halo overlay — one additive billboard at the origin.
+    /// Call inside the particle render pass (before `render_pass`, so the stars
+    /// draw over it) when the overlay is enabled.
+    pub fn render_halo<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        render_pass.set_pipeline(&self.halo_pipeline);
+        render_pass.set_bind_group(0, &self.halo_bind_group, &[]);
+        render_pass.draw(0..4, 0..1);
     }
 
     pub fn update_camera(

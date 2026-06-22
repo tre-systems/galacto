@@ -49,6 +49,22 @@ impl Camera {
         self.rotation_y = 0.0;
     }
 
+    /// The camera's right and up axes in world space — the basis for billboarding
+    /// a quad to face the camera (used by the halo overlay). Mirrors the look-at
+    /// basis built in `build_view_projection_matrix`.
+    pub fn billboard_basis(&self) -> ([f32; 3], [f32; 3]) {
+        use cgmath::InnerSpace;
+        let distance = 800.0 / self.scale;
+        let rot_x = cgmath::Matrix3::from_angle_x(cgmath::Rad(self.rotation_x));
+        let rot_y = cgmath::Matrix3::from_angle_y(cgmath::Rad(self.rotation_y));
+        let rotation = rot_y * rot_x;
+        let eye = rotation * Vector3::new(0.0, 0.0, distance);
+        let forward = (-eye).normalize(); // toward the origin (the camera target)
+        let right = forward.cross(Vector3::unit_y()).normalize();
+        let up = right.cross(forward).normalize();
+        (right.into(), up.into())
+    }
+
     pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
         let distance = 800.0 / self.scale;
 

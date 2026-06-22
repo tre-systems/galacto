@@ -164,17 +164,30 @@
           <input id="gravity-slider" type="range" min="0" max="100" value="50" step="1" />
           <span id="gravity-readout">1.0×</span>
         </div>
-        <div class="control">
-          <label for="halo-select">Halo model</label>
-          <select id="halo-select">
-            <option value="0">Logarithmic</option>
-            <option value="1">NFW</option>
-          </select>
-        </div>
-        <div class="control">
-          <label for="halo-slider">Halo</label>
-          <input id="halo-slider" type="range" min="0" max="100" value="50" step="1" />
-          <span id="halo-readout">1.0×</span>
+        <div class="control-group" role="group" aria-labelledby="halo-group-label">
+          <div class="group-label" id="halo-group-label">Dark matter halo</div>
+          <div class="control">
+            <label for="halo-select">Model</label>
+            <select id="halo-select">
+              <option value="0">Logarithmic</option>
+              <option value="1">NFW</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="halo-slider">Strength</label>
+            <input id="halo-slider" type="range" min="0" max="100" value="50" step="1" />
+            <span id="halo-readout">1.0×</span>
+          </div>
+          <div class="control">
+            <label for="halo-show">Show</label>
+            <input
+              id="halo-show"
+              type="checkbox"
+              class="switch"
+              role="switch"
+              title="Show the dark-matter halo as a glowing cloud"
+            />
+          </div>
         </div>
         <div class="control">
           <label for="size-slider">Star size</label>
@@ -252,6 +265,7 @@
           setupGravityControl(mod);
           setupHaloControl(mod);
           setupHaloProfileControl(mod);
+          setupHaloVisibility(mod);
           setupStarSizeControl(mod);
           setupVolumeControl(mod);
           setupMuteButton(mod);
@@ -307,6 +321,15 @@
         });
       }
 
+      // Toggle the dark-matter halo overlay — a soft violet cloud, sized to the
+      // active profile's scale radius, drawn behind the stars. Off by default.
+      function setupHaloVisibility(mod) {
+        const toggle = document.getElementById("halo-show");
+        const apply = () => mod.set_halo_visible(toggle.checked);
+        toggle.addEventListener("change", apply);
+        apply();
+      }
+
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale
       // (0.25× … 8×), push it to the sim, and show the current value.
       function setupSpeedControl(mod) {
@@ -350,7 +373,7 @@
         };
 
         const clampIntoView = () => {
-          if (!panel.style.left) return; // still at the CSS default (centred)
+          if (!panel.style.left) return; // still at the CSS default (top-left)
           const r = panel.getBoundingClientRect();
           moveTo(
             Math.max(4, Math.min(parseFloat(panel.style.left), window.innerWidth - r.width - 4)),
@@ -358,14 +381,8 @@
           );
         };
 
-        try {
-          const saved = JSON.parse(localStorage.getItem("galacto-panel-pos") || "null");
-          if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-            moveTo(saved.left, saved.top);
-            clampIntoView();
-          }
-        } catch {}
-
+        // The cog always starts in the top-left (the CSS default); a drag only
+        // repositions it for the current session and is not persisted.
         let startX, startY, baseLeft, baseTop, dragging = false, moved = false;
         handle.addEventListener("pointerdown", (e) => {
           dragging = true;
@@ -392,17 +409,6 @@
           try {
             handle.releasePointerCapture(e.pointerId);
           } catch {}
-          if (moved) {
-            try {
-              localStorage.setItem(
-                "galacto-panel-pos",
-                JSON.stringify({
-                  left: parseFloat(panel.style.left),
-                  top: parseFloat(panel.style.top),
-                })
-              );
-            } catch {}
-          }
         };
         handle.addEventListener("pointerup", endDrag);
         handle.addEventListener("pointercancel", endDrag);

@@ -76,6 +76,8 @@ pub struct AppState {
     particle_count: u32,
     /// Dark-matter halo profile; switching it re-seeds so the disk stays balanced.
     halo_kind: HaloKind,
+    /// Whether to draw the dark-matter halo overlay (the "Show" toggle).
+    halo_visible: bool,
     /// Live physics/visual knobs (no re-seed): gravity, halo speed, star size.
     gravity: f32,
     halo_v0: f32,
@@ -135,6 +137,7 @@ impl AppState {
             disk_temp: scenarios::DEFAULT_TEMP,
             particle_count: simulation::NUM_PARTICLES,
             halo_kind: HaloKind::Logarithmic,
+            halo_visible: false,
             gravity: simulation::G,
             halo_v0: simulation::HALO_V0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
@@ -238,6 +241,24 @@ impl AppState {
             self.scenario,
             self.particle_size,
         );
+        // Dark-matter halo overlay (when shown): size it to the active profile's
+        // scale radius (log confines broadly; NFW is more concentrated), violet so
+        // it reads as dark matter, distinct from the white/blue stars.
+        if self.halo_visible {
+            let (right, up) = self.camera.billboard_basis();
+            let radius = match self.halo_kind {
+                HaloKind::Logarithmic => simulation::HALO_RC,
+                HaloKind::Nfw => simulation::NFW_RS,
+            } * 3.5;
+            self.simulation.update_halo_view(
+                &self.graphics.queue,
+                right,
+                up,
+                radius,
+                [0.55, 0.30, 1.0],
+                0.6,
+            );
+        }
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Particle Pass"),
@@ -260,6 +281,10 @@ impl AppState {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            // Halo behind the stars (additive, so they glow over it).
+            if self.halo_visible {
+                self.simulation.render_halo(&mut render_pass);
+            }
             self.simulation.render_pass(&mut render_pass);
         }
 
@@ -355,6 +380,12 @@ impl AppState {
     pub fn set_halo_profile(&mut self, id: u32) {
         self.halo_kind = HaloKind::from_id(id);
         self.reseed();
+    }
+
+    /// Show or hide the dark-matter halo overlay (the "Show" toggle). Render-only —
+    /// `render` reads this flag; no re-seed.
+    pub fn set_halo_visible(&mut self, visible: bool) {
+        self.halo_visible = visible;
     }
 
     /// Live on-screen star size (the star-size slider); applied each frame in
@@ -586,6 +617,17 @@ pub fn set_halo_profile(id: u32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_halo_profile(id);
+        }
+    });
+}
+
+/// Show or hide the dark-matter halo overlay (the halo "Show" toggle). Render-only.
+/// No-ops until ready.
+#[wasm_bindgen]
+pub fn set_halo_visible(visible: bool) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_halo_visible(visible);
         }
     });
 }

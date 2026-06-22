@@ -95,7 +95,7 @@ A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) do
 3. **`render()`** — open a command encoder, then:
    - run the **compute passes** once per scheduled step (each its own pass, so later reads see earlier writes): a half-drift advances positions to the step midpoint, `compute_accel` sums the all-pairs gravity there into the accel buffer, then the kick + second half-drift advances every body in place — each over `count / 256` workgroups (64 at the default 16,384);
    - record the **core-statistics reduction** for the audio (`reduce_core`, throttled — skipped while a prior readback is still mapped): a workgroup tree-reduction of windowed central mass + radial flux into a per-workgroup partials buffer (64 entries at the default count), copied to a mappable staging buffer (mapped back asynchronously after submit);
-   - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform, then issue one instanced draw — a billboard quad per body, `draw(0..4, 0..count)` — additively blended with no depth buffer, into the **HDR scene** target;
+   - run the **particle pass**: write the camera matrix (+ billboard size/aspect) into the camera uniform; if the dark-matter halo overlay is toggled on, draw one additive billboard at the origin (`halo.wgsl`, sized to the active profile's scale radius) first; then issue one instanced draw — a billboard quad per body, `draw(0..4, 0..count)` — additively blended with no depth buffer, into the **HDR scene** target;
    - run the **bloom passes** (`postprocess`): bright-pass + downsample, separable blur (H, V), then a tonemapped composite of scene + bloom into the swapchain;
    - submit, `present()`, and (if the reduction ran) kick off the async map of the staging buffer — its callback sums the partials into `CoreStats` a few frames later.
 
@@ -111,6 +111,7 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 | Accel buffer      | `MAX_PARTICLES × vec4<f32>` scratch accelerations  | `STORAGE` |
 | Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², halo_kind, _pad }` | `UNIFORM \| COPY_DST` |
 | Camera buffer     | view-projection matrix + billboard size / aspect / colour-mode (+1 spare) (80 B) | `UNIFORM \| COPY_DST`              |
+| Halo viz buffer   | dark-matter halo overlay uniform — camera right/up, colour+intensity, radius (64 B) | `UNIFORM \| COPY_DST` |
 | Reductions buffer | `MAX_WORKGROUPS × vec4<f32>` core-statistics partials (one per workgroup), for the audio | `STORAGE \| COPY_SRC` |
 | Reduction staging | mappable copy of the reductions buffer, the active `count`'s prefix read back asynchronously | `COPY_DST \| MAP_READ` |
 
