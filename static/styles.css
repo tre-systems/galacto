@@ -396,8 +396,9 @@ body {
 }
 
 /* Feedback button — a quiet footer action that opens the Sentry feedback form.
-   Hidden until sentry.js wires it up. */
-.feedback {
+   Hidden until sentry.js wires it up. The doc links share the same quiet pill. */
+.feedback,
+.doclink {
   appearance: none;
   -webkit-appearance: none;
   align-self: center;
@@ -413,6 +414,7 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-decoration: none;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
@@ -422,7 +424,9 @@ body {
 }
 
 .feedback:hover,
-.feedback:focus-visible {
+.feedback:focus-visible,
+.doclink:hover,
+.doclink:focus-visible {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.06);
