@@ -12,7 +12,8 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 - **Self-gravity N-body** — every body attracts every other, so structure forms for real rather than being scripted.
 - **Selectable scenarios** — a dropdown switches the initial conditions: a **spiral disk** that grows arms, plus six multi-galaxy setups — **merger**, **head-on collision**, **retrograde merger**, **minor merger** (a shredded satellite), a **three-galaxy group**, and a **grand-design (M51)** flyby whose companion tidally draws out a bridge and two-armed structure.
 - **Adjustable body count** — a slider sets the number of bodies (16,384 by default, up to 10×), re-seeding the scenario at the new resolution. Per-body mass scales as 1/N, so more bodies refine the *same* galaxy rather than piling on mass. The top end is heavy — gravity is all-pairs O(N²).
-- **Live physics knobs** — gravity strength, dark-matter halo strength, and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag.
+- **Live physics knobs** — gravity strength, dark-matter halo strength and **size** (scale radius), and star size adjust the *running* simulation in real time (no restart); the galaxy collapses, disperses, or recolours as you drag, and the rotation curve reshapes with it. A **?** by every control explains what it does.
+- **Galaxy-structure knobs** — beyond stability (Toomre Q), set how much of the disk is cold **gas** (the blue, star-forming arm component) and the **bulge** mass fraction (sweeping from disk-dominated late types to bulge-dominated early types). Both re-seed the galaxy.
 - **Visualize the dark matter** — the otherwise-invisible halo can be toggled on as a soft violet glow centred on the galaxy, sized to the active profile's scale radius (broad for the logarithmic halo, tighter for NFW) so you can see the cloud the stars orbit within.
 - **Live rotation curve** — an optional overlay plots the circular speed _v(r)_ in physical units (km/s vs kpc), decomposed into disk + bulge + dark-matter halo. The flat outer curve held up by the halo is the classic evidence for dark matter — drag the **Halo** or **Gravity** sliders and watch it respond. A clock shows the elapsed simulated time (the run is calibrated so one length unit ≈ 0.1 kpc and the default halo flattens at ~220 km/s).
 - **Toomre Q (disk stability)** — the disk slider is the actual **Toomre stability parameter**: the radial velocity dispersion is set per-radius from Q (σ_R = Q·3.36GΣ/κ). Q≲1 fragments into clumps, Q≈1–2 swing-amplifies into spiral arms, Q≫2 stays a smooth smear — the textbook stability sequence, live. It's a seed-time property, so it's *staged* and applied on **Restart**.
@@ -36,12 +37,15 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 | **R**                | Reset the camera                    |
 | **Scenario dropdown**| Choose the setup (spiral disk; a merger / head-on / retrograde / minor / group collision; or the grand-design M51 flyby) — re-seeds |
 | **Bodies slider**    | Number of bodies (default 16,384, up to 10×) — re-seeds; the top end is heavy (gravity is all-pairs O(N²)) |
-| **Speed slider**     | Scale simulation speed (0.25×–8×) — live |
-| **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
-| **Dark matter halo** | A grouped section — **Model** (**Logarithmic**, flat curve, confines / **NFW**, rising-then-falling curve, debris can escape; re-seeds), **Strength** (0–2× — live; confine or release the bodies), **Show** (toggle a glowing violet overlay of the halo), and **Curve** (toggle the live rotation-curve chart) |
-| **Star-size slider** | On-screen star size — live |
+| **Speed slider**     | Scale simulation speed (0.25×–8×) — live; reads out as Myr of simulated time per real second |
 | **Toomre Q slider** | Disk stability — the Toomre Q parameter (0.5–3.0): ≲1 clumps, ~1–2 spirals, ≫2 smooth; staged, applied on **Restart** |
+| **Gas slider** | Fraction of the disk that is cold, star-forming gas (0–50%) — the blue arm component; re-seeds |
+| **Bulge slider** | Central bulge's share of the mass (0–60%) — late-type (disk-dominated) to early-type (bulge-dominated); re-seeds |
+| **Gravity slider**   | Scale gravity (0.25×–4×) — live; the galaxy collapses or disperses |
+| **Dark matter halo** | A grouped section — **Model** (**Logarithmic**, flat curve, confines / **NFW**, rising-then-falling curve, debris can escape; re-seeds), **Strength** (0–2×, reads out in km/s — live), **Size** (the halo's scale radius in kpc — live; concentrated = steep inner rise, diffuse = gentle), **Show** (toggle a glowing violet overlay of the halo), and **Curve** (toggle the live rotation-curve chart) |
+| **Star-size slider** | On-screen star size — live |
 | **Restart** button   | Re-seed the current scenario from fresh initial conditions |
+| **? icons**          | A click on the **?** by any control explains what it does |
 
 ### Touch
 
