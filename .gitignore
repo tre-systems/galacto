@@ -8,9 +8,10 @@
 # Node.js
 node_modules/
 
-# IDE
+# IDE / local tooling
 .vscode/
 .idea/
+.claude/
 *.swp
 
 # OS

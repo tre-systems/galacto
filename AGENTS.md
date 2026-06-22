@@ -4,7 +4,7 @@ Operational guidance for Claude Code and other repo agents.
 
 ## Project
 
-galacto is a browser-based **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10× via the body-count slider) attract each other through an all-pairs gravity sum that runs entirely on the GPU (WebGPU **compute** shaders, workgroup-tiled), drawn with one instanced **billboard** draw. Rust → WebAssembly (single-threaded), `wgpu`/WebGPU, deployed to Cloudflare Pages at [galacto.tre.systems](https://galacto.tre.systems/). See the [README](README.md) for features and the scenarios.
+galacto is a browser-based **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10× via the body-count slider) attract each other through an all-pairs gravity sum that runs entirely on the GPU (WebGPU **compute** shaders, workgroup-tiled), drawn with one instanced **billboard** draw. Rust → WebAssembly (single-threaded), `wgpu`/WebGPU, deployed to Cloudflare Pages at [galacto.org](https://galacto.org/). See the [README](README.md) for features and the scenarios.
 
 Read these before substantial work:
 
