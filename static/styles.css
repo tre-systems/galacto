@@ -191,6 +191,28 @@ body {
   cursor: pointer;
 }
 
+/* Two compact toggles (halo Show + rotation Curve) share one row to save
+   vertical space. Each half keeps its own label + "?" + switch; the switch
+   right-aligns in its half and labels shrink to content width, so the pair
+   fits two-up even on a ~320px phone. */
+.control-pair {
+  display: flex;
+  gap: 14px;
+}
+
+.control-pair .control {
+  flex: 1;
+  min-width: 0;
+}
+
+.control-pair .control label {
+  width: auto;
+}
+
+.control-pair .switch {
+  margin-left: auto;
+}
+
 /* A small "?" after each control label that reveals a description on click. Sits
    in its own column right after the (fixed-width) label, so they line up. */
 .info {
