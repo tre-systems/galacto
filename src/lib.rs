@@ -110,6 +110,9 @@ pub struct AppState {
     halo_v0: f32,
     halo_rc_scale: f32,
     particle_size: f32,
+    /// Glow halo extent (0..1, the Glow slider): how far each star's faint halo
+    /// reaches around its bright point. Render-only — never touches the simulation.
+    glow_extent: f32,
     /// Generative soundscape, lazily created on first enable (so the AudioContext
     /// starts inside a user gesture). None until then, or if audio is unavailable.
     audio: Option<AudioEngine>,
@@ -181,6 +184,7 @@ impl AppState {
             halo_v0: simulation::HALO_V0,
             halo_rc_scale: 1.0,
             particle_size: simulation::DEFAULT_PARTICLE_SIZE,
+            glow_extent: 0.4,
             audio: None,
             // Start at 10% of full volume so the soundscape opens gently; matches
             // the page's volume slider default (32% → ~0.10 on its squared taper).
@@ -307,6 +311,7 @@ impl AppState {
             &self.camera,
             self.scenario,
             self.particle_size,
+            self.glow_extent,
         );
         // Dark-matter halo overlay (when shown): size it to the active profile's
         // scale radius (log confines broadly; NFW is more concentrated), violet so
@@ -489,6 +494,12 @@ impl AppState {
     /// `update_camera`.
     pub fn set_particle_size(&mut self, size: f32) {
         self.particle_size = size;
+    }
+
+    /// Set the star glow halo extent (the Glow slider). Render-only — it reshapes
+    /// the billboard falloff and never touches the simulation or its speed.
+    pub fn set_glow(&mut self, glow: f32) {
+        self.glow_extent = glow.clamp(0.0, 1.0);
     }
 
     /// Enable or disable the cinematic autopilot (the page's Autopilot toggle, and
@@ -935,6 +946,16 @@ pub fn set_particle_size(size: f32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_particle_size(size);
+        }
+    });
+}
+
+/// Live star glow halo extent, 0..1 (the Glow slider). Render-only. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_glow(glow: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_glow(glow);
         }
     });
 }

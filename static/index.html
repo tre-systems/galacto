@@ -258,6 +258,11 @@
           <span id="size-readout">1.0×</span>
         </div>
         <div class="control">
+          <label for="glow-slider">Glow</label>
+          <input id="glow-slider" type="range" min="0" max="100" value="40" step="1" />
+          <span id="glow-readout">1.8×</span>
+        </div>
+        <div class="control">
           <label for="volume-slider">Volume</label>
           <input id="volume-slider" type="range" min="0" max="100" value="32" step="1" />
           <button
@@ -347,6 +352,19 @@
         return true;
       }
 
+      // Star glow halo extent — reshapes the billboard falloff (render only).
+      function setupGlowControl(mod) {
+        const slider = document.getElementById("glow-slider");
+        const readout = document.getElementById("glow-readout");
+        const apply = () => {
+          const g = slider.value / 100;
+          mod.set_glow(g);
+          readout.textContent = (1 + 2 * g).toFixed(1) + "×";
+        };
+        slider.addEventListener("input", apply);
+        apply();
+      }
+
       // Cinematic autopilot: the engine drives the camera by default; grabbing the
       // view (press or scroll on the canvas) hands control back and flips the toggle.
       function setupAutopilot(mod) {
@@ -414,6 +432,7 @@
           setupHaloVisibility(mod);
           setupRotationCurve(mod);
           setupStarSizeControl(mod);
+          setupGlowControl(mod);
           setupVolumeControl(mod);
           setupMuteButton(mod);
           setupRestartButton(mod);
@@ -767,6 +786,8 @@
             "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic observational clue behind dark matter.",
           "size-slider":
             "On-screen size of each star. Purely visual — larger looks brighter and more diffuse, smaller is sharper — and never touches the physics.",
+          "glow-slider":
+            "How far each star's soft halo reaches around its bright central point. The core stays a crisp point; turning this up spreads a fainter, quickly-fading glow further out. Purely visual — it reshapes the rendering only, never the simulation or its speed.",
           "volume-slider":
             "Loudness of the generative soundscape, which is synthesized live and driven by the galaxy's own core dynamics.",
         };

@@ -275,7 +275,7 @@ impl Simulation {
 
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
-            size: 80, // mat4 (64) + vec4 params (size, aspect, color_mode, pad)
+            size: 80, // mat4 (64) + vec4 params (size, aspect, color_mode, glow)
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -893,6 +893,7 @@ impl Simulation {
         camera: &crate::camera::Camera,
         scenario: Scenario,
         particle_size: f32,
+        glow: f32,
     ) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
@@ -907,10 +908,10 @@ impl Simulation {
         };
         // mat4 (16 floats) then the vec4 of params: billboard size, aspect, colour
         // mode (0 = radius tint for the spiral, 1 = vel.w tint for the merger), and
-        // one spare slot.
+        // the glow halo control.
         let mut data = [0f32; 20];
         data[..16].copy_from_slice(matrix_array);
-        data[16..].copy_from_slice(&[particle_size, camera.aspect_ratio, color_mode, 0.0]);
+        data[16..].copy_from_slice(&[particle_size, camera.aspect_ratio, color_mode, glow]);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&data));
     }
 }

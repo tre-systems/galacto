@@ -12,7 +12,7 @@ struct Camera {
     size: f32,        // billboard half-extent in NDC.y (screen-constant)
     aspect: f32,      // viewport width / height (keeps quads square)
     color_mode: f32,  // 0 = tint by live radius (spiral), 1 = tint by vel.w (merger)
-    _spare1: f32,
+    glow: f32,        // halo reach / falloff control (0..1) from the Glow slider
 }
 
 struct VertexOutput {
@@ -29,6 +29,14 @@ const TINT_RADIUS: f32 = 90.0;    // disk radius mapped to the cool end of the r
 const SPEED_REF: f32 = 260.0;     // speed at which the brightness boost saturates
 const SPEED_BOOST_MAX: f32 = 0.5; // peak extra brightness from speed
 const GLOW_GAIN: f32 = 0.45;      // per-particle additive glow gain
+// Glow shaping, driven by the Glow slider via `camera.glow` (0..1). The quad grows
+// with glow so the faint halo can reach further, while the bright core is held to a
+// constant on-screen size (its offset radius shrinks as the quad grows) — so more
+// glow spreads the halo outward without ever fattening the central point.
+const GLOW_REACH: f32 = 2.0;      // halo reach at glow = 1 (quad up to ×3)
+const GLOW_CORE_FRAC: f32 = 0.16; // bright-core radius as a fraction of the base size
+const GLOW_HALO_POW: f32 = 2.5;   // halo falloff exponent — higher drops off quicker
+const GLOW_HALO_AMP: f32 = 0.45;  // halo brightness relative to the core
 
 @vertex
 fn vs_main(
@@ -48,9 +56,12 @@ fn vs_main(
     var clip = camera.transform * vec4<f32>(particle.pos_mass.xyz, 1.0);
 
     // Offset in clip space so the billboard is a constant size on screen
-    // regardless of depth; divide x by aspect to keep it square.
-    clip.x += corner.x * camera.size * clip.w / camera.aspect;
-    clip.y += corner.y * camera.size * clip.w;
+    // regardless of depth; divide x by aspect to keep it square. The quad grows with
+    // the glow control so the faint halo has room to reach further out.
+    let reach = 1.0 + GLOW_REACH * camera.glow;
+    let half = camera.size * reach;
+    clip.x += corner.x * half * clip.w / camera.aspect;
+    clip.y += corner.y * half * clip.w;
 
     // Warm yellow-white core fading to cool blue. The spiral disk tints by live
     // galactocentric radius (a warm bulge → blue arms, like a real spiral); the
@@ -89,14 +100,23 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Soft round falloff from the quad center.
     let d = length(in.offset);
-    let glow = max(0.0, 1.0 - d);
-    let intensity = glow * glow;
+    let reach = 1.0 + GLOW_REACH * camera.glow;
 
-    // Additive blending sums these into the framebuffer. With fewer bodies than a
-    // test-particle sim, each one carries a bit more glow so dense regions still
-    // build into a bright core.
+    // Bright central point: a tight Gaussian whose on-screen size stays constant as
+    // the quad grows (its offset radius shrinks with reach), so more glow never
+    // fattens the core — it only spreads the halo.
+    let rc = GLOW_CORE_FRAC / reach;
+    let core = exp(-(d * d) / (rc * rc));
+
+    // Halo: a fainter glow that drops off quickly but reaches all the way to the
+    // (grown) quad edge, fading to zero there so there is no square cutoff.
+    let halo = pow(clamp(1.0 - d, 0.0, 1.0), GLOW_HALO_POW);
+
+    let intensity = core + GLOW_HALO_AMP * halo;
+
+    // Additive blending sums these into the framebuffer; dense regions build into a
+    // bright core, and the bloom in post picks up the brightest centres.
     let rgb = in.color * intensity * GLOW_GAIN;
     return vec4<f32>(rgb, intensity);
 }
