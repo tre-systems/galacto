@@ -22,8 +22,9 @@
 use crate::music::{DroneTarget, GalaxyState, MusicEngine, NoteEvent, Waveform, DRONE_VOICES};
 use crate::utils::console_log;
 use web_sys::{
-    AudioBuffer, AudioContext, BiquadFilterNode, BiquadFilterType, ConvolverNode,
-    DynamicsCompressorNode, GainNode, OscillatorNode, OscillatorType, StereoPannerNode,
+    AudioBuffer, AudioBufferSourceNode, AudioContext, BiquadFilterNode, BiquadFilterType,
+    ConvolverNode, DynamicsCompressorNode, GainNode, OscillatorNode, OscillatorType,
+    StereoPannerNode,
 };
 
 /// Look-ahead window (seconds): notes are scheduled this far in advance of the
@@ -51,6 +52,10 @@ pub struct AudioEngine {
     drone_oscs: Vec<OscillatorNode>,
     drone_gain: GainNode,
     drone_lp: BiquadFilterNode,
+    /// Soft, low-passed noise bed under the pad; its level breathes with the core.
+    noise_gain: GainNode,
+    /// The looping noise source — held only to keep it alive in the graph.
+    _noise_src: AudioBufferSourceNode,
     engine: MusicEngine,
     /// Next grid-step time on the audio clock — the scheduler's cursor.
     next_note_time: f64,
@@ -131,6 +136,21 @@ impl AudioEngine {
             drone_oscs.push(osc);
         }
 
+        // Noise bed: a soft rumble of deterministic noise under the pad — organic
+        // "air" so the pure oscillators never sound sterile. A low-pass kills the
+        // hiss and the level stays low, so it sits well under the visuals.
+        let noise_src = AudioBufferSourceNode::new(&ctx).ok()?;
+        if let Some(buf) = make_noise_buffer(&ctx, 4.0) {
+            noise_src.set_buffer(Some(&buf));
+        }
+        noise_src.set_loop(true);
+        let noise_lp = lowpass(&ctx, 420.0, 0.4)?;
+        let noise_gain = gain(&ctx, 0.0)?;
+        connect(&noise_src, &noise_lp);
+        connect(&noise_lp, &noise_gain);
+        connect(&noise_gain, &master_gain);
+        let _ = noise_src.start();
+
         let next_note_time = ctx.current_time();
         console_log!("🔊 Audio engine ready.");
         Some(Self {
@@ -145,6 +165,8 @@ impl AudioEngine {
             drone_oscs,
             drone_gain,
             drone_lp,
+            noise_gain,
+            _noise_src: noise_src,
             engine: MusicEngine::new(0x6A1AC701),
             next_note_time,
             enabled: false,
@@ -228,7 +250,9 @@ impl AudioEngine {
 
         // Resonant pad filter: the Q breathes on the slow LFO and peaks as the core
         // collapses inward, giving the low pad a moving, vocal formant.
-        let resonance = (1.0 + 4.0 * lfo_a + 3.0 * inflow).clamp(0.7, 8.0);
+        // Gentle resonance: it still moves on the LFO and lifts as the core collapses,
+        // but capped low so the low pad gets a soft swell, never a piercing whistle.
+        let resonance = (0.8 + 1.8 * lfo_a + 1.4 * inflow).clamp(0.7, 3.8);
         ramp(&self.drone_lp.q(), resonance, now);
 
         // Cavernous, washy reverb: wet by default so the space feels vast even when
@@ -248,6 +272,11 @@ impl AudioEngine {
         let feedback = (0.46 + 0.3 * state.motion).clamp(0.0, 0.82);
         ramp(&self.delay_feedback.gain(), feedback, now);
 
+        // Noise bed: low and breathing a little with the core's churn and its own
+        // LFO, so it reads as soft background air rather than a steady hiss.
+        let noise_level = (0.03 + 0.045 * state.core_activity + 0.02 * lfo_b).clamp(0.0, 0.1);
+        ramp(&self.noise_gain.gain(), noise_level, now);
+
         if self.enabled && !state.paused {
             self.schedule_ahead(now, state);
         } else if self.next_note_time < now {
@@ -266,7 +295,9 @@ impl AudioEngine {
         }
         ramp(
             &self.drone_lp.frequency(),
-            (d.cutoff_hz * 0.6).clamp(120.0, 4000.0),
+            // Keep the pad warm: darker and capped lower than the global brightness,
+            // so the deep hum never opens up into a buzz.
+            (d.cutoff_hz * 0.45).clamp(110.0, 2400.0),
             now,
         );
         let gain = if self.enabled { d.gain } else { 0.0 };
@@ -407,4 +438,25 @@ fn make_impulse_response(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer
         let _ = ir.copy_to_channel(&buf, ch);
     }
     Some(ir)
+}
+
+/// A short stereo noise buffer for the looping bed. Deterministic xorshift per
+/// channel (decorrelated L/R for width); white noise loops seamlessly, and the
+/// graph's low-pass warms it into a soft, hiss-free rumble.
+fn make_noise_buffer(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer> {
+    let sr = ctx.sample_rate();
+    let len = (sr * seconds) as u32;
+    let buf = ctx.create_buffer(2, len, sr).ok()?;
+    for ch in 0..2 {
+        let mut data = vec![0.0_f32; len as usize];
+        let mut seed: u32 = if ch == 0 { 0x2545_F491 } else { 0x9E37_79B9 };
+        for sample in data.iter_mut() {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            *sample = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+        }
+        let _ = buf.copy_to_channel(&data, ch);
+    }
+    Some(buf)
 }

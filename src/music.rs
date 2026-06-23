@@ -19,9 +19,10 @@ use rand::{RngExt, SeedableRng};
 /// oscillators running and retunes them each frame from [`DroneTarget::freqs`].
 pub const DRONE_VOICES: usize = 3;
 
-/// The pad sits this many semitones below the scenario's root — a deep, low
-/// foundation well under the melodic notes (which stay at the root).
-const PAD_OCTAVE_DOWN: f32 = 12.0;
+/// The pad sits this many semitones below the scenario's root — two octaves down,
+/// a deep, warm foundation well under the melodic notes (which stay at the root)
+/// and clear of the nagging low-midrange where a steady tone turns into a drone.
+const PAD_OCTAVE_DOWN: f32 = 24.0;
 
 /// A soft oscillator shape. The soundscape stays gentle — no saws — so the pad
 /// and the bells never get harsh against the slow visuals.
@@ -96,9 +97,11 @@ pub struct GalaxyState {
     pub paused: bool,
 }
 
-/// A4 (MIDI 69) = 440 Hz. Monotonic, with +12 semitones doubling the frequency.
+/// A4 (MIDI 69) = 432 Hz — the slightly-lower reference favoured across ambient
+/// and meditation music; it sits a touch warmer than concert pitch (440 Hz).
+/// Monotonic, with +12 semitones doubling the frequency.
 pub fn midi_to_hz(midi: f32) -> f32 {
-    440.0 * 2.0_f32.powf((midi - 69.0) / 12.0)
+    432.0 * 2.0_f32.powf((midi - 69.0) / 12.0)
 }
 
 // Scale degrees as semitone offsets within one octave. The engine wraps an
@@ -194,7 +197,7 @@ impl MusicEngine {
         }
     }
 
-    /// The sustained pad's target for this frame: a deep, low chord (an octave
+    /// The sustained pad's target for this frame: a deep, low chord (two octaves
     /// below the scenario root) that breathes — gravity leans it and radial flux
     /// lifts it as the core collapses inward; brightness from zoom, glow, and core
     /// churn; level hushed when paused and swelling with the mass gathered at the
@@ -337,9 +340,9 @@ mod tests {
 
     #[test]
     fn midi_to_hz_anchors_and_octaves() {
-        assert!((midi_to_hz(69.0) - 440.0).abs() < 1e-3);
-        assert!((midi_to_hz(81.0) - 880.0).abs() < 1e-2);
-        assert!((midi_to_hz(57.0) - 220.0).abs() < 1e-2);
+        assert!((midi_to_hz(69.0) - 432.0).abs() < 1e-3);
+        assert!((midi_to_hz(81.0) - 864.0).abs() < 1e-2);
+        assert!((midi_to_hz(57.0) - 216.0).abs() < 1e-2);
     }
 
     #[test]

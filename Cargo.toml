@@ -41,6 +41,7 @@ web-sys = { version = "0.3", features = [
     "AudioNode",
     "AudioParam",
     "AudioBuffer",
+    "AudioBufferSourceNode",
     "GainNode",
     "OscillatorNode",
     "OscillatorType",
