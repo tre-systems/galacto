@@ -130,7 +130,7 @@ fn compute_accel(
     // The local halo density is dM/dr with M(r) = r·v_c,halo²/G.
     let v_vec = particles[i].vel.xyz;
     let speed = length(v_vec);
-    if speed > 1e-3 {
+    if speed > 1e-3 && params.g > 1e-6 {
         let r = max(length(pi), 1.0);
         let d = max(0.05 * r, 1.0);
         let r_in = max(r - d, 0.1);

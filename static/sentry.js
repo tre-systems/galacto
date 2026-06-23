@@ -11,6 +11,36 @@
   script.src = "/sentry-sdk.js?v=10.57.0";
   script.onload = () => {
     if (!window.Sentry) return;
+    const scrubUrl = (value) => {
+      if (!value || typeof value !== "string") return value;
+      try {
+        const url = new URL(value, window.location.origin);
+        url.search = "";
+        url.hash = "";
+        return url.href;
+      } catch {
+        return value.split(/[?#]/, 1)[0];
+      }
+    };
+    const scrubEvent = (event) => {
+      if (event.request) {
+        event.request.url = scrubUrl(event.request.url);
+        delete event.request.query_string;
+        delete event.request.cookies;
+        delete event.request.data;
+        if (event.request.headers) {
+          for (const key of Object.keys(event.request.headers)) {
+            const lowerKey = key.toLowerCase();
+            if (lowerKey.includes("authorization") || lowerKey.includes("cookie")) {
+              event.request.headers[key] = "[Filtered]";
+            }
+          }
+        }
+      }
+      event.transaction = scrubUrl(event.transaction);
+      event.tags = { ...event.tags, app: config.app || "galacto" };
+      return event;
+    };
     const configuredTracesSampleRate = Number(config.tracesSampleRate);
     const tracesSampleRate =
       Number.isFinite(configuredTracesSampleRate) &&
@@ -37,7 +67,10 @@
         window.Sentry.feedbackIntegration({
           autoInject: false,
           colorScheme: "dark",
+          enableScreenshot: false,
           showBranding: false,
+          showEmail: false,
+          showName: false,
           submitButtonLabel: "Send feedback",
           formTitle: "Send feedback",
           messagePlaceholder: "What's working, what's broken, or what you'd love to see?",
@@ -59,22 +92,8 @@
       cdnBaseUrl: window.location.origin,
       replaysSessionSampleRate: 0,
       replaysOnErrorSampleRate: 0,
-      beforeSend(event) {
-        if (event.request) {
-          delete event.request.cookies;
-          delete event.request.data;
-          if (event.request.headers) {
-            for (const key of Object.keys(event.request.headers)) {
-              const lowerKey = key.toLowerCase();
-              if (lowerKey.includes("authorization") || lowerKey.includes("cookie")) {
-                event.request.headers[key] = "[Filtered]";
-              }
-            }
-          }
-        }
-        event.tags = { ...event.tags, app: config.app || "galacto" };
-        return event;
-      },
+      beforeSend: scrubEvent,
+      beforeSendTransaction: scrubEvent,
     });
 
     // Reveal the control panel's feedback button and make it open the form. The

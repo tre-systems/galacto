@@ -200,6 +200,12 @@ impl AudioEngine {
             .set_target_at_time(self.target_level(), now, 0.1);
     }
 
+    /// Whether the visual core-statistics readback is currently useful. When audio
+    /// is disabled or muted, skip that GPU readback entirely.
+    pub fn wants_core_stats(&self) -> bool {
+        self.enabled && !self.muted
+    }
+
     /// Apply this frame's visual state: glide the drone and global FX toward the
     /// engine's targets, then schedule any due notes ahead on the audio clock.
     pub fn update(&mut self, state: &GalaxyState) {

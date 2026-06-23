@@ -9,8 +9,9 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::f32::consts::TAU;
 
-// --- Spiral-disk scenario: a bulge body + a self-gravitating exponential disk
-// whose own mass dominates its region (a "maximal disk"), which is spiral-prone.
+// --- Spiral-disk scenario: a compact bulge spheroid + a self-gravitating
+// exponential disk whose own mass dominates its region (a "maximal disk"), which is
+// spiral-prone.
 // The bulge is a star population whose mass share is the bulge fraction (see
 // `bulge_mass` / `disk_mass` and `seed_bulge`).
 const STAR_MASS: f32 = 21.0;
@@ -74,18 +75,45 @@ const BULGE_SCALE: f32 = 12.0;
 /// The galaxy's total baryonic mass (bulge + disk), held constant as the bulge
 /// fraction redistributes it: the bulge slider changes the galaxy's *shape* (a
 /// disk-dominated late type ↔ a bulge-dominated early type), not its mass.
-fn galaxy_mass() -> f32 {
+fn reference_galaxy_mass() -> f32 {
     NUM_PARTICLES as f32 * STAR_MASS
+}
+
+#[derive(Copy, Clone)]
+struct DiskMass {
+    total: f32,
+}
+
+impl DiskMass {
+    fn reference() -> Self {
+        Self {
+            total: reference_galaxy_mass(),
+        }
+    }
+
+    fn for_seeded_bodies(count: u32, star_mass: f32) -> Self {
+        Self {
+            total: count as f32 * star_mass,
+        }
+    }
+
+    fn bulge(self, bulge_frac: f32) -> f32 {
+        self.total * bulge_frac.clamp(0.0, 0.95)
+    }
+
+    fn disk(self, bulge_frac: f32) -> f32 {
+        self.total * (1.0 - bulge_frac.clamp(0.0, 0.95))
+    }
 }
 
 /// Bulge and disk mass for a bulge fraction `f`: the bulge takes a fraction `f` of
 /// the total, the disk the rest. Per-body mass is uniform, so the bulge's share of
 /// the *bodies* equals its share of the mass (see `seed_spiral_disk`).
 fn bulge_mass(bulge_frac: f32) -> f32 {
-    galaxy_mass() * bulge_frac.clamp(0.0, 0.95)
+    DiskMass::reference().bulge(bulge_frac)
 }
 fn disk_mass(bulge_frac: f32) -> f32 {
-    galaxy_mass() * (1.0 - bulge_frac.clamp(0.0, 0.95))
+    DiskMass::reference().disk(bulge_frac)
 }
 
 /// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
@@ -107,14 +135,14 @@ fn dispersion(q: f32) -> f32 {
 /// the epicyclic frequency `κ² = 2Ω(Ω + dv_c/dr)` from the rotation curve, and the
 /// softening/thickness correction `C` ([`TOOMRE_SOFT`]). This makes the disk-Q
 /// slider read a true (effective) Toomre Q.
-fn toomre_sigma(r: f32, q: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
+fn toomre_sigma(r: f32, q: f32, bulge_frac: f32, halo_kind: HaloKind, mass: DiskMass) -> f32 {
     let r = r.max(1.0);
-    let sigma0 = disk_mass(bulge_frac) / (TAU * DISK_RD * DISK_RD);
+    let sigma0 = mass.disk(bulge_frac) / (TAU * DISK_RD * DISK_RD);
     let surface = sigma0 * (-r / DISK_RD).exp();
     // Epicyclic frequency from a finite-difference of the circular-velocity curve.
     let dr = 0.5;
-    let vc = circular_velocity(r, bulge_frac, halo_kind);
-    let dvdr = (circular_velocity(r + dr, bulge_frac, halo_kind) - vc) / dr;
+    let vc = circular_velocity_with_mass(r, bulge_frac, halo_kind, mass);
+    let dvdr = (circular_velocity_with_mass(r + dr, bulge_frac, halo_kind, mass) - vc) / dr;
     let omega = vc / r;
     let kappa = (2.0 * omega * (omega + dvdr)).max(1e-4).sqrt();
     (q.max(0.0) * 3.36 * G * surface / (kappa * TOOMRE_SOFT)).max(0.0)
@@ -180,8 +208,9 @@ impl Scenario {
     ///
     /// Per-body mass scales as `NUM_PARTICLES / count`, holding each system's total
     /// disk mass constant: raising the count refines the same galaxy rather than
-    /// piling on mass, so the dynamics and timescales stay put. (Core/bulge masses
-    /// are fixed point masses and don't scale.)
+    /// piling on mass, so the dynamics and timescales stay put. Multi-galaxy core
+    /// masses stay fixed; disk-scenario bulge mass is redistributed from the same
+    /// constant baryonic mass as the disk.
     pub fn generate(self, count: u32, temp: f32, halo_kind: HaloKind) -> Vec<Particle> {
         self.generate_with(
             count,
@@ -238,13 +267,23 @@ struct DiskStar {
 /// Circular speed at radius `r`, from the bulge + enclosed disk mass + halo.
 /// The disk uses a spherical enclosed-mass approximation — not exact for a
 /// flat disk, but close enough that the disk settles and then ripples.
+#[cfg(test)]
 fn circular_velocity(r: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
+    circular_velocity_with_mass(r, bulge_frac, halo_kind, DiskMass::reference())
+}
+
+fn circular_velocity_with_mass(
+    r: f32,
+    bulge_frac: f32,
+    halo_kind: HaloKind,
+    mass: DiskMass,
+) -> f32 {
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
-    let v_bulge2 = G * bulge_mass(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
+    let v_bulge2 = G * mass.bulge(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
     let x = r / DISK_RD;
-    let m_enc = disk_mass(bulge_frac) * (1.0 - (1.0 + x) * (-x).exp());
+    let m_enc = mass.disk(bulge_frac) * (1.0 - (1.0 + x) * (-x).exp());
     let v_disk2 = G * m_enc / r;
     (v_bulge2 + v_disk2 + halo_velocity_sq(r, halo_kind)).sqrt()
 }
@@ -365,6 +404,7 @@ fn seed_bulge(
     n: u32,
     bulge_frac: f32,
     halo_kind: HaloKind,
+    mass: DiskMass,
     star_mass: f32,
     rng: &mut StdRng,
 ) {
@@ -381,7 +421,7 @@ fn seed_bulge(
             z *= s;
         }
         let r = (x * x + y * y + z * z).sqrt().max(1.0);
-        let sigma = circular_velocity(r, bulge_frac, halo_kind) * 0.7;
+        let sigma = circular_velocity_with_mass(r, bulge_frac, halo_kind, mass) * 0.7;
         out.push(Particle {
             pos_mass: [x, y, z, star_mass],
             vel: [
@@ -414,13 +454,22 @@ fn seed_spiral_disk(
     star_mass: f32,
     rng: &mut StdRng,
 ) {
+    let mass = DiskMass::for_seeded_bodies(count, star_mass);
     // Split the bodies between a central bulge spheroid and the disk by mass
     // fraction (uniform per-body mass → the bulge's body-share equals its mass
     // share). Raising the bulge fraction visibly grows the warm central bulge and
     // thins the disk — a disk-dominated late type sweeping to a bulge-dominated
     // early type.
     let bulge_count = ((count as f32) * bulge_frac.clamp(0.0, 0.95)).round() as u32;
-    seed_bulge(out, bulge_count, bulge_frac, halo_kind, star_mass, rng);
+    seed_bulge(
+        out,
+        bulge_count,
+        bulge_frac,
+        halo_kind,
+        mass,
+        star_mass,
+        rng,
+    );
 
     // The exponential, near-circular spiral disk fills the rest.
     // `temp` is the target Toomre Q; the dispersion is set per-radius from it.
@@ -431,7 +480,7 @@ fn seed_spiral_disk(
         let r = (-DISK_RD * (u1 * u2).ln()).min(DISK_RMAX);
         let theta = rng.random_range(0.0_f32..TAU);
         let z = gaussian(rng) * DISK_THICKNESS;
-        let vc = circular_velocity(r, bulge_frac, halo_kind);
+        let vc = circular_velocity_with_mass(r, bulge_frac, halo_kind, mass);
         // A fraction is tagged as gas (vel.w = 1): the kick kernel cools it and the
         // render shader draws it blue. Stars keep vel.w = 0 (coloured by radius).
         // The gas-poor inner bulge stays gas-free, so the centre reads warm gold
@@ -446,7 +495,7 @@ fn seed_spiral_disk(
                 theta,
                 z,
                 vc,
-                sigma: toomre_sigma(r, temp, bulge_frac, halo_kind),
+                sigma: toomre_sigma(r, temp, bulge_frac, halo_kind, mass),
                 tint: if is_gas { 1.0 } else { 0.0 },
             },
             star_mass,
@@ -822,6 +871,19 @@ mod tests {
         assert!(
             (dense - base).abs() / base < 0.001,
             "total mass should stay ~constant: {base} vs {dense}"
+        );
+    }
+
+    #[test]
+    fn grand_design_main_disk_uses_its_allocated_mass() {
+        let count = NUM_PARTICLES;
+        let star_mass = STAR_MASS * NUM_PARTICLES as f32 / count as f32;
+        let companion = count / 8;
+        let main_mass = DiskMass::for_seeded_bodies(count - companion, star_mass);
+        let ratio = main_mass.total / reference_galaxy_mass();
+        assert!(
+            (ratio - 0.875).abs() < 1e-6,
+            "M51 main disk should be seeded against its 7/8 body allocation, got {ratio}"
         );
     }
 

@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover + no user-scaling: the canvas fills the screen and
-         pinch/drag drives the camera, not the page. -->
+    <!-- viewport-fit=cover lets the canvas fill modern edge-to-edge screens; the
+         canvas touch handlers own camera pinch/drag without blocking browser zoom. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Galacto — N-body galaxy sandbox</title>
     <meta
@@ -300,6 +300,18 @@
     </div>
 
     <script type="module">
+      const MAX_PARTICLE_COUNT = 163840;
+      const PARTICLE_COUNT_STEP = 256;
+      let activeParticleCount = MAX_PARTICLE_COUNT / 10;
+
+      function countForSlider(slider) {
+        return Math.max(
+          PARTICLE_COUNT_STEP,
+          Math.round(((slider.value / 100) * MAX_PARTICLE_COUNT) / PARTICLE_COUNT_STEP) *
+            PARTICLE_COUNT_STEP,
+        );
+      }
+
       async function checkWebGPUSupport() {
         if (!navigator.gpu) {
           throw new Error("WebGPU not supported in this browser");
@@ -348,7 +360,12 @@
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
           errorEl.style.display = "block";
-          errorDetailsEl.innerHTML = `<p><strong>Error:</strong> ${error.message}</p>`;
+          errorDetailsEl.replaceChildren();
+          const detail = document.createElement("p");
+          const label = document.createElement("strong");
+          label.textContent = "Error:";
+          detail.append(label, " ", error.message || String(error));
+          errorDetailsEl.append(detail);
         }
       }
 
@@ -371,16 +388,15 @@
       function setupParticleCountControl(mod) {
         const slider = document.getElementById("count-slider");
         const readout = document.getElementById("count-readout");
-        const MAX = 163840; // mirrors MAX_PARTICLES in simulation.rs
-        const STEP = 256; // mirrors WORKGROUP_SIZE — the count must tile evenly
-        const countFor = () =>
-          Math.max(STEP, Math.round(((slider.value / 100) * MAX) / STEP) * STEP);
         const fmt = (n) => (n >= 1000 ? +(n / 1000).toFixed(1) + "k" : String(n));
         const show = () => {
-          readout.textContent = fmt(countFor());
+          readout.textContent = fmt(countForSlider(slider));
         };
         slider.addEventListener("input", show);
-        slider.addEventListener("change", () => mod.set_particle_count(countFor()));
+        slider.addEventListener("change", () => {
+          activeParticleCount = countForSlider(slider);
+          mod.set_particle_count(activeParticleCount);
+        });
         show();
       }
 
@@ -539,6 +555,7 @@
       // (0.25× … 8×), push it to the sim, and show the current value.
       function setupSpeedControl(mod) {
         const slider = document.getElementById("speed-slider");
+        const countSlider = document.getElementById("count-slider");
         const readout = document.getElementById("speed-readout");
         const MIN = 0.25;
         const MAX = 8;
@@ -547,11 +564,17 @@
         const myrPerSecAt1 = mod.myr_per_unit_time();
         const apply = () => {
           const t = slider.value / 100;
-          const speed = MIN * Math.pow(MAX / MIN, t);
+          const requested = MIN * Math.pow(MAX / MIN, t);
+          const capCount = Math.max(activeParticleCount, countForSlider(countSlider));
+          const speedCap = mod.max_speed_for_particle_count(capCount);
+          const speed = Math.min(requested, speedCap);
           mod.set_speed(speed);
-          readout.textContent = Math.round(speed * myrPerSecAt1) + " Myr/s";
+          readout.textContent =
+            Math.round(speed * myrPerSecAt1) + " Myr/s" + (speed < requested ? " max" : "");
         };
         slider.addEventListener("input", apply);
+        countSlider.addEventListener("input", apply);
+        countSlider.addEventListener("change", apply);
         apply();
       }
 
@@ -654,9 +677,9 @@
           "scenario-select":
             "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
           "count-slider":
-            "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so the top end is heavy. Re-seeds.",
+            "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so high counts cap speed to keep the browser responsive. Re-seeds.",
           "speed-slider":
-            "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — only how quickly the structure develops.",
+            "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — and high body counts cap it automatically.",
           "gas-slider":
             "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms. Re-seeds.",
           "bulge-slider":

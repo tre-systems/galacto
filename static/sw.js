@@ -7,16 +7,25 @@ const CACHE_NAME = `galacto-${BUILD_HASH}`;
 
 // The shell needed for a cold, offline launch. The glue JS and CSS carry the same
 // per-deploy ?v= as index.html references them with; the wasm filename is stable.
-const PRECACHE_URLS = [
+const REQUIRED_PRECACHE_URLS = [
   '/',
   `/galacto.js?v=${BUILD_HASH}`,
   `/galacto_bg.wasm?v=${BUILD_HASH}`,
   `/styles.css?v=${BUILD_HASH}`,
+];
+
+const OPTIONAL_PRECACHE_URLS = [
   '/favicon.svg',
   '/site.webmanifest',
   '/manifest.json',
+  `/sentry-config.js?v=${BUILD_HASH}`,
+  `/sentry.js?v=${BUILD_HASH}`,
+  '/sentry-sdk.js?v=10.57.0',
+  '/10.57.0/feedback-modal.min.js',
+  '/10.57.0/feedback-screenshot.min.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
 ];
 
@@ -27,8 +36,13 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      // Best-effort: a single missing optional URL must not fail the whole install.
-      .then((cache) => Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {})))),
+      .then(async (cache) => {
+        // The runtime shell must be complete; otherwise this worker must not
+        // activate and delete the previous deploy's good offline cache.
+        await cache.addAll(REQUIRED_PRECACHE_URLS);
+        // Support assets are useful offline polish but should not block install.
+        await Promise.all(OPTIONAL_PRECACHE_URLS.map((u) => cache.add(u).catch(() => {})));
+      }),
   );
 });
 

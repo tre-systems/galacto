@@ -25,10 +25,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 
-/// Cap on simulation substeps run in a single frame, bounding a long-stall
-/// catch-up burst (each substep is an all-pairs O(N²) gravity pass, so a frame
-/// shouldn't run too many). Sits well above `MAX_SPEED` so the headroom lets a
-/// low frame rate still catch up to the requested speed.
+/// Cap on simulation substeps run in a single default-count frame, bounding a
+/// long-stall catch-up burst (each substep is an all-pairs O(N²) gravity pass).
+/// Higher particle counts get a lower dynamic cap via [`substep_cap_for_count`].
 const MAX_SUBSTEPS: u32 = 32;
 
 /// Maximum speed multiplier the UI may request; the page's speed slider tops out
@@ -42,6 +41,23 @@ const MAX_FRAME_DT: f32 = 0.25;
 /// signals to ~0..1: ordinary disk churn sits low (~0.4), while a merger infall or
 /// a close flyby pushes it toward the top. Tunable.
 const CORE_V_SCALE: f32 = 110.0;
+
+/// Count-aware per-frame step cap. The gravity cost scales as N², so the catch-up
+/// budget shrinks with the square of the active body-count ratio; at the 10× public
+/// maximum this deliberately permits only one step per frame rather than queuing a
+/// watchdog-scale burst.
+fn substep_cap_for_count(count: u32) -> u32 {
+    let count = simulation::clamp_particle_count(count).max(1) as f32;
+    let ratio = simulation::NUM_PARTICLES as f32 / count;
+    ((MAX_SUBSTEPS as f32 * ratio * ratio).floor() as u32).clamp(1, MAX_SUBSTEPS)
+}
+
+/// UI-visible speed ceiling that matches the scheduler cap. At 60Hz, speed `N`
+/// requests roughly `N` fixed steps per frame, so the substep cap is also the safe
+/// speed cap for expensive high-count runs.
+fn max_speed_for_count(count: u32) -> f32 {
+    (substep_cap_for_count(count) as f32).clamp(1.0, MAX_SPEED)
+}
 
 /// Frame-rate-independent eased follow with a hard slew cap: the value glides
 /// toward `target` (exponential, time-constant `tau`) but can move no faster than
@@ -203,8 +219,9 @@ impl AppState {
         }
         self.accumulator += frame_dt.clamp(0.0, MAX_FRAME_DT) * self.speed;
         let mut steps = (self.accumulator / simulation::FIXED_DT) as u32;
-        if steps > MAX_SUBSTEPS {
-            steps = MAX_SUBSTEPS;
+        let step_cap = substep_cap_for_count(self.particle_count);
+        if steps > step_cap {
+            steps = step_cap;
             self.accumulator = 0.0;
         } else {
             self.accumulator -= steps as f32 * simulation::FIXED_DT;
@@ -251,7 +268,16 @@ impl AppState {
         // Record the throttled core-statistics reduction (drives the audio) on the
         // post-step positions; whether it actually ran (not already in flight)
         // gates the async map after submit below.
-        let did_reduce = self.simulation.record_core_reduction(&mut encoder);
+        let did_reduce = if self
+            .audio
+            .as_ref()
+            .is_some_and(AudioEngine::wants_core_stats)
+            && !self.paused
+        {
+            self.simulation.record_core_reduction(&mut encoder)
+        } else {
+            false
+        };
 
         // Render the particles additively into the HDR scene target.
         self.simulation.update_camera(
@@ -388,6 +414,7 @@ impl AppState {
     /// at the new resolution. Clamped to a valid tile-multiple within bounds.
     pub fn set_count(&mut self, count: u32) {
         self.particle_count = simulation::clamp_particle_count(count);
+        self.speed = self.speed.min(max_speed_for_count(self.particle_count));
         self.reseed();
     }
 
@@ -584,9 +611,17 @@ pub fn set_speed(speed: f32) {
     let speed = speed.clamp(0.0, MAX_SPEED);
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().speed = speed;
+            let mut app = app.borrow_mut();
+            app.speed = speed.min(max_speed_for_count(app.particle_count));
         }
     });
+}
+
+/// Public helper for the page: the safe speed ceiling for a proposed body count,
+/// matching the Rust scheduler's count-aware substep budget.
+#[wasm_bindgen]
+pub fn max_speed_for_particle_count(count: u32) -> f32 {
+    max_speed_for_count(count)
 }
 
 /// Stage the disk "temperature" for the next (re)seed (the disk-temperature
