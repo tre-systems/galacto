@@ -1,5 +1,21 @@
 use cgmath::{perspective, Deg, EuclideanSpace, Matrix4, Point3, Vector3};
 
+// Cinematic autopilot tuning: a very slow orbit, a gentle glide in and out, and a
+// slow nod — all eased so switching the mode on or off never snaps the view.
+const AUTOPILOT_SPIN: f32 = 0.05; // rad/s — ~125 s per revolution
+const AUTOPILOT_ZOOM_MID: f32 = 0.7; // centre scale (matches the default view)
+const AUTOPILOT_ZOOM_AMP: f32 = 0.55; // log-amplitude of the in/out glide
+const AUTOPILOT_ZOOM_RATE: f32 = 0.10; // rad/s — ~63 s glide cycle
+const AUTOPILOT_NOD_AMP: f32 = 0.35; // rad — gentle tilt either side of face-on
+const AUTOPILOT_NOD_RATE: f32 = 0.07; // rad/s — ~90 s nod cycle
+const AUTOPILOT_EASE_TAU: f32 = 1.5; // s — how gently scale/tilt chase their targets
+
+/// Frame-rate-independent exponential ease of `current` toward `target` (time
+/// constant `tau` seconds), so the autopilot glides regardless of frame rate.
+fn ease(current: f32, target: f32, dt: f32, tau: f32) -> f32 {
+    current + (target - current) * (1.0 - (-dt / tau.max(1e-3)).exp())
+}
+
 pub struct Camera {
     pub scale: f32,
     pub aspect_ratio: f32,
@@ -47,6 +63,23 @@ impl Camera {
         self.scale = 0.7;
         self.rotation_x = 0.0;
         self.rotation_y = 0.0;
+    }
+
+    /// One frame of the cinematic autopilot: a slow continuous orbit, a gentle
+    /// glide in and out, and a slow nod, eased toward their targets so toggling the
+    /// mode never snaps the view. `t` is a free-running clock (seconds), `dt` the
+    /// frame delta (seconds).
+    pub fn autopilot_step(&mut self, dt: f32, t: f32) {
+        // Orbit: incremental, so it simply carries on from wherever the camera is.
+        self.rotation_y += AUTOPILOT_SPIN * dt;
+        // Glide the zoom around a comfortable mid scale (multiplicative, so it feels
+        // even across the wide range), easing toward the slowly-moving target.
+        let target_scale =
+            AUTOPILOT_ZOOM_MID * (AUTOPILOT_ZOOM_AMP * (t * AUTOPILOT_ZOOM_RATE).sin()).exp();
+        self.scale = ease(self.scale, target_scale, dt, AUTOPILOT_EASE_TAU).clamp(0.001, 5.0);
+        // A slow nod on the tilt for a more three-dimensional drift.
+        let target_x = AUTOPILOT_NOD_AMP * (t * AUTOPILOT_NOD_RATE + 1.3).sin();
+        self.rotation_x = ease(self.rotation_x, target_x, dt, AUTOPILOT_EASE_TAU).clamp(-1.5, 1.5);
     }
 
     /// The camera's right and up axes in world space — the basis for billboarding
@@ -128,5 +161,23 @@ mod tests {
         let matrix = c.build_view_projection_matrix();
         let m: &[f32; 16] = matrix.as_ref();
         assert!(m.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn autopilot_stays_bounded_and_finite() {
+        let mut c = Camera::new();
+        let mut t = 0.0;
+        // Ten seconds at 60 fps: scale and tilt must stay in range and finite.
+        for _ in 0..600 {
+            c.autopilot_step(1.0 / 60.0, t);
+            t += 1.0 / 60.0;
+            assert!(
+                (0.001..=5.0).contains(&c.scale),
+                "scale {} out of range",
+                c.scale
+            );
+            assert!((-1.5..=1.5).contains(&c.rotation_x), "tilt out of range");
+            assert!(c.rotation_y.is_finite() && c.scale.is_finite());
+        }
     }
 }

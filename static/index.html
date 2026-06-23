@@ -123,6 +123,17 @@
           </button>
         </div>
         <div class="control">
+          <label for="autopilot-toggle">Autopilot</label>
+          <input
+            id="autopilot-toggle"
+            type="checkbox"
+            class="switch"
+            role="switch"
+            checked
+            title="Slowly orbit and glide the camera on its own — a hands-off movie. Grabbing the view turns it off."
+          />
+        </div>
+        <div class="control">
           <label for="count-slider">Bodies</label>
           <input
             id="count-slider"
@@ -326,6 +337,41 @@
         return true;
       }
 
+      // Cinematic autopilot: the engine drives the camera by default; grabbing the
+      // view (press or scroll on the canvas) hands control back and flips the toggle.
+      function setupAutopilot(mod) {
+        const toggle = document.getElementById("autopilot-toggle");
+        const canvas = document.getElementById("gpu-canvas");
+        mod.set_autopilot(toggle.checked);
+        toggle.addEventListener("change", () => mod.set_autopilot(toggle.checked));
+        const release = () => {
+          if (!toggle.checked) return;
+          toggle.checked = false;
+          mod.set_autopilot(false);
+        };
+        canvas.addEventListener("pointerdown", release);
+        canvas.addEventListener("wheel", release, { passive: true });
+      }
+
+      // Fade the whole control panel away after a spell of no interaction, for a
+      // clean, movie-like view; any pointer move, key, or scroll brings it back.
+      function setupIdleHide() {
+        const controls = document.getElementById("controls");
+        const IDLE_MS = 20000;
+        let last = performance.now();
+        const wake = () => {
+          last = performance.now();
+          controls.classList.remove("idle-hidden");
+        };
+        ["pointermove", "pointerdown", "keydown", "wheel"].forEach((ev) =>
+          window.addEventListener(ev, wake, { passive: true }),
+        );
+        setInterval(() => {
+          if (performance.now() - last > IDLE_MS)
+            controls.classList.add("idle-hidden");
+        }, 1000);
+      }
+
       async function init() {
         const loadingEl = document.getElementById("loading");
         const errorEl = document.getElementById("error");
@@ -359,6 +405,8 @@
           setupRestartButton(mod);
           setupAutoSound(mod);
           setupInfoButtons();
+          setupAutopilot(mod);
+          setupIdleHide();
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -679,6 +727,8 @@
         const INFO = {
           "scenario-select":
             "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
+          "autopilot-toggle":
+            "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. Grab the view (drag or scroll) and it switches off; turn it back on any time.",
           "count-slider":
             "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so high counts cap speed to keep the browser responsive. Re-seeds.",
           "speed-slider":

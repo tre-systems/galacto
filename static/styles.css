@@ -96,6 +96,15 @@ body {
   gap: 10px;
   user-select: none;
   z-index: 100;
+  transition: opacity 0.9s ease;
+}
+
+/* After ~20 s without interaction the whole panel fades away for a clean,
+   movie-like view; any pointer move, key, or scroll brings it straight back
+   (see setupIdleHide in index.html). */
+#controls.idle-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* The cog: always the same discreet circular handle (and the drag grip), so it

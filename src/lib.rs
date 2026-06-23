@@ -121,6 +121,11 @@ pub struct AppState {
     /// react to how fast the view is being stirred.
     prev_rotation: (f32, f32),
     motion: f32,
+    /// Cinematic autopilot: a slow self-driving camera orbit + glide, on by default
+    /// until the user grabs the view (the page's toggle turns it back on). Its clock
+    /// advances only while it runs, so resuming continues smoothly.
+    autopilot: bool,
+    autopilot_t: f32,
     /// Smoothed, normalised core signals derived from the GPU readback
     /// (`CoreStats`): central-mass concentration, signed radial flux (matter
     /// moving out of / into the centre), and core churn — the soundscape's primary
@@ -180,6 +185,8 @@ impl AppState {
             sound_muted: false,
             prev_rotation: (0.0, 0.0),
             motion: 0.0,
+            autopilot: true,
+            autopilot_t: 0.0,
             core_initialized: false,
             core_mass_ref: 0.0,
             core_mass_dev: 0.0,
@@ -200,6 +207,14 @@ impl AppState {
         self.frame_dt = frame_dt.clamp(0.0, MAX_FRAME_DT);
 
         self.input_handler.update_camera(&mut self.camera);
+
+        // Cinematic autopilot: a slow self-driving orbit + glide so the sim plays
+        // like a movie. Runs even while paused (it moves the camera, not the
+        // physics); the page switches it off the moment the user grabs the view.
+        if self.autopilot {
+            self.autopilot_t += self.frame_dt;
+            self.camera.autopilot_step(self.frame_dt, self.autopilot_t);
+        }
 
         if self.input_handler.pause_toggled() {
             self.paused = !self.paused;
@@ -467,6 +482,12 @@ impl AppState {
     /// `update_camera`.
     pub fn set_particle_size(&mut self, size: f32) {
         self.particle_size = size;
+    }
+
+    /// Enable or disable the cinematic autopilot (the page's Autopilot toggle, and
+    /// auto-off when the user grabs the view).
+    pub fn set_autopilot(&mut self, on: bool) {
+        self.autopilot = on;
     }
 
     /// Build the per-frame snapshot that drives the soundscape — the camera and
@@ -782,6 +803,15 @@ pub fn set_halo_visible(visible: bool) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_halo_visible(visible);
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_autopilot(on: bool) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_autopilot(on);
         }
     });
 }
