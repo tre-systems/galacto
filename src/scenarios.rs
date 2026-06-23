@@ -11,7 +11,8 @@ use std::f32::consts::TAU;
 
 // --- Spiral-disk scenario: a bulge body + a self-gravitating exponential disk
 // whose own mass dominates its region (a "maximal disk"), which is spiral-prone.
-// The bulge mass is derived from the bulge fraction (see `bulge_mass_for`).
+// The bulge is a star population whose mass share is the bulge fraction (see
+// `bulge_mass` / `disk_mass` and `seed_bulge`).
 const STAR_MASS: f32 = 21.0;
 const DISK_RD: f32 = 35.0; // exponential scale length
 const DISK_RMAX: f32 = 170.0; // clamp on the sampled disk radius
@@ -61,19 +62,30 @@ pub const DEFAULT_GAS_FRACTION: f32 = 0.24;
 /// warm gold rather than being speckled blue (sharpening the arm/centre contrast).
 const GAS_R_MIN: f32 = 22.0;
 
-/// Default bulge fraction (bulge mass / [bulge + disk] mass) — ~10%, so the default
-/// bulge is ~40 000 sim-mass units against the disk's reference total
-/// `NUM_PARTICLES · STAR_MASS`. The bulge slider overrides it; it classifies the
-/// galaxy (low = a late-type spiral, high = a bulge-dominated early type).
+/// Default bulge fraction (bulge mass / total) — ~10%, a Milky-Way-like disk
+/// galaxy. The bulge slider sweeps it from a disk-dominated late type to a
+/// bulge-dominated early type.
 pub const DEFAULT_BULGE_FRAC: f32 = 0.104;
 
-/// Central bulge point mass for a given bulge fraction `f`: `m = D·f/(1−f)` with the
-/// disk reference total `D = NUM_PARTICLES · STAR_MASS`. Holds the disk fixed and
-/// grows/shrinks the bulge, so the bulge slider sweeps the bulge-to-disk ratio.
-fn bulge_mass_for(bulge_frac: f32) -> f32 {
-    let f = bulge_frac.clamp(0.0, 0.95);
-    let disk_total = NUM_PARTICLES as f32 * STAR_MASS;
-    disk_total * f / (1.0 - f)
+/// Spatial scale of the central bulge spheroid (sim units; ≈ 1.2 kpc) — much
+/// smaller than the disk scale `DISK_RD`, so it reads as a compact central knot.
+const BULGE_SCALE: f32 = 12.0;
+
+/// The galaxy's total baryonic mass (bulge + disk), held constant as the bulge
+/// fraction redistributes it: the bulge slider changes the galaxy's *shape* (a
+/// disk-dominated late type ↔ a bulge-dominated early type), not its mass.
+fn galaxy_mass() -> f32 {
+    NUM_PARTICLES as f32 * STAR_MASS
+}
+
+/// Bulge and disk mass for a bulge fraction `f`: the bulge takes a fraction `f` of
+/// the total, the disk the rest. Per-body mass is uniform, so the bulge's share of
+/// the *bodies* equals its share of the mass (see `seed_spiral_disk`).
+fn bulge_mass(bulge_frac: f32) -> f32 {
+    galaxy_mass() * bulge_frac.clamp(0.0, 0.95)
+}
+fn disk_mass(bulge_frac: f32) -> f32 {
+    galaxy_mass() * (1.0 - bulge_frac.clamp(0.0, 0.95))
 }
 
 /// Softening + thickness + finite-N stability correction. Razor-thin Toomre theory
@@ -97,8 +109,7 @@ fn dispersion(q: f32) -> f32 {
 /// slider read a true (effective) Toomre Q.
 fn toomre_sigma(r: f32, q: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
     let r = r.max(1.0);
-    let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
-    let sigma0 = m_disk / (TAU * DISK_RD * DISK_RD);
+    let sigma0 = disk_mass(bulge_frac) / (TAU * DISK_RD * DISK_RD);
     let surface = sigma0 * (-r / DISK_RD).exp();
     // Epicyclic frequency from a finite-difference of the circular-velocity curve.
     let dr = 0.5;
@@ -231,10 +242,9 @@ fn circular_velocity(r: f32, bulge_frac: f32, halo_kind: HaloKind) -> f32 {
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
-    let v_bulge2 = G * bulge_mass_for(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
-    let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
+    let v_bulge2 = G * bulge_mass(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
     let x = r / DISK_RD;
-    let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
+    let m_enc = disk_mass(bulge_frac) * (1.0 - (1.0 + x) * (-x).exp());
     let v_disk2 = G * m_enc / r;
     (v_bulge2 + v_disk2 + halo_velocity_sq(r, halo_kind)).sqrt()
 }
@@ -284,10 +294,9 @@ pub fn rotation_components(
     let r = r.max(1.0);
     let r2 = r * r;
     let eps2 = SPIRAL_SOFTENING * SPIRAL_SOFTENING;
-    let v_bulge2 = gravity * bulge_mass_for(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
-    let m_disk = (NUM_PARTICLES - 1) as f32 * STAR_MASS;
+    let v_bulge2 = gravity * bulge_mass(bulge_frac) * r2 / (r2 + eps2).powf(1.5);
     let x = r / DISK_RD;
-    let m_enc = m_disk * (1.0 - (1.0 + x) * (-x).exp());
+    let m_enc = disk_mass(bulge_frac) * (1.0 - (1.0 + x) * (-x).exp());
     let v_disk2 = gravity * m_enc / r;
     let v_halo2 = halo_velocity_sq_at(r, halo_v0, rc_scale, halo_kind);
     [v_bulge2.sqrt(), v_disk2.sqrt(), v_halo2.sqrt()]
@@ -345,10 +354,51 @@ fn generate_disk(
     particles
 }
 
-/// Seed a halo-supported exponential spiral disk into `out`: a central bulge body
-/// plus `count - 1` disk stars on near-circular prograde (+z) orbits, balanced
-/// against the global halo (`circular_velocity`), with a random thermal dispersion
-/// scaled by `temp`. Centred at the origin, at rest — shared by the spiral scenario
+/// Seed a dispersion-supported central **bulge**: `n` old (warm) stars in a slightly
+/// flattened spheroid (scale [`BULGE_SCALE`], radius-capped so none is flung far
+/// out), pressure-supported by isotropic random velocities (≈ v_circ/√2) with no net
+/// rotation — so it reads as a round, gold central knot rather than another disk
+/// (tint 0 → coloured warm by its small radius). The disk is balanced against the
+/// same bulge mass via `circular_velocity`, so the two stay in rough equilibrium.
+fn seed_bulge(
+    out: &mut Vec<Particle>,
+    n: u32,
+    bulge_frac: f32,
+    halo_kind: HaloKind,
+    star_mass: f32,
+    rng: &mut StdRng,
+) {
+    let r_max = 4.0 * BULGE_SCALE;
+    for _ in 0..n {
+        let mut x = gaussian(rng) * BULGE_SCALE;
+        let mut y = gaussian(rng) * BULGE_SCALE;
+        let mut z = gaussian(rng) * BULGE_SCALE * 0.7; // mildly flattened
+        let r0 = (x * x + y * y + z * z).sqrt();
+        if r0 > r_max {
+            let s = r_max / r0;
+            x *= s;
+            y *= s;
+            z *= s;
+        }
+        let r = (x * x + y * y + z * z).sqrt().max(1.0);
+        let sigma = circular_velocity(r, bulge_frac, halo_kind) * 0.7;
+        out.push(Particle {
+            pos_mass: [x, y, z, star_mass],
+            vel: [
+                gaussian(rng) * sigma,
+                gaussian(rng) * sigma,
+                gaussian(rng) * sigma,
+                0.0,
+            ],
+        });
+    }
+}
+
+/// Seed a halo-supported exponential spiral disk into `out`: a central bulge
+/// spheroid (`seed_bulge`) plus disk stars on near-circular prograde (+z) orbits,
+/// balanced against the global halo (`circular_velocity`), with a random thermal
+/// dispersion scaled by `temp`. Centred at the origin, at rest — shared by the
+/// spiral scenario
 /// and the M51 flyby's main galaxy. The render shader colours it by live
 /// galactocentric radius (warm core → blue arms).
 // Eight genuinely-distinct seeding inputs; bundling them into a single-use struct
@@ -364,15 +414,17 @@ fn seed_spiral_disk(
     star_mass: f32,
     rng: &mut StdRng,
 ) {
-    // Central bulge body, at rest at the origin (tint 0 → warm nucleus). Its mass is
-    // set by the bulge fraction (the bulge slider).
-    out.push(Particle {
-        pos_mass: [0.0, 0.0, 0.0, bulge_mass_for(bulge_frac)],
-        vel: [0.0, 0.0, 0.0, 0.0],
-    });
+    // Split the bodies between a central bulge spheroid and the disk by mass
+    // fraction (uniform per-body mass → the bulge's body-share equals its mass
+    // share). Raising the bulge fraction visibly grows the warm central bulge and
+    // thins the disk — a disk-dominated late type sweeping to a bulge-dominated
+    // early type.
+    let bulge_count = ((count as f32) * bulge_frac.clamp(0.0, 0.95)).round() as u32;
+    seed_bulge(out, bulge_count, bulge_frac, halo_kind, star_mass, rng);
 
+    // The exponential, near-circular spiral disk fills the rest.
     // `temp` is the target Toomre Q; the dispersion is set per-radius from it.
-    for _ in 1..count {
+    for _ in 0..count.saturating_sub(bulge_count) {
         // Exponential disk: a gamma(2) radius gives surface density ∝ e^(-r/Rd).
         let u1: f32 = rng.random_range(1e-4_f32..1.0);
         let u2: f32 = rng.random_range(1e-4_f32..1.0);
@@ -776,10 +828,11 @@ mod tests {
     #[test]
     fn spiral_disk_radii_stay_within_bounds() {
         let bodies = Scenario::Spiral.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Logarithmic);
-        // Skip the bulge at index 0; disk radii are clamped to DISK_RMAX.
-        for b in &bodies[1..] {
+        // Disk radii are clamped to DISK_RMAX; the bulge spheroid is radius-capped
+        // well within it — so every body stays inside DISK_RMAX.
+        for b in &bodies {
             let r = (b.pos_mass[0] * b.pos_mass[0] + b.pos_mass[1] * b.pos_mass[1]).sqrt();
-            assert!(r <= DISK_RMAX + 1e-3, "disk radius {r} exceeds DISK_RMAX");
+            assert!(r <= DISK_RMAX + 1e-3, "radius {r} exceeds DISK_RMAX");
         }
     }
 
@@ -800,7 +853,15 @@ mod tests {
         // thermal for the spiral disk, so a hot disk spreads in vz far more.
         let mean_abs_vz = |temp| {
             let bodies = Scenario::Spiral.generate(NUM_PARTICLES, temp, HaloKind::Logarithmic);
-            let disk = &bodies[1..]; // skip the bulge
+            // Disk stars only (out beyond the central bulge), where vz is the
+            // temperature-set thermal kick rather than the bulge's pressure support.
+            let disk: Vec<_> = bodies
+                .iter()
+                .filter(|b| {
+                    let r2 = b.pos_mass[0] * b.pos_mass[0] + b.pos_mass[1] * b.pos_mass[1];
+                    (50.0..150.0).contains(&r2.sqrt())
+                })
+                .collect();
             disk.iter().map(|b| b.vel[2].abs()).sum::<f32>() / disk.len() as f32
         };
         assert!(mean_abs_vz(2.0) > mean_abs_vz(0.05) * 3.0);
