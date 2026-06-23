@@ -132,6 +132,16 @@
             checked
             title="Slowly orbit and glide the camera on its own — a hands-off movie. Grabbing the view turns it off."
           />
+          <input
+            id="autopilot-speed"
+            type="range"
+            min="0"
+            max="100"
+            value="20"
+            step="1"
+            aria-label="Autopilot speed"
+            title="Autopilot camera speed"
+          />
         </div>
         <div class="control">
           <label for="count-slider">Bodies</label>
@@ -341,9 +351,13 @@
       // view (press or scroll on the canvas) hands control back and flips the toggle.
       function setupAutopilot(mod) {
         const toggle = document.getElementById("autopilot-toggle");
+        const speed = document.getElementById("autopilot-speed");
         const canvas = document.getElementById("gpu-canvas");
+        const applySpeed = () => mod.set_autopilot_speed((speed.value / 100) * 2.0);
         mod.set_autopilot(toggle.checked);
+        applySpeed();
         toggle.addEventListener("change", () => mod.set_autopilot(toggle.checked));
+        speed.addEventListener("input", applySpeed);
         const release = () => {
           if (!toggle.checked) return;
           toggle.checked = false;
@@ -728,7 +742,7 @@
           "scenario-select":
             "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
           "autopilot-toggle":
-            "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. Grab the view (drag or scroll) and it switches off; turn it back on any time.",
+            "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. The slider beside it sets how fast it drifts. Grab the view (drag or scroll) and it switches off; turn it back on any time.",
           "count-slider":
             "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so high counts cap speed to keep the browser responsive. Re-seeds.",
           "speed-slider":

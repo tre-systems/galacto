@@ -1,8 +1,9 @@
 use cgmath::{perspective, Deg, EuclideanSpace, Matrix4, Point3, Vector3};
 
-// Cinematic autopilot tuning: a very slow orbit, a gentle glide in and out, and a
-// slow nod — all eased so switching the mode on or off never snaps the view.
-const AUTOPILOT_SPIN: f32 = 0.05; // rad/s — ~125 s per revolution
+// Cinematic autopilot tuning at 1.0× speed — the page's autopilot slider scales
+// these rates. A slow orbit, a gentle glide in and out, and a slow nod, all eased
+// so switching the mode on or off never snaps the view.
+const AUTOPILOT_SPIN: f32 = 0.05; // rad/s at 1.0× — ~125 s per revolution
 const AUTOPILOT_ZOOM_MID: f32 = 0.7; // centre scale (matches the default view)
 const AUTOPILOT_ZOOM_AMP: f32 = 0.55; // log-amplitude of the in/out glide
 const AUTOPILOT_ZOOM_RATE: f32 = 0.10; // rad/s — ~63 s glide cycle
@@ -67,11 +68,12 @@ impl Camera {
 
     /// One frame of the cinematic autopilot: a slow continuous orbit, a gentle
     /// glide in and out, and a slow nod, eased toward their targets so toggling the
-    /// mode never snaps the view. `t` is a free-running clock (seconds), `dt` the
-    /// frame delta (seconds).
-    pub fn autopilot_step(&mut self, dt: f32, t: f32) {
-        // Orbit: incremental, so it simply carries on from wherever the camera is.
-        self.rotation_y += AUTOPILOT_SPIN * dt;
+    /// mode never snaps the view. `dt` is the frame delta (seconds), `t` the
+    /// speed-scaled phase clock (seconds), and `speed` the slider's rate multiplier.
+    pub fn autopilot_step(&mut self, dt: f32, t: f32, speed: f32) {
+        // Orbit: incremental at the scaled rate, so it carries on from wherever the
+        // camera is and a speed change never jumps it.
+        self.rotation_y += AUTOPILOT_SPIN * speed * dt;
         // Glide the zoom around a comfortable mid scale (multiplicative, so it feels
         // even across the wide range), easing toward the slowly-moving target.
         let target_scale =
@@ -165,19 +167,22 @@ mod tests {
 
     #[test]
     fn autopilot_stays_bounded_and_finite() {
-        let mut c = Camera::new();
-        let mut t = 0.0;
-        // Ten seconds at 60 fps: scale and tilt must stay in range and finite.
-        for _ in 0..600 {
-            c.autopilot_step(1.0 / 60.0, t);
-            t += 1.0 / 60.0;
-            assert!(
-                (0.001..=5.0).contains(&c.scale),
-                "scale {} out of range",
-                c.scale
-            );
-            assert!((-1.5..=1.5).contains(&c.rotation_x), "tilt out of range");
-            assert!(c.rotation_y.is_finite() && c.scale.is_finite());
+        // Across the slider's whole speed range, scale and tilt stay in range and
+        // finite over ten seconds at 60 fps.
+        for &speed in &[0.0_f32, 0.4, 2.0] {
+            let mut c = Camera::new();
+            let mut t = 0.0;
+            for _ in 0..600 {
+                c.autopilot_step(1.0 / 60.0, t, speed);
+                t += (1.0 / 60.0) * speed;
+                assert!(
+                    (0.001..=5.0).contains(&c.scale),
+                    "scale {} out of range at speed {speed}",
+                    c.scale
+                );
+                assert!((-1.5..=1.5).contains(&c.rotation_x), "tilt out of range");
+                assert!(c.rotation_y.is_finite() && c.scale.is_finite());
+            }
         }
     }
 }

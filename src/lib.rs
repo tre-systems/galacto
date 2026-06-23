@@ -126,6 +126,9 @@ pub struct AppState {
     /// advances only while it runs, so resuming continues smoothly.
     autopilot: bool,
     autopilot_t: f32,
+    /// Autopilot speed multiplier (the page's autopilot slider), scaling the base
+    /// orbit / glide / nod rates.
+    autopilot_speed: f32,
     /// Smoothed, normalised core signals derived from the GPU readback
     /// (`CoreStats`): central-mass concentration, signed radial flux (matter
     /// moving out of / into the centre), and core churn — the soundscape's primary
@@ -187,6 +190,7 @@ impl AppState {
             motion: 0.0,
             autopilot: true,
             autopilot_t: 0.0,
+            autopilot_speed: 0.4,
             core_initialized: false,
             core_mass_ref: 0.0,
             core_mass_dev: 0.0,
@@ -212,8 +216,11 @@ impl AppState {
         // like a movie. Runs even while paused (it moves the camera, not the
         // physics); the page switches it off the moment the user grabs the view.
         if self.autopilot {
-            self.autopilot_t += self.frame_dt;
-            self.camera.autopilot_step(self.frame_dt, self.autopilot_t);
+            // The phase clock advances at the scaled rate, so changing the speed
+            // never jumps the glide; `autopilot_step` scales the orbit to match.
+            self.autopilot_t += self.frame_dt * self.autopilot_speed;
+            self.camera
+                .autopilot_step(self.frame_dt, self.autopilot_t, self.autopilot_speed);
         }
 
         if self.input_handler.pause_toggled() {
@@ -488,6 +495,11 @@ impl AppState {
     /// auto-off when the user grabs the view).
     pub fn set_autopilot(&mut self, on: bool) {
         self.autopilot = on;
+    }
+
+    /// Set the cinematic autopilot speed multiplier (the page's autopilot slider).
+    pub fn set_autopilot_speed(&mut self, speed: f32) {
+        self.autopilot_speed = speed.clamp(0.0, 4.0);
     }
 
     /// Build the per-frame snapshot that drives the soundscape — the camera and
@@ -812,6 +824,15 @@ pub fn set_autopilot(on: bool) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_autopilot(on);
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_autopilot_speed(speed: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_autopilot_speed(speed);
         }
     });
 }

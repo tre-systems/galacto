@@ -200,6 +200,14 @@ body {
   cursor: pointer;
 }
 
+/* The autopilot row packs a toggle and a speed slider on one line — let the slider
+   flex to fill whatever's left beside the switch (the fixed 200px would overflow). */
+#autopilot-speed {
+  width: auto;
+  flex: 1;
+  min-width: 56px;
+}
+
 /* Two compact toggles (halo Show + rotation Curve) share one row to save
    vertical space. Each half keeps its label + "?" + switch grouped together
    (labels shrink to content width), so each toggle stays right next to its own
