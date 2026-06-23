@@ -94,6 +94,20 @@ pub struct GalaxyState {
     /// Core churn (0..1): how fast central matter is moving radially. The main
     /// driver of note density and shimmer.
     pub core_activity: f32,
+    /// Gas fraction, 0..1 (the gas slider): more cold gas brightens and airs out
+    /// the pad, echoing the blue arms it draws on screen.
+    pub gas: f32,
+    /// Bulge mass fraction, normalised 0..1 (the bulge slider): more central mass
+    /// gives the pad more body.
+    pub bulge: f32,
+    /// Body count, normalised 0..1 (the bodies slider): more stars, busier starlight.
+    pub richness: f32,
+    /// Disk stability — Toomre Q, normalised 0..1 (the Q slider): a less stable,
+    /// clumpier disk shimmers and detunes more; a smooth one is calmer.
+    pub stability: f32,
+    /// Halo scale radius, normalised 0..1 (the halo-size slider): a larger, more
+    /// diffuse halo opens up the reverb space.
+    pub halo_size: f32,
     pub paused: bool,
 }
 
@@ -199,9 +213,10 @@ impl MusicEngine {
 
     /// The sustained pad's target for this frame: a deep, low chord (two octaves
     /// below the scenario root) that breathes — gravity leans it and radial flux
-    /// lifts it as the core collapses inward; brightness from zoom, glow, and core
-    /// churn; level hushed when paused and swelling with the mass gathered at the
-    /// centre; a detune spread that widens with core churn and camera motion.
+    /// lifts it as the core collapses inward; brightness from zoom, glow, gas, and
+    /// core churn; level hushed when paused and swelling with the mass gathered at
+    /// the centre (and the bulge's share of it); a detune spread that widens with
+    /// core churn, camera motion, and a less stable (low-Q) disk.
     pub fn drone(&self, state: &GalaxyState) -> DroneTarget {
         let c = character(state.scenario);
         let inflow = (-state.core_flux).max(0.0); // collapse strength, 0..1
@@ -218,6 +233,7 @@ impl MusicEngine {
         let octaves = c.brightness * 1.4
             + state.zoom * 1.6
             + state.glow * 0.5
+            + state.gas * 0.5
             + state.core_activity * 0.9
             + inflow * 0.6;
         let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 8000.0);
@@ -226,9 +242,11 @@ impl MusicEngine {
         let gain = if state.paused {
             0.12
         } else {
-            (0.20 + 0.16 * state.core_mass + 0.05 * state.halo).clamp(0.0, 0.5)
+            (0.20 + 0.16 * state.core_mass + 0.05 * state.halo + 0.10 * state.bulge)
+                .clamp(0.0, 0.55)
         };
-        let detune_cents = 4.0 + 10.0 * state.core_activity + 8.0 * state.motion;
+        let detune_cents =
+            4.0 + 10.0 * state.core_activity + 8.0 * state.motion + 7.0 * (1.0 - state.stability);
         DroneTarget {
             freqs,
             cutoff_hz,
@@ -259,6 +277,7 @@ impl MusicEngine {
         let energy = (0.10
             + 0.52 * state.core_activity
             + 0.22 * state.core_mass
+            + 0.14 * state.richness
             + 0.12 * state.intensity
             + 0.08 * state.motion)
             * c.activity;
@@ -303,7 +322,7 @@ impl MusicEngine {
 
         // An occasional high, quiet sparkle — more likely with brighter, glowier
         // stars — panned opposite the main note for width.
-        if self.rng.random_range(0.0_f32..1.0) < 0.10 + 0.2 * state.glow {
+        if self.rng.random_range(0.0_f32..1.0) < 0.10 + 0.2 * state.glow + 0.15 * state.gas {
             out.push(NoteEvent {
                 freq: midi_to_hz((midi + 12.0).min(c.root_midi + 48.0)),
                 velocity: velocity * 0.5,
@@ -334,6 +353,11 @@ mod tests {
             // Tie the test "activity" knob to the core, the primary density driver,
             // so the existing density/determinism tests exercise it.
             core_activity: intensity,
+            gas: 0.3,
+            bulge: 0.2,
+            richness: 0.3,
+            stability: 0.5,
+            halo_size: 0.2,
             paused,
         }
     }

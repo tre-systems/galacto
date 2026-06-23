@@ -262,8 +262,9 @@ impl AudioEngine {
             + 0.35 * (1.0 - state.zoom)
             + 0.2 * state.core_activity
             + 0.28 * lfo_b
-            + 0.08 * state.motion)
-            .clamp(0.0, 1.6);
+            + 0.08 * state.motion
+            + 0.3 * state.halo_size)
+            .clamp(0.0, 1.7);
         ramp(&self.reverb_wet.gain(), reverb, now);
         // Long, present echo with sustained, trailing repeats (feedback stays below 1
         // and the loop's low-pass darkens each pass, so it always decays).
@@ -273,8 +274,10 @@ impl AudioEngine {
         ramp(&self.delay_feedback.gain(), feedback, now);
 
         // Noise bed: low and breathing a little with the core's churn and its own
-        // LFO, so it reads as soft background air rather than a steady hiss.
-        let noise_level = (0.03 + 0.045 * state.core_activity + 0.02 * lfo_b).clamp(0.0, 0.1);
+        // LFO, lifted by the gas fraction (more cold gas → more airy bed), so it
+        // reads as soft background air rather than a steady hiss.
+        let noise_level =
+            (0.03 + 0.045 * state.core_activity + 0.02 * lfo_b + 0.04 * state.gas).clamp(0.0, 0.12);
         ramp(&self.noise_gain.gain(), noise_level, now);
 
         if self.enabled && !state.paused {

@@ -529,6 +529,16 @@ impl AppState {
             core_mass: self.core_mass_s,
             core_flux: self.core_flux_s,
             core_activity: self.core_activity_s,
+            // Sim sliders colour the sound the moment they move (even the ones that
+            // re-seed the visuals on release): gas → air/brightness, bulge → body,
+            // body count → starlight density, Toomre Q → pad stability, halo size →
+            // reverb space.
+            gas: self.gas_fraction.clamp(0.0, 1.0),
+            bulge: (self.bulge_frac / 0.8).clamp(0.0, 1.0),
+            richness: (self.particle_count as f32 / simulation::MAX_PARTICLES as f32)
+                .clamp(0.0, 1.0),
+            stability: ((self.disk_temp - 0.3) / 2.2).clamp(0.0, 1.0),
+            halo_size: ((self.halo_rc_scale - 0.1) / 4.9).clamp(0.0, 1.0),
             paused: self.paused,
         }
     }
