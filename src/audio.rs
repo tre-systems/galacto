@@ -1,8 +1,8 @@
 //! Web Audio rendering for the generative galaxy soundscape.
 //!
-//! Everything is synthesized — oscillators, a code-generated reverb impulse, a
-//! feedback delay, a compressor — so there are no sample files or external
-//! sources. The [`MusicEngine`](crate::music) decides *what* to play from the
+//! Everything is synthesized — oscillators, a noise bed, a code-generated reverb
+//! impulse, a feedback delay, a compressor — so there are no sample files or
+//! external sources. The [`MusicEngine`](crate::music) decides *what* to play from the
 //! per-frame [`GalaxyState`]; this module is the *how*: it owns the AudioContext
 //! and the node graph, holds a steady detuned drone pad, and schedules the
 //! engine's notes ahead on the audio clock for click-free, frame-rate-independent
@@ -11,6 +11,7 @@
 //! The graph (sources → master → output):
 //! ```text
 //!   drone oscs ─▶ drone gain ─▶ drone LP ─┐
+//!   noise src ─▶ noise LP ─▶ noise gain ──┤
 //!   note osc ─▶ env ─▶ panner ────────────┼─▶ master gain ─▶ master LP ─▶ comp ─▶ out
 //!                          ├─▶ reverb in ─▶ convolver ─▶ reverb LP ─▶ reverb wet ─┤
 //!                          └─▶ delay in ─▶ delay ⇄ feedback ─▶ delay wet ─────────┘
@@ -81,7 +82,7 @@ impl AudioEngine {
         let comp = compressor(&ctx)?;
         connect(&master_gain, &master_lp);
         connect(&master_lp, &comp);
-        let _ = comp.connect_with_audio_node(&ctx.destination());
+        connect(&comp, &ctx.destination());
 
         // Reverb bus: a long, dark, diffuse impulse response — a huge cavern / the
         // void of deep space. A low-pass on the return rolls off the tail's highs so
@@ -95,7 +96,7 @@ impl AudioEngine {
         let reverb_lp = lowpass(&ctx, 2600.0, 0.5)?;
         let reverb_wet = gain(&ctx, 0.6)?;
         connect(&reverb_in, &convolver);
-        let _ = convolver.connect_with_audio_node(&reverb_lp);
+        connect(&convolver, &reverb_lp);
         connect(&reverb_lp, &reverb_wet);
         connect(&reverb_wet, &master_gain);
 
@@ -108,9 +109,9 @@ impl AudioEngine {
         let delay_feedback = gain(&ctx, 0.4)?;
         let delay_wet = gain(&ctx, 0.22)?;
         connect(&delay_in, &delay);
-        let _ = delay.connect_with_audio_node(&delay_tone);
+        connect(&delay, &delay_tone);
         connect(&delay_tone, &delay_feedback);
-        let _ = delay_feedback.connect_with_audio_node(&delay);
+        connect(&delay_feedback, &delay);
         connect(&delay_tone, &delay_wet);
         connect(&delay_wet, &master_gain);
 
@@ -241,17 +242,15 @@ impl AudioEngine {
         ramp(&self.master_lp.frequency(), d.cutoff_hz, now);
 
         // Slow, free-running LFOs on independent periods, so the space keeps
-        // drifting even when the galaxy is momentarily still — reverb and resonance
-        // that vary on their own.
+        // drifting even when the galaxy is momentarily still.
         let t = now as f32;
-        let lfo_a = 0.5 + 0.5 * (t * 0.085).sin(); // ~12 s period
-        let lfo_b = 0.5 + 0.5 * (t * 0.047 + 1.7).sin(); // ~21 s, offset
+        let lfo_a = lfo(t, 0.085, 0.0); // ~74 s period
+        let lfo_b = lfo(t, 0.047, 1.7); // ~134 s period, offset
         let inflow = (-state.core_flux).max(0.0);
 
-        // Resonant pad filter: the Q breathes on the slow LFO and peaks as the core
-        // collapses inward, giving the low pad a moving, vocal formant.
-        // Gentle resonance: it still moves on the LFO and lifts as the core collapses,
-        // but capped low so the low pad gets a soft swell, never a piercing whistle.
+        // Resonant pad filter: the Q breathes on the slow LFO and lifts as the core
+        // collapses inward — a soft, moving swell, capped low so the deep pad never
+        // sharpens into a whistle.
         let resonance = (0.8 + 1.8 * lfo_a + 1.4 * inflow).clamp(0.7, 3.8);
         ramp(&self.drone_lp.q(), resonance, now);
 
@@ -292,9 +291,7 @@ impl AudioEngine {
     fn apply_drone(&self, d: &DroneTarget, now: f64) {
         for (i, osc) in self.drone_oscs.iter().enumerate() {
             ramp(&osc.frequency(), d.freqs[i], now);
-            let _ = osc
-                .detune()
-                .set_target_at_time((i as f32 - 1.0) * d.detune_cents, now, 0.6);
+            ramp(&osc.detune(), (i as f32 - 1.0) * d.detune_cents, now);
         }
         ramp(
             &self.drone_lp.frequency(),
@@ -304,7 +301,7 @@ impl AudioEngine {
             now,
         );
         let gain = if self.enabled { d.gain } else { 0.0 };
-        let _ = self.drone_gain.gain().set_target_at_time(gain, now, 0.6);
+        ramp(&self.drone_gain.gain(), gain, now);
     }
 
     /// Generate and fire every grid step inside the look-ahead window, advancing
@@ -412,54 +409,65 @@ fn ramp(param: &web_sys::AudioParam, value: f32, now: f64) {
     let _ = param.set_target_at_time(value, now, 0.6);
 }
 
-/// Build a long, diffuse stereo reverb impulse procedurally: per-channel
-/// deterministic noise under a slow exponential decay — a big, cavernous tail. The
-/// decay time constant is long (a vast space) and the early emphasis is gentle, so
-/// the energy is spread out and distant rather than front-loaded and bright. No
-/// sample file — the reverb is generated in code at the context sample rate.
+/// A free-running unipolar LFO in 0..1: a sine of angular rate `rate` (rad/s on the
+/// audio clock) at phase `phase`, folded to 0..1. Lets the space drift on its own,
+/// independent of the simulation.
+fn lfo(t: f32, rate: f32, phase: f32) -> f32 {
+    0.5 + 0.5 * (t * rate + phase).sin()
+}
+
+/// A tiny deterministic white-noise source: xorshift32 yielding bipolar samples in
+/// [-1, 1). Seeded per channel so the two stereo sides decorrelate. Endless — the
+/// buffer builders take exactly as many samples as they need.
+struct Noise(u32);
+
+impl Iterator for Noise {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 17;
+        self.0 ^= self.0 << 5;
+        Some(self.0 as f32 / u32::MAX as f32 * 2.0 - 1.0)
+    }
+}
+
+/// Build a long, diffuse stereo reverb impulse procedurally: per-channel white
+/// noise under a slow exponential decay — a big, cavernous tail. The decay time
+/// constant is long (a vast space) and the early emphasis is gentle, so the energy
+/// is spread out and distant rather than front-loaded and bright. No sample file —
+/// the reverb is generated in code at the context sample rate.
 fn make_impulse_response(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer> {
     let sr = ctx.sample_rate();
     let len = (sr * seconds) as u32;
     let ir = ctx.create_buffer(2, len, sr).ok()?;
     let dt = 1.0 / sr;
-    for ch in 0..2 {
+    // Two seeds → two decorrelated channels.
+    for (ch, seed) in [0x1234_ABCDu32, 0x7890_FEDC].into_iter().enumerate() {
         let mut buf = vec![0.0_f32; len as usize];
         let mut t = 0.0_f32;
-        // Per-channel xorshift32 state for deterministic, decorrelated noise.
-        let mut seed: u32 = if ch == 0 { 0x1234_ABCD } else { 0x7890_FEDC };
-        for sample in buf.iter_mut() {
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            let n = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
-            // Long ~3.2 s decay time constant → a huge, slowly-fading space.
+        for (sample, n) in buf.iter_mut().zip(Noise(seed)) {
+            // Long ~3.2 s decay → a huge, slowly-fading space; a gentle early
+            // emphasis over the first half-second softens the onset.
             let decay = (-t / 3.2).exp();
-            let early = (1.0 - (t / 0.5)).clamp(0.0, 1.0);
+            let early = (1.0 - t / 0.5).clamp(0.0, 1.0);
             *sample = n * decay * (0.5 + 0.5 * early);
             t += dt;
         }
-        let _ = ir.copy_to_channel(&buf, ch);
+        let _ = ir.copy_to_channel(&buf, ch as i32);
     }
     Some(ir)
 }
 
-/// A short stereo noise buffer for the looping bed. Deterministic xorshift per
-/// channel (decorrelated L/R for width); white noise loops seamlessly, and the
-/// graph's low-pass warms it into a soft, hiss-free rumble.
+/// A short stereo noise buffer for the looping bed: per-channel white noise
+/// (decorrelated L/R for width) that loops seamlessly, which the graph's low-pass
+/// then warms into a soft, hiss-free rumble.
 fn make_noise_buffer(ctx: &AudioContext, seconds: f32) -> Option<AudioBuffer> {
     let sr = ctx.sample_rate();
     let len = (sr * seconds) as u32;
     let buf = ctx.create_buffer(2, len, sr).ok()?;
-    for ch in 0..2 {
-        let mut data = vec![0.0_f32; len as usize];
-        let mut seed: u32 = if ch == 0 { 0x2545_F491 } else { 0x9E37_79B9 };
-        for sample in data.iter_mut() {
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            *sample = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
-        }
-        let _ = buf.copy_to_channel(&data, ch);
+    for (ch, seed) in [0x2545_F491u32, 0x9E37_79B9].into_iter().enumerate() {
+        let data: Vec<f32> = Noise(seed).take(len as usize).collect();
+        let _ = buf.copy_to_channel(&data, ch as i32);
     }
     Some(buf)
 }
