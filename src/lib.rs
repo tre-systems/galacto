@@ -598,10 +598,36 @@ pub fn start() -> Result<(), JsValue> {
     spawn_local(async {
         if let Err(e) = run().await {
             console_log!("Error running application: {:?}", e);
+            show_init_error(&e);
         }
     });
 
     Ok(())
+}
+
+/// Surface a fatal async init failure (e.g. WebGPU device creation failing *after*
+/// the page's adapter pre-check passed) in the existing `#error` panel, so the user
+/// sees a clear message instead of a silently black canvas.
+fn show_init_error(err: &JsValue) {
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    if let Some(el) = document
+        .get_element_by_id("loading")
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        let _ = el.style().set_property("display", "none");
+    }
+    if let Some(el) = document
+        .get_element_by_id("error")
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        let _ = el.style().set_property("display", "block");
+    }
+    if let Some(details) = document.get_element_by_id("error-details") {
+        let msg = err.as_string().unwrap_or_else(|| format!("{err:?}"));
+        details.set_text_content(Some(&format!("Error: {msg}")));
+    }
 }
 
 /// Set the simulation speed multiplier (1.0 = real time). Called from the page's

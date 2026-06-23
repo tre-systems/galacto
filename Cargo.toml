@@ -55,9 +55,9 @@ js-sys = "0.3"
 console_error_panic_hook = { version = "0.1", optional = true }
 cgmath = "0.18"
 bytemuck = { version = "1.0", features = ["derive"] }
-# Only a fixed-seed StdRng is used (no OS entropy), so disable the default
-# sys_rng/thread_rng features — that drops the getrandom dependency entirely and
-# avoids the wasm-backend configuration it would otherwise require.
+# Only a fixed-seed StdRng is used (no OS entropy), so the default thread_rng /
+# os_rng features stay off. getrandom then drops out of the compiled dependency
+# graph, so there is no wasm entropy backend to configure.
 rand = { version = "0.10", default-features = false, features = ["std", "std_rng"] }
 
 [features]

@@ -64,15 +64,16 @@
 
     <!-- Error display -->
     <div id="error" class="loading error" role="alert" style="display: none">
-      <h2>WebGPU Not Supported</h2>
+      <h2>WebGPU unavailable</h2>
       <p>
-        This simulation requires WebGPU support. Please ensure you're using a
-        modern browser with WebGPU enabled:
+        Galacto runs on WebGPU, which is still rolling out across browsers. It
+        couldn't start here — usually that means your browser, GPU, or graphics
+        driver doesn't support it yet. Things to try:
       </p>
       <ul>
-        <li><strong>Chrome/Edge:</strong> Version 113+ (should work by default)</li>
-        <li><strong>Firefox:</strong> Enable <code>dom.webgpu.enabled</code> in about:config</li>
-        <li><strong>Safari:</strong> WebGPU support may vary by version</li>
+        <li><strong>Chrome / Edge:</strong> version 113 or newer (enabled by default).</li>
+        <li><strong>Firefox:</strong> recent versions support it; older ones need <code>dom.webgpu.enabled</code> in <code>about:config</code>.</li>
+        <li><strong>Safari:</strong> available in recent versions — update to the latest.</li>
       </ul>
       <div id="error-details"></div>
     </div>

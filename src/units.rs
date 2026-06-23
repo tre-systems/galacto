@@ -7,8 +7,8 @@
 //! asymptotic circular speed (`HALO_V0`) = 220 km/s (a Milky-Way-like flat curve).
 //! Because `G = 1` in the sim, the time scale then follows from length / velocity
 //! (1 kpc per km/s ≈ 978.5 Myr), so the same equations hold in physical units. With
-//! these, the disk scale length (`DISK_RD = 35`) reads ~3.5 kpc and the disk mass
-//! (~`NUM_PARTICLES · STAR_MASS`) ~7×10¹⁰ M☉ — all galaxy-plausible.
+//! these, the disk scale length (`DISK_RD = 35`) reads ~3.5 kpc and the stellar mass
+//! (~`NUM_PARTICLES · STAR_MASS`, disk + bulge) ~7×10¹⁰ M☉ — all galaxy-plausible.
 
 use crate::simulation::HALO_V0;
 
