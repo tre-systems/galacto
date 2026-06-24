@@ -5,6 +5,9 @@
 # WebAssembly
 /pkg/
 
+# Local production renders
+/renders/
+
 # Node.js
 node_modules/
 

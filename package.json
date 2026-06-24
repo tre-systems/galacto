@@ -16,6 +16,8 @@
     "diagrams": "node scripts/render-diagrams.mjs",
     "check:diagrams": "node scripts/check-diagrams.mjs",
     "icons": "node scripts/gen-icons.mjs",
+    "video:capture": "node scripts/capture-canvas-video.mjs",
+    "video:captions": "node scripts/add-video-captions.mjs",
     "deploy": "npm run build && wrangler pages deploy pkg --project-name=galacto",
     "check": "cargo check --target wasm32-unknown-unknown",
     "prepare": "husky"

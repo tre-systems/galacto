@@ -57,6 +57,213 @@ presentation, so dropped frames, browser scheduling, display refresh, and captur
 compression can all get baked into the master. It also gives Logic a mixed stereo
 track rather than clean musical stems.
 
+## Improved Proof Workflow: Direct Canvas Capture
+
+For the six-minute proof render, the practical near-term workflow was better than
+screen recording but lighter than the full native exporter: capture the WebGPU
+canvas directly with `canvas.captureStream()` in Chrome, then mux it with offline
+WAV audio. This avoids browser chrome, notifications, mouse cursors, and screen
+recorder compression.
+
+The repo now has a repeatable helper for this proof workflow:
+
+```bash
+npm run build
+npm run serve
+```
+
+In another terminal:
+
+```bash
+npm run video:capture -- \
+  --url http://localhost:8000/ \
+  --duration 360 \
+  --width 3840 \
+  --height 2160 \
+  --fps 60 \
+  --label galacto-six-minute \
+  --out-dir renders/proofs
+```
+
+Outputs:
+
+```text
+renders/proofs/
+├── galacto-six-minute-preview.png
+├── galacto-six-minute.webm
+├── galacto-six-minute-video.webm
+├── galacto-six-minute-chunks/
+└── galacto-six-minute-chrome-profile/
+```
+
+Use the `*-video.webm` file for muxing or editing; it is remuxed by ffmpeg after
+capture. `renders/` is git-ignored because these files are large.
+
+This is still not the final production architecture. The simulation is still
+running live in Chrome, so a long capture can land a fraction short of the exact
+requested duration and may still inherit browser timing behaviour. For the
+six-minute proof, the video stream landed at about `5:59.72`; the offline audio
+stems were exactly `6:00.00`.
+
+Recommended proof-render post steps:
+
+```bash
+# Remove DC offset/subsonic energy from each stem before Logic or muxing.
+ffmpeg -y -i master.wav \
+  -af highpass=f=20 \
+  -ar 48000 -c:a pcm_f32le master-clean.wav
+
+# Make a YouTube/reference master from the cleaned mix.
+ffmpeg -y -i master-clean.wav \
+  -af loudnorm=I=-14:TP=-1.5:LRA=11 \
+  -ar 48000 -c:a pcm_f32le master-clean-youtube.wav
+
+# Mux without re-encoding the captured VP9 picture.
+ffmpeg -y \
+  -i renders/proofs/galacto-six-minute-video.webm \
+  -i master-clean-youtube.wav \
+  -map 0:v:0 -map 1:a:0 \
+  -c:v copy -c:a libopus -b:a 320k -shortest \
+  renders/proofs/galacto-six-minute-youtube.webm
+```
+
+For a smaller MP4 delivery/reference file, encode the picture to HEVC and keep
+the audio at 48 kHz AAC:
+
+```bash
+ffmpeg -y \
+  -i renders/proofs/galacto-six-minute-video.webm \
+  -i master-clean-youtube.wav \
+  -map 0:v:0 -map 1:a:0 \
+  -vf "fade=t=in:st=0:d=1.5,fade=t=out:st=354.7:d=5" \
+  -c:v hevc_videotoolbox -b:v 55M -maxrate 70M -bufsize 110M -tag:v hvc1 \
+  -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 -colorspace bt709 \
+  -c:a aac -b:a 384k -movflags +faststart -shortest \
+  renders/proofs/galacto-six-minute-youtube-faded.mp4
+```
+
+For a final YouTube upload, prefer the least-compressed source that is convenient
+to upload. In this workflow that is usually the VP9/Opus WebM; the HEVC MP4 is a
+good smaller reference and still acceptable for upload.
+
+## Title And End Captions
+
+For Galacto, keep captions minimal and burn them into the picture rather than
+starting with a separate title card. The visuals should be visible from the first
+frame.
+
+Recommended opening caption:
+
+```text
+Galacto
+Self-gravitating N-body galaxy simulation
+```
+
+Recommended end caption:
+
+```text
+Galacto
+galacto.org
+Simulation and sound: Robert Gilks
+```
+
+Add them to an existing MP4 with:
+
+```bash
+npm run video:captions -- \
+  --input renders/proofs/galacto-six-minute-youtube-faded.mp4 \
+  --output renders/proofs/galacto-six-minute-youtube-captioned.mp4 \
+  --start-title "Galacto" \
+  --start-subtitle "Self-gravitating N-body galaxy simulation" \
+  --end-title "Galacto" \
+  --end-subtitle "galacto.org\nSimulation and sound: Robert Gilks"
+```
+
+The helper overlays the opening caption near the lower third and the end caption
+near the centre during the final seconds. It re-encodes the video because burned
+text changes the picture, but copies the audio track unchanged. It renders
+transparent SVG caption plates with `rsvg-convert`, so install librsvg first if
+needed:
+
+```bash
+brew install librsvg
+```
+
+If "captions" means actual accessibility subtitles rather than visual title
+text, create an `.srt` file instead and upload it in YouTube Studio. For this
+piece, an `.srt` would likely only contain a short opening and end credit:
+
+```text
+1
+00:00:01,700 --> 00:00:05,700
+Galacto
+Self-gravitating N-body galaxy simulation
+
+2
+00:05:52,700 --> 00:05:59,500
+Galacto
+galacto.org
+Simulation and sound: Robert Gilks
+```
+
+Do not use YouTube subtitles for the primary title/credit treatment if the text
+is part of the visual composition; subtitles can be turned off, styled
+differently by the viewer, or hidden by platform UI.
+
+## Logic Audio Workflow
+
+Use Logic as the final sound-design and mastering stage. Start from the cleaned
+48 kHz WAV stems rather than the AAC/Opus audio inside a video file.
+
+Session setup:
+
+- Create a 48 kHz project.
+- Import all stems at bar 1 / timecode 00:00:00:00.
+- Keep the stems as 32-bit float or 24-bit PCM. Do not normalize them on import.
+- Disable Flex/time-stretching unless deliberately editing timing.
+- Keep the picture locked and replace only the final audio when exporting.
+
+Suggested stem treatment:
+
+- **Drone** — high-pass around 20-30 Hz, gentle low-shelf cleanup if the master
+  gets cloudy, slow modulation or chorus only if it stays subtle.
+- **Notes** — small plate or shimmer send, light transient control, avoid making
+  the notes much louder than the bed.
+- **Texture** — high-pass higher, often 80-150 Hz, then tuck it under the drone;
+  automate this stem instead of leaving it static.
+- **Reverb returns** — use sends rather than inserting a huge reverb on every
+  track. Try ChromaVerb or Space Designer with 6-12 s decay, 20-60 ms predelay,
+  high-pass the return, and low-pass the top end if it gets glassy.
+- **Bit/crushed reverb** — if using Bitcrusher or a degraded reverb colour, use
+  it as a parallel aux at a low level. Put the bit effect before the reverb, then
+  high-pass and low-pass the return so it adds texture without turning the whole
+  mix gritty.
+
+Master bus:
+
+- Correct DC/subsonic energy first if the imported files have not already been
+  cleaned.
+- Use broad EQ moves only; the video wants space, not a loud pop master.
+- Use gentle compression or Multipressor with modest gain reduction.
+- Add saturation/exciter carefully, mainly to help small speakers.
+- Put the limiter last. Aim for around `-14 LUFS` integrated and true peak no
+  higher than `-1.5 dBTP` for the YouTube upload reference.
+
+Export a final 48 kHz WAV from Logic, then replace the video's audio without
+re-encoding the picture:
+
+```bash
+ffmpeg -y \
+  -i renders/proofs/galacto-six-minute-youtube-captioned.mp4 \
+  -i logic-master.wav \
+  -map 0:v:0 -map 1:a:0 \
+  -c:v copy -c:a aac -b:a 384k -shortest -movflags +faststart \
+  renders/proofs/galacto-six-minute-youtube-final.mp4
+```
+
+Keep the Logic project and the exported WAV alongside the video. The WAV is the
+audio master; the AAC/Opus in the upload file is just a delivery encoding.
+
 ## Best Workflow: Direct Export
 
 The best result is a deterministic offline exporter:
@@ -256,10 +463,15 @@ renders/youtube-hero/
 
 For the next video, do both in this order:
 
-1. Create a short browser-captured proof cut to settle duration, camera path, and
-   title/credit treatment.
-2. Build the audio export first, so Logic gets stems and events.
-3. Build the headless video exporter if the proof cut looks good enough to justify
+1. Use `npm run video:capture` for a short proof cut to settle duration, camera
+   path, and title/credit treatment.
+2. Add opening/end text with `npm run video:captions` and check the result on a
+   few representative frames.
+3. Bring cleaned 48 kHz stems into Logic and master there; replace the video's
+   delivery audio only after the Logic export is final.
+4. Build the native audio exporter next, so future renders produce stems and
+   events from the same timeline without a temporary proof-render script.
+5. Build the headless video exporter if the proof cut looks good enough to justify
    a polished YouTube release.
 
 Direct audio and direct video export should produce better final results than a
