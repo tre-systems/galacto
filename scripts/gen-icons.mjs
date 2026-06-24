@@ -5,10 +5,19 @@
 // locally on demand; it needs librsvg's `rsvg-convert` on PATH
 // (`brew install librsvg`). Re-run after editing the SVGs: `npm run icons`.
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
+
+const iconSvg = join(root, 'assets', 'icons', 'icon.svg');
+const iconSvgOut = join(root, 'static', 'icons', 'icon.svg');
+if (!existsSync(iconSvg)) {
+  console.error(`gen-icons: missing source ${iconSvg}`);
+  process.exit(1);
+}
+copyFileSync(iconSvg, iconSvgOut);
+console.log('gen-icons: icons/icon.svg -> icons/icon.svg');
 
 // [source svg, output png, width, height]
 const targets = [

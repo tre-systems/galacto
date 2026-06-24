@@ -68,7 +68,11 @@
         border-bottom: 1px solid var(--border);
         font-size: 14px;
       }
-      nav.top .brand { font-weight: 700; color: var(--head); letter-spacing: 0.02em; }
+      nav.top .brand {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-weight: 700; color: var(--head); letter-spacing: 0.02em;
+      }
+      nav.top .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
       nav.top .spacer { flex: 1; }
       nav.top a { color: var(--ink-dim); }
       nav.top a:hover { color: var(--cyan); text-decoration: none; }
@@ -179,7 +183,7 @@
   </head>
   <body>
     <nav class="top">
-      <span class="brand">🌌 Galacto</span>
+      <span class="brand"><img class="brand-mark" src="/icons/icon.svg" alt="" width="26" height="26" decoding="async"> Galacto</span>
       <span class="spacer"></span>
       <a href="https://galacto.org/">Open the simulator</a>
       <a href="engineering.html">Build one</a>

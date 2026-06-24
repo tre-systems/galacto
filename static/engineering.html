@@ -62,7 +62,11 @@
         backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         border-bottom: 1px solid var(--border); font-size: 14px;
       }
-      nav.top .brand { font-weight: 700; color: var(--head); letter-spacing: 0.02em; }
+      nav.top .brand {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-weight: 700; color: var(--head); letter-spacing: 0.02em;
+      }
+      nav.top .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
       nav.top .spacer { flex: 1; }
       nav.top a { color: var(--ink-dim); }
       nav.top a:hover { color: var(--cyan); text-decoration: none; }
@@ -150,7 +154,7 @@
   </head>
   <body>
     <nav class="top">
-      <span class="brand">🌌 Galacto</span>
+      <span class="brand"><img class="brand-mark" src="/icons/icon.svg" alt="" width="26" height="26" decoding="async"> Galacto</span>
       <span class="spacer"></span>
       <a href="https://galacto.org/">Open the simulator</a>
       <a href="physics.html">The physics</a>
@@ -160,9 +164,7 @@
       <p class="eyebrow">The engineering</p>
       <h1>Building a galaxy in Rust &amp; WebGPU</h1>
       <p class="lede">
-        How Galacto keeps a self-gravitating <em>N</em>-body galaxy on the GPU, frame after frame, inside a
-        browser tab. The interesting parts are not big abstractions; they are a handful of small contracts
-        between Rust, WebAssembly, WebGPU, and WGSL that have to stay exact.
+        How Galacto runs a self-gravitating galaxy entirely on the GPU — inside a browser tab.
       </p>
     </header>
 
