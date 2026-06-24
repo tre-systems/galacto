@@ -129,6 +129,7 @@ For contributors:
 
 - [Architecture](docs/ARCHITECTURE.md) — how the code is organized and how one frame is produced
 - [Diagrams](docs/diagrams/README.md) — Graphviz system-overview, frame-loop, and GPU-buffer diagrams
+- [Video production](docs/VIDEO_PRODUCTION.md) — YouTube workflow and direct video/audio export plan
 - [Backlog](BACKLOG.md) — ordered next work and known constraints
 - [Agent Notes](AGENTS.md) — workflow, verification, and architecture rules for agents
 

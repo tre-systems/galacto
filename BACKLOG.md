@@ -47,6 +47,14 @@ The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the vis
 
 Richer core signals are a cheap extension if the sound wants more nuance: the `reduce_core` reduction already returns windowed central mass + radial flux, and could add velocity dispersion, net angular momentum, or a coarse radial histogram in the same pass.
 
+## Production export
+
+The YouTube-production path in [docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md) wants direct media export rather than browser screen capture:
+
+- **Recording mode.** Hide UI, lock a camera path/timeline, and add clean start/end fades so browser capture can make a decent proof cut. **Effort: S.**
+- **Offline audio export.** Reuse the pure `MusicEngine` to render 48 kHz WAV stems, MIDI/JSON note events, and automation curves for Logic, instead of recording the browser's mixed Web Audio output. This gives the biggest audio-production gain first. **Effort: M.**
+- **Headless video export.** Add a native `wgpu` binary that runs the same simulation/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg. This avoids capture compression and frame drops, but is more engineering than audio export. **Effort: L.**
+
 ## Definition of Done
 
 A change is done when:
