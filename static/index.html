@@ -352,7 +352,8 @@
         return true;
       }
 
-      // Star glow halo extent — reshapes the billboard falloff (render only).
+      // Star glow halo extent — reshapes the billboard falloff and colours audio,
+      // but never touches the simulation.
       function setupGlowControl(mod) {
         const slider = document.getElementById("glow-slider");
         const readout = document.getElementById("glow-readout");
@@ -517,14 +518,16 @@
       // Body-count slider (0–100) maps linearly to the number of bodies, so the
       // default (16,384) sits at 10% and the top is 10× (163,840). Changing it
       // re-seeds the sim (like a restart) — heavy, and at the top end the all-pairs
-      // gravity is ~100× the work — so it applies on release ('change'), not while
-      // dragging; the readout updates live.
+      // gravity is ~100× the work — so the sim applies on release ('change'), not
+      // while dragging; the readout and audio preview update live.
       function setupParticleCountControl(mod) {
         const slider = document.getElementById("count-slider");
         const readout = document.getElementById("count-readout");
         const fmt = (n) => (n >= 1000 ? +(n / 1000).toFixed(1) + "k" : String(n));
         const show = () => {
-          readout.textContent = fmt(countForSlider(slider));
+          const count = countForSlider(slider);
+          mod.stage_particle_count(count);
+          readout.textContent = fmt(count);
         };
         slider.addEventListener("input", show);
         slider.addEventListener("change", () => {
@@ -681,8 +684,7 @@
         document.getElementById("halo-slider").addEventListener("input", redraw);
         document.getElementById("halo-size-slider").addEventListener("input", redraw);
         document.getElementById("halo-select").addEventListener("change", redraw);
-        // Bulge only commits (and the curve only changes) on release.
-        document.getElementById("bulge-slider").addEventListener("change", redraw);
+        document.getElementById("bulge-slider").addEventListener("input", redraw);
       }
 
       // Map the speed slider (0–100) to a multiplier on a logarithmic scale
@@ -817,9 +819,9 @@
           "speed-slider":
             "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — and high body counts cap it automatically.",
           "gas-slider":
-            "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms. Re-seeds.",
+            "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms and a brighter, airier sound. Re-seeds on release.",
           "bulge-slider":
-            "The central bulge's share of the galaxy's mass (0–60%). A small bulge is a disk-dominated late-type spiral with a gently-rising rotation curve; a large one is a bulge-dominated early type with a sharp inner peak. Re-seeds.",
+            "The central bulge's share of the galaxy's mass (0–60%). A small bulge is a disk-dominated late-type spiral with a gently-rising rotation curve; a large one is a bulge-dominated early type with a sharp inner peak and fuller sound. Re-seeds on release.",
           "temp-slider":
             "Disk stability, the Toomre Q parameter. Below ~1 the disk fragments into clumps; ~1–2 it swing-amplifies into spiral arms; above ~2 it stays a smooth disk. Applied on Restart.",
           "gravity-slider":
@@ -835,9 +837,9 @@
           "rc-toggle":
             "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic observational clue behind dark matter.",
           "size-slider":
-            "On-screen size of each star. Purely visual — larger looks brighter and more diffuse, smaller is sharper — and never touches the physics.",
+            "On-screen size of each star. Larger looks brighter and more diffuse, smaller is sharper. It never touches the physics, but it lightly colours the soundscape.",
           "glow-slider":
-            "How far each star's soft halo reaches around its bright central point. The core stays a crisp point; turning this up spreads a fainter, quickly-fading glow further out. Purely visual — it reshapes the rendering only, never the simulation or its speed.",
+            "How far each star's soft halo reaches around its bright central point. The core stays crisp; turning this up spreads a fainter glow further out and opens the soundscape brightness/echo. It never touches the simulation or its speed.",
           "volume-slider":
             "Loudness of the generative soundscape, which is synthesized live and driven by the galaxy's own core dynamics.",
         };
@@ -923,34 +925,38 @@
       }
 
       // Gas-fraction slider (0–100) → 0 … 50% of the disk seeded as cold gas. A
-      // seed-time property like the body count: the readout tracks the drag, and
+      // seed-time property like the body count: audio/readout track the drag, and
       // releasing re-seeds (so a drag doesn't re-seed on every tick).
       function setupGasFractionControl(mod) {
         const slider = document.getElementById("gas-slider");
         const readout = document.getElementById("gas-readout");
         const MAX = 0.5; // up to 50% gas
         const fracFor = () => (slider.value / 100) * MAX;
-        const show = () => {
-          readout.textContent = Math.round(fracFor() * 100) + "%";
+        const apply = () => {
+          const frac = fracFor();
+          mod.stage_gas_fraction(frac);
+          readout.textContent = Math.round(frac * 100) + "%";
         };
-        slider.addEventListener("input", show);
+        slider.addEventListener("input", apply);
         slider.addEventListener("change", () => mod.set_gas_fraction(fracFor()));
-        show();
+        apply();
       }
 
       // Bulge slider (0–100) → 0 … 60% bulge mass fraction. Seed-time like the gas
-      // and body-count sliders: the readout tracks the drag, releasing re-seeds.
+      // and body-count sliders: audio/readout track the drag, releasing re-seeds.
       function setupBulgeControl(mod) {
         const slider = document.getElementById("bulge-slider");
         const readout = document.getElementById("bulge-readout");
         const MAX = 0.6;
         const fracFor = () => (slider.value / 100) * MAX;
-        const show = () => {
-          readout.textContent = Math.round(fracFor() * 100) + "%";
+        const apply = () => {
+          const frac = fracFor();
+          mod.stage_bulge_fraction(frac);
+          readout.textContent = Math.round(frac * 100) + "%";
         };
-        slider.addEventListener("input", show);
+        slider.addEventListener("input", apply);
         slider.addEventListener("change", () => mod.set_bulge_fraction(fracFor()));
-        show();
+        apply();
       }
 
       // Gravity slider (0–100) → log scale (0.25× … 4×). Live: rewrites the params
@@ -1010,7 +1016,7 @@
       }
 
       // Star-size slider (0–100) → 0.006 … 0.026 NDC half-extent (value 50 → 1×).
-      // Live (render only): how big and glowy each star appears.
+      // Live: how big/glowy each star appears, with a small audio brightness cue.
       function setupStarSizeControl(mod) {
         const slider = document.getElementById("size-slider");
         const readout = document.getElementById("size-readout");

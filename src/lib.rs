@@ -34,6 +34,22 @@ const MAX_SUBSTEPS: u32 = 32;
 /// here. Separate from `MAX_SUBSTEPS` (a per-frame catch-up bound).
 const MAX_SPEED: f32 = 8.0;
 
+/// Page slider ranges used to normalise values for the soundscape. Keep these in
+/// sync with `static/index.html`; the sim setters may accept wider developer-console
+/// values, but the musical mapping should use the user's visible 0..1 travel.
+const UI_MIN_SPEED: f32 = 0.25;
+const UI_MIN_GRAVITY: f32 = 0.25;
+const UI_MAX_GRAVITY: f32 = 4.0;
+const UI_MAX_HALO_V0: f32 = simulation::HALO_V0 * 2.0;
+const UI_MAX_GAS_FRACTION: f32 = 0.5;
+const UI_MAX_BULGE_FRAC: f32 = 0.6;
+const UI_MIN_DISK_TEMP: f32 = 0.5;
+const UI_MAX_DISK_TEMP: f32 = 3.0;
+const UI_MIN_HALO_RC_SCALE: f32 = 0.4;
+const UI_MAX_HALO_RC_SCALE: f32 = 2.5;
+const UI_MIN_PARTICLE_SIZE: f32 = 0.006;
+const UI_MAX_PARTICLE_SIZE: f32 = 0.026;
+
 /// Clamp for a single frame's elapsed time before it feeds the accumulator.
 const MAX_FRAME_DT: f32 = 0.25;
 
@@ -57,6 +73,10 @@ fn substep_cap_for_count(count: u32) -> u32 {
 /// speed cap for expensive high-count runs.
 fn max_speed_for_count(count: u32) -> f32 {
     (substep_cap_for_count(count) as f32).clamp(1.0, MAX_SPEED)
+}
+
+fn norm_range(value: f32, min: f32, max: f32) -> f32 {
+    ((value - min) / (max - min)).clamp(0.0, 1.0)
 }
 
 /// Frame-rate-independent eased follow with a hard slew cap: the value glides
@@ -100,6 +120,10 @@ pub struct AppState {
     /// Active body count, set by the body-count slider and carried into every
     /// reseed (changing it re-seeds the scenario at the new resolution).
     particle_count: u32,
+    /// Latest body-count slider value for the soundscape while a drag is in
+    /// progress. The active sim count is only committed on release, so the
+    /// scheduler never assumes a cheaper count before the expensive reseed happens.
+    audio_particle_count: u32,
     /// Dark-matter halo profile; switching it re-seeds so the disk stays balanced.
     halo_kind: HaloKind,
     /// Whether to draw the dark-matter halo overlay (the "Show" toggle).
@@ -111,7 +135,8 @@ pub struct AppState {
     halo_rc_scale: f32,
     particle_size: f32,
     /// Glow halo extent (0..1, the Glow slider): how far each star's faint halo
-    /// reaches around its bright point. Render-only — never touches the simulation.
+    /// reaches around its bright point. It never touches the simulation, but it
+    /// also colours the soundscape as a brightness/space cue.
     glow_extent: f32,
     /// Generative soundscape, lazily created on first enable (so the AudioContext
     /// starts inside a user gesture). None until then, or if audio is unavailable.
@@ -178,6 +203,7 @@ impl AppState {
             gas_fraction: scenarios::DEFAULT_GAS_FRACTION,
             bulge_frac: scenarios::DEFAULT_BULGE_FRAC,
             particle_count: simulation::NUM_PARTICLES,
+            audio_particle_count: simulation::NUM_PARTICLES,
             halo_kind: HaloKind::Logarithmic,
             halo_visible: false,
             gravity: simulation::G,
@@ -392,18 +418,32 @@ impl AppState {
         self.disk_temp = temp;
     }
 
+    /// Stage the disk's gas fraction immediately so the soundscape and overlays
+    /// follow the slider while dragging. The running particle distribution is only
+    /// rebuilt by [`set_gas_fraction`].
+    pub fn stage_gas_fraction(&mut self, fraction: f32) {
+        self.gas_fraction = fraction.clamp(0.0, 1.0);
+    }
+
     /// Set the disk's gas fraction (the gas-fraction slider) and re-seed, so the
     /// blue star-forming component grows or thins. A seed-time property, like the
     /// body count.
     pub fn set_gas_fraction(&mut self, fraction: f32) {
-        self.gas_fraction = fraction.clamp(0.0, 1.0);
+        self.stage_gas_fraction(fraction);
         self.reseed();
+    }
+
+    /// Stage the bulge mass fraction immediately so the soundscape and rotation
+    /// curve follow the slider while dragging. The running galaxy is rebuilt by
+    /// [`set_bulge_fraction`].
+    pub fn stage_bulge_fraction(&mut self, fraction: f32) {
+        self.bulge_frac = fraction.clamp(0.0, 0.8);
     }
 
     /// Set the bulge mass fraction (the bulge slider) and re-seed, shifting the
     /// galaxy between disk-dominated (late-type) and bulge-dominated (early-type).
     pub fn set_bulge_fraction(&mut self, fraction: f32) {
-        self.bulge_frac = fraction.clamp(0.0, 0.8);
+        self.stage_bulge_fraction(fraction);
         self.reseed();
     }
 
@@ -437,10 +477,17 @@ impl AppState {
         );
     }
 
+    /// Preview the body-count slider for the soundscape while dragging. The active
+    /// simulation count is committed by [`set_count`] on release.
+    pub fn stage_count_for_audio(&mut self, count: u32) {
+        self.audio_particle_count = simulation::clamp_particle_count(count);
+    }
+
     /// Set the body count (the body-count slider) and re-seed the current scenario
     /// at the new resolution. Clamped to a valid tile-multiple within bounds.
     pub fn set_count(&mut self, count: u32) {
         self.particle_count = simulation::clamp_particle_count(count);
+        self.audio_particle_count = self.particle_count;
         self.speed = self.speed.min(max_speed_for_count(self.particle_count));
         self.reseed();
     }
@@ -496,8 +543,9 @@ impl AppState {
         self.particle_size = size;
     }
 
-    /// Set the star glow halo extent (the Glow slider). Render-only — it reshapes
-    /// the billboard falloff and never touches the simulation or its speed.
+    /// Set the star glow halo extent (the Glow slider). It reshapes the billboard
+    /// falloff and colours the soundscape, but never touches the simulation or its
+    /// speed.
     pub fn set_glow(&mut self, glow: f32) {
         self.glow_extent = glow.clamp(0.0, 1.0);
     }
@@ -565,11 +613,16 @@ impl AppState {
             scenario: self.scenario,
             zoom,
             motion: self.motion,
-            speed: ((self.speed - 0.25) / (MAX_SPEED - 0.25)).clamp(0.0, 1.0),
+            speed: norm_range(self.speed, UI_MIN_SPEED, MAX_SPEED),
             intensity: (self.steps_this_frame as f32 / 8.0).clamp(0.0, 1.0),
-            gravity: ((self.gravity - 0.25) / (4.0 - 0.25)).clamp(0.0, 1.0),
-            halo: (self.halo_v0 / 150.0).clamp(0.0, 1.0),
-            glow: ((self.particle_size - 0.006) / (0.026 - 0.006)).clamp(0.0, 1.0),
+            gravity: norm_range(self.gravity, UI_MIN_GRAVITY, UI_MAX_GRAVITY),
+            halo: (self.halo_v0 / UI_MAX_HALO_V0).clamp(0.0, 1.0),
+            glow: self.glow_extent.clamp(0.0, 1.0),
+            star_size: norm_range(
+                self.particle_size,
+                UI_MIN_PARTICLE_SIZE,
+                UI_MAX_PARTICLE_SIZE,
+            ),
             core_mass: self.core_mass_s,
             core_flux: self.core_flux_s,
             core_activity: self.core_activity_s,
@@ -577,12 +630,16 @@ impl AppState {
             // re-seed the visuals on release): gas → air/brightness, bulge → body,
             // body count → starlight density, Toomre Q → pad stability, halo size →
             // reverb space.
-            gas: self.gas_fraction.clamp(0.0, 1.0),
-            bulge: (self.bulge_frac / 0.8).clamp(0.0, 1.0),
-            richness: (self.particle_count as f32 / simulation::MAX_PARTICLES as f32)
+            gas: (self.gas_fraction / UI_MAX_GAS_FRACTION).clamp(0.0, 1.0),
+            bulge: (self.bulge_frac / UI_MAX_BULGE_FRAC).clamp(0.0, 1.0),
+            richness: (self.audio_particle_count as f32 / simulation::MAX_PARTICLES as f32)
                 .clamp(0.0, 1.0),
-            stability: ((self.disk_temp - 0.3) / 2.2).clamp(0.0, 1.0),
-            halo_size: ((self.halo_rc_scale - 0.1) / 4.9).clamp(0.0, 1.0),
+            stability: norm_range(self.disk_temp, UI_MIN_DISK_TEMP, UI_MAX_DISK_TEMP),
+            halo_size: norm_range(
+                self.halo_rc_scale,
+                UI_MIN_HALO_RC_SCALE,
+                UI_MAX_HALO_RC_SCALE,
+            ),
             paused: self.paused,
         }
     }
@@ -731,6 +788,17 @@ pub fn set_disk_temperature(temp: f32) {
     });
 }
 
+/// Stage the gas fraction for audio/overlays while the slider is dragged. The
+/// expensive reseed still happens on `set_gas_fraction`.
+#[wasm_bindgen]
+pub fn stage_gas_fraction(fraction: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().stage_gas_fraction(fraction);
+        }
+    });
+}
+
 /// Set the disk's gas fraction (the gas-fraction slider, 0..1) and re-seed the
 /// current scenario so the blue star-forming gas grows or thins. No-ops until ready.
 #[wasm_bindgen]
@@ -738,6 +806,17 @@ pub fn set_gas_fraction(fraction: f32) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_gas_fraction(fraction);
+        }
+    });
+}
+
+/// Stage the bulge fraction for audio/rotation-curve feedback while the slider is
+/// dragged. The expensive reseed still happens on `set_bulge_fraction`.
+#[wasm_bindgen]
+pub fn stage_bulge_fraction(fraction: f32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().stage_bulge_fraction(fraction);
         }
     });
 }
@@ -771,6 +850,17 @@ pub fn restart() {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().restart();
+        }
+    });
+}
+
+/// Preview the body-count slider in the soundscape while dragging. The active GPU
+/// buffers are still committed by `set_particle_count` on release.
+#[wasm_bindgen]
+pub fn stage_particle_count(count: u32) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().stage_count_for_audio(count);
         }
     });
 }

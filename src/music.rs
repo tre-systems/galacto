@@ -81,8 +81,10 @@ pub struct GalaxyState {
     pub gravity: f32,
     /// Dark-matter halo strength, normalised. Higher = a fuller, deeper pad.
     pub halo: f32,
-    /// On-screen star size, normalised — feeds the pad/bell brightness.
+    /// Star glow halo extent, normalised — opens the pad/bell brightness and echo.
     pub glow: f32,
+    /// On-screen star size, normalised — makes the sound a little fuller/brighter.
+    pub star_size: f32,
     /// Central-mass concentration (0..1, adaptive): how much mass sits at the
     /// centre right now relative to its recent norm. Swells the pad's body and
     /// lifts note density.
@@ -212,41 +214,53 @@ impl MusicEngine {
     }
 
     /// The sustained pad's target for this frame: a deep, low chord (two octaves
-    /// below the scenario root) that breathes — gravity leans it and radial flux
-    /// lifts it as the core collapses inward; brightness from zoom, glow, gas, and
-    /// core churn; level hushed when paused and swelling with the mass gathered at
-    /// the centre (and the bulge's share of it); a detune spread that widens with
-    /// core churn, camera motion, and a less stable (low-Q) disk.
+    /// below the scenario root) that breathes — gravity/halo lean it and radial
+    /// flux lifts it as the core collapses inward; brightness from zoom, glow, gas,
+    /// star size, and core churn; level hushed when paused and swelling with the
+    /// mass gathered at the centre (and the bulge's share of it); a detune spread
+    /// that widens with core churn, camera motion, gas, and a less stable (low-Q)
+    /// disk.
     pub fn drone(&self, state: &GalaxyState) -> DroneTarget {
         let c = character(state.scenario);
         let inflow = (-state.core_flux).max(0.0); // collapse strength, 0..1
-                                                  // Pitch: gravity gives a slow ~-1..+1.5 st lean; the radial flux makes the
-                                                  // pad breathe — collapsing inward (flux < 0) lifts it into tension, matter
-                                                  // streaming back out (flux > 0) lets it settle.
-        let bend = (state.gravity - 0.4) * 2.5 - 3.0 * state.core_flux;
+                                                  // Pitch: gravity gives a clear lean, the halo adds weight, and radial flux
+                                                  // makes the pad breathe — collapsing inward (flux < 0) lifts it into
+                                                  // tension, matter streaming back out (flux > 0) lets it settle.
+        let bend = (state.gravity - 0.5) * 4.5 + (state.halo - 0.5) * 1.2 - 3.4 * state.core_flux;
         let mut freqs = [0.0_f32; DRONE_VOICES];
         for (f, interval) in freqs.iter_mut().zip(c.drone.iter()) {
             *f = midi_to_hz(c.root_midi - PAD_OCTAVE_DOWN + interval + bend);
         }
-        // Brightness in octaves above a low base: the scenario's tilt, the zoom and
-        // glow, the core's churn, and an extra lift while it collapses inward.
-        let octaves = c.brightness * 1.4
-            + state.zoom * 1.6
-            + state.glow * 0.5
-            + state.gas * 0.5
-            + state.core_activity * 0.9
-            + inflow * 0.6;
+        // Brightness in octaves above a low base: the scenario's tilt, zoom, glow,
+        // star size, gas, core churn, disk instability, and an extra lift while the
+        // core collapses inward. These slider paths are intentionally broad enough
+        // to be audible on phone speakers.
+        let octaves = c.brightness * 1.25
+            + state.zoom * 1.45
+            + state.glow * 1.05
+            + state.star_size * 0.35
+            + state.gas * 0.85
+            + state.core_activity * 0.95
+            + (1.0 - state.stability) * 0.25
+            + inflow * 0.65;
         let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 8000.0);
-        // Quieter pad than before; its body swells with the mass gathered at the
-        // centre (with a touch of halo fullness).
+        // Its body swells with central mass, halo fullness, bulge, and star size.
         let gain = if state.paused {
             0.12
         } else {
-            (0.20 + 0.16 * state.core_mass + 0.05 * state.halo + 0.10 * state.bulge)
-                .clamp(0.0, 0.55)
+            (0.18
+                + 0.17 * state.core_mass
+                + 0.10 * state.halo
+                + 0.14 * state.bulge
+                + 0.05 * state.star_size)
+                .clamp(0.0, 0.70)
         };
-        let detune_cents =
-            4.0 + 10.0 * state.core_activity + 8.0 * state.motion + 7.0 * (1.0 - state.stability);
+        let detune_cents = 3.0
+            + 11.0 * state.core_activity
+            + 8.0 * state.motion
+            + 13.0 * (1.0 - state.stability)
+            + 4.0 * state.gas
+            + 3.0 * state.glow;
         DroneTarget {
             freqs,
             cutoff_hz,
@@ -256,9 +270,9 @@ impl MusicEngine {
     }
 
     /// Seconds between note-grid steps: a faster simulation ticks a quicker grid
-    /// (about 0.85 s when slow, down to ~0.3 s when fast).
+    /// (about 0.95 s when slow, down to ~0.25 s when fast).
     pub fn step_seconds(&self, state: &GalaxyState) -> f64 {
-        (0.85 - 0.55 * state.speed.clamp(0.0, 1.0)).max(0.28) as f64
+        (0.95 - 0.70 * state.speed.clamp(0.0, 1.0)).max(0.22) as f64
     }
 
     /// Generate the notes for one grid step, pushing any into `out`. Density and
@@ -272,14 +286,18 @@ impl MusicEngine {
             return;
         }
         let c = character(state.scenario);
-        // Note density follows the core: how fast central matter churns and how much
-        // has gathered there, with the sim speed and a little camera motion on top.
-        let energy = (0.10
-            + 0.52 * state.core_activity
-            + 0.22 * state.core_mass
-            + 0.14 * state.richness
-            + 0.12 * state.intensity
-            + 0.08 * state.motion)
+        // Note density follows the core, then leans into visible/user controls:
+        // richness, speed, motion, gas, glow, disk instability, and halo strength.
+        let energy = (0.08
+            + 0.50 * state.core_activity
+            + 0.20 * state.core_mass
+            + 0.20 * state.richness
+            + 0.16 * state.intensity
+            + 0.10 * state.motion
+            + 0.10 * state.gas
+            + 0.08 * state.glow
+            + 0.08 * (1.0 - state.stability)
+            + 0.06 * state.halo)
             * c.activity;
         if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.95) {
             return;
@@ -292,18 +310,23 @@ impl MusicEngine {
         let within = self.degree_walk.rem_euclid(len) as usize;
         let octave = self.degree_walk.div_euclid(len);
 
-        // Register: pulled-back view sits low, deep zoom lifts it up to ~+18 st.
-        let register = (24.0 * state.zoom - 6.0).round() as i32;
+        // Register: pulled-back view sits low, deep zoom lifts it up, and brighter
+        // stars/glow nudge the bells higher.
+        let register =
+            (24.0 * state.zoom - 8.0 + 4.0 * state.glow + 3.0 * state.star_size).round() as i32;
         let midi = (c.root_midi + (c.scale[within] + 12 * octave + register) as f32)
             .clamp(c.root_midi - 18.0, c.root_midi + 42.0);
 
-        let velocity = (0.14
-            + 0.42 * state.core_activity
-            + 0.18 * state.core_mass
+        let velocity = (0.12
+            + 0.38 * state.core_activity
+            + 0.16 * state.core_mass
+            + 0.09 * state.glow
+            + 0.07 * state.gas
+            + 0.05 * state.halo
             + 0.12 * self.rng.random_range(0.0_f32..1.0))
-        .clamp(0.05, 0.8);
+        .clamp(0.05, 0.85);
         // Slower sims breathe with longer notes.
-        let duration = 1.8 + 2.4 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.2);
+        let duration = 1.6 + 2.6 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.2);
         let pan =
             (self.rng.random_range(-1.0_f32..1.0) * (0.35 + 0.5 * state.motion)).clamp(-0.9, 0.9);
         let waveform = if self.step.is_multiple_of(4) {
@@ -321,8 +344,10 @@ impl MusicEngine {
         });
 
         // An occasional high, quiet sparkle — more likely with brighter, glowier
-        // stars — panned opposite the main note for width.
-        if self.rng.random_range(0.0_f32..1.0) < 0.10 + 0.2 * state.glow + 0.15 * state.gas {
+        // stars and gas-rich disks — panned opposite the main note for width.
+        let sparkle =
+            (0.08 + 0.34 * state.glow + 0.22 * state.gas + 0.10 * state.star_size).clamp(0.0, 0.85);
+        if self.rng.random_range(0.0_f32..1.0) < sparkle {
             out.push(NoteEvent {
                 freq: midi_to_hz((midi + 12.0).min(c.root_midi + 48.0)),
                 velocity: velocity * 0.5,
@@ -348,6 +373,7 @@ mod tests {
             gravity: 0.5,
             halo: 0.5,
             glow: 0.5,
+            star_size: 0.5,
             core_mass: 0.5,
             core_flux: 0.0,
             // Tie the test "activity" knob to the core, the primary density driver,
@@ -463,6 +489,48 @@ mod tests {
         assert!(
             eng.drone(&inflow).freqs[0] > eng.drone(&outflow).freqs[0],
             "a collapse should lift the pad into tension above a dispersal"
+        );
+    }
+
+    #[test]
+    fn slider_extremes_move_drone_targets() {
+        let eng = MusicEngine::new(0);
+        let mut low = state(0.2, 0.0, false);
+        low.zoom = 0.3;
+        low.gravity = 0.0;
+        low.halo = 0.0;
+        low.glow = 0.0;
+        low.star_size = 0.0;
+        low.gas = 0.0;
+        low.bulge = 0.0;
+        low.stability = 1.0;
+
+        let mut high = low;
+        high.gravity = 1.0;
+        high.halo = 1.0;
+        high.glow = 1.0;
+        high.star_size = 1.0;
+        high.gas = 1.0;
+        high.bulge = 1.0;
+        high.stability = 0.0;
+
+        let quiet = eng.drone(&low);
+        let bright = eng.drone(&high);
+        assert!(
+            bright.freqs[0] > quiet.freqs[0] * 1.25,
+            "gravity/halo should audibly lift the pad pitch"
+        );
+        assert!(
+            bright.cutoff_hz > quiet.cutoff_hz * 2.5,
+            "glow/gas/star-size should clearly open the pad filter"
+        );
+        assert!(
+            bright.gain > quiet.gain + 0.25,
+            "halo/bulge/star-size should clearly swell the pad body"
+        );
+        assert!(
+            bright.detune_cents > quiet.detune_cents + 15.0,
+            "low-Q/gas/glow should clearly widen pad shimmer"
         );
     }
 

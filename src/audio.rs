@@ -261,35 +261,46 @@ impl AudioEngine {
         let lfo_b = lfo(t, 0.047, 1.7); // ~134 s period, offset
         let inflow = (-state.core_flux).max(0.0);
 
-        // Resonant pad filter: the Q breathes on the slow LFO and lifts as the core
-        // collapses inward — a soft, moving swell, capped low so the deep pad never
-        // sharpens into a whistle.
-        let resonance = (0.8 + 1.8 * lfo_a + 1.4 * inflow).clamp(0.7, 3.8);
+        // Resonant pad filter: the Q breathes on the slow LFO, lifts as the core
+        // collapses inward, and widens with gas-rich / low-Q disks so those sliders
+        // are audible as shimmer rather than only simulation changes.
+        let resonance =
+            (0.7 + 1.8 * lfo_a + 1.35 * inflow + 1.0 * (1.0 - state.stability) + 0.45 * state.gas)
+                .clamp(0.7, 5.2);
         ramp(&self.drone_lp.q(), resonance, now);
 
         // Cavernous, washy reverb: wet by default so the space feels vast even when
-        // the galaxy is still, deeper when pulled back, opening with core churn, and
-        // slowly swelling and ebbing on its own LFO.
-        let reverb = (0.6
-            + 0.35 * (1.0 - state.zoom)
-            + 0.2 * state.core_activity
-            + 0.28 * lfo_b
+        // the galaxy is still, deeper when pulled back, opening with core churn,
+        // halo strength/size, and slowly swelling and ebbing on its own LFO.
+        let reverb = (0.52
+            + 0.32 * (1.0 - state.zoom)
+            + 0.22 * state.core_activity
+            + 0.24 * lfo_b
             + 0.08 * state.motion
-            + 0.3 * state.halo_size)
-            .clamp(0.0, 1.7);
+            + 0.55 * state.halo_size
+            + 0.14 * state.halo)
+            .clamp(0.0, 1.85);
         ramp(&self.reverb_wet.gain(), reverb, now);
         // Long, present echo with sustained, trailing repeats (feedback stays below 1
         // and the loop's low-pass darkens each pass, so it always decays).
-        let delay = (0.22 + 0.32 * state.motion + 0.1 * lfo_a).clamp(0.0, 0.72);
+        let delay =
+            (0.18 + 0.28 * state.motion + 0.16 * state.speed + 0.10 * state.glow + 0.08 * lfo_a)
+                .clamp(0.0, 0.78);
         ramp(&self.delay_wet.gain(), delay, now);
-        let feedback = (0.46 + 0.3 * state.motion).clamp(0.0, 0.82);
+        let feedback =
+            (0.42 + 0.28 * state.motion + 0.10 * state.halo + 0.07 * state.speed).clamp(0.0, 0.86);
         ramp(&self.delay_feedback.gain(), feedback, now);
 
         // Noise bed: low and breathing a little with the core's churn and its own
         // LFO, lifted by the gas fraction (more cold gas → more airy bed), so it
         // reads as soft background air rather than a steady hiss.
-        let noise_level =
-            (0.03 + 0.045 * state.core_activity + 0.02 * lfo_b + 0.04 * state.gas).clamp(0.0, 0.12);
+        let noise_level = (0.025
+            + 0.05 * state.core_activity
+            + 0.018 * lfo_b
+            + 0.09 * state.gas
+            + 0.03 * state.glow
+            + 0.015 * state.star_size)
+            .clamp(0.0, 0.16);
         ramp(&self.noise_gain.gain(), noise_level, now);
 
         if self.enabled && !state.paused {
@@ -417,9 +428,9 @@ fn compressor(ctx: &AudioContext) -> Option<DynamicsCompressorNode> {
 /// Smoothly chase an `AudioParam` toward `value` with `set_target_at_time`
 /// instead of stepping it each frame (which zippers). `now` is the audio clock.
 fn ramp(param: &web_sys::AudioParam, value: f32, now: f64) {
-    // A long time constant so every modulation glides — the soundscape eases
-    // between states rather than snapping, for a cinematic feel.
-    let _ = param.set_target_at_time(value, now, 0.6);
+    // A medium time constant keeps sliders responsive while still preventing
+    // zippering and abrupt jumps in the soundscape.
+    let _ = param.set_target_at_time(value, now, 0.35);
 }
 
 /// A free-running unipolar LFO in 0..1: a sine of angular rate `rate` (rad/s on the
