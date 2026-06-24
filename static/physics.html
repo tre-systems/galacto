@@ -62,7 +62,11 @@
       nav.top {
         position: sticky; top: 0; z-index: 10;
         display: flex; gap: 18px; align-items: center;
-        padding: 12px clamp(16px, 5vw, 40px);
+        padding:
+          calc(12px + env(safe-area-inset-top))
+          max(clamp(16px, 5vw, 40px), env(safe-area-inset-right))
+          12px
+          max(clamp(16px, 5vw, 40px), env(safe-area-inset-left));
         background: rgba(5, 6, 13, 0.72);
         backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         border-bottom: 1px solid var(--border);
