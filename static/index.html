@@ -1025,12 +1025,17 @@
       // dragged and zoomed, happens within moments — and boot the audio engine
       // inside that gesture so the AudioContext is allowed to start.
       function setupAutoSound(mod) {
+        // iOS is fussy: the AudioContext often stays *suspended* after the first
+        // touch (Safari tends to unlock audio on touchend/click, not touchstart). So
+        // rather than a one-shot, re-assert the start on every interaction and only
+        // stop once the context is genuinely running.
         const events = [
           "pointerdown",
+          "pointerup",
+          "touchend",
           "mousedown",
           "click",
           "keydown",
-          "touchstart",
           "wheel",
         ];
         // iOS routes Web Audio to the silent-switch-respecting "ambient" session by
@@ -1042,15 +1047,17 @@
             if (navigator.audioSession) navigator.audioSession.type = "playback";
           } catch (_) {}
         };
-        const start = () => {
-          events.forEach((e) =>
-            window.removeEventListener(e, start, { capture: true })
-          );
+        const tryStart = () => {
           claimPlayback();
-          mod.set_sound_enabled(true);
+          mod.set_sound_enabled(true); // builds the engine (first time), then resumes
+          if (mod.audio_running()) {
+            events.forEach((e) =>
+              window.removeEventListener(e, tryStart, { capture: true })
+            );
+          }
         };
         events.forEach((e) =>
-          window.addEventListener(e, start, { capture: true, passive: true })
+          window.addEventListener(e, tryStart, { capture: true, passive: true })
         );
         // iOS suspends the AudioContext when the PWA is backgrounded; re-assert the
         // session and resume it when we return to the foreground.

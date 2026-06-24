@@ -607,6 +607,12 @@ impl AppState {
         }
     }
 
+    /// Whether the soundscape's AudioContext is actually running — lets the page keep
+    /// retrying the start on later gestures until iOS lets it through.
+    pub fn audio_running(&self) -> bool {
+        self.audio.as_ref().is_some_and(AudioEngine::is_running)
+    }
+
     /// Toggle the soundscape (the page's 🔊 button). The first enable builds the
     /// audio engine inside the click's user gesture, so the AudioContext may start.
     pub fn set_sound(&mut self, on: bool) {
@@ -936,6 +942,16 @@ pub fn resume_audio() {
             app.borrow().resume_audio();
         }
     });
+}
+
+/// Whether the soundscape's AudioContext is actually running (not just created).
+#[wasm_bindgen]
+pub fn audio_running() -> bool {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .is_some_and(|app| app.borrow().audio_running())
+    })
 }
 
 /// Set the soundscape volume (0..1) from the page's volume slider. Remembered

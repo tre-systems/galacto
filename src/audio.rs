@@ -193,6 +193,13 @@ impl AudioEngine {
         let _ = self.ctx.resume();
     }
 
+    /// Whether the AudioContext is actually running (vs suspended/closed). iOS can
+    /// leave it suspended after the first gesture, so the page keeps nudging it on
+    /// later interactions until this is true.
+    pub fn is_running(&self) -> bool {
+        self.ctx.state() == web_sys::AudioContextState::Running
+    }
+
     /// Turn sound on or off. Ramps the master level rather than cutting, and
     /// resumes the context on enable. The graph stays built either way.
     pub fn set_enabled(&mut self, on: bool) {

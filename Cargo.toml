@@ -37,6 +37,7 @@ web-sys = { version = "0.3", features = [
     # Web Audio: the generative soundscape (src/audio.rs). All synthesized — no
     # sample files — so only oscillator/filter/effect nodes are needed.
     "AudioContext",
+    "AudioContextState",
     "AudioDestinationNode",
     "AudioNode",
     "AudioParam",
