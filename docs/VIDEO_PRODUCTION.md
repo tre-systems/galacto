@@ -39,6 +39,7 @@ galacto.org
 ```
 
 If the video uses post-produced audio, add a short music/sound credit there too.
+The public creator credit for Galacto videos is **Multivibrator**.
 
 ## Fast Workflow: Browser Capture
 
@@ -164,7 +165,7 @@ Recommended end caption:
 ```text
 Galacto
 galacto.org
-Simulation and sound: Robert Gilks
+Simulation and sound: Multivibrator
 ```
 
 Add them to an existing MP4 with:
@@ -176,7 +177,7 @@ npm run video:captions -- \
   --start-title "Galacto" \
   --start-subtitle "Self-gravitating N-body galaxy simulation" \
   --end-title "Galacto" \
-  --end-subtitle "galacto.org\nSimulation and sound: Robert Gilks"
+  --end-subtitle "galacto.org\nSimulation and sound: Multivibrator"
 ```
 
 The helper overlays the opening caption near the lower third and the end caption
@@ -203,7 +204,7 @@ Self-gravitating N-body galaxy simulation
 00:05:52,700 --> 00:05:59,500
 Galacto
 galacto.org
-Simulation and sound: Robert Gilks
+Simulation and sound: Multivibrator
 ```
 
 Do not use YouTube subtitles for the primary title/credit treatment if the text

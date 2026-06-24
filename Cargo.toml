@@ -2,7 +2,7 @@
 name = "galacto"
 version = "0.1.0"
 edition = "2021"
-authors = ["Robert Gilks <rob.gilks@gmail.com>"]
+authors = ["Multivibrator"]
 description = "A GPU-accelerated self-gravitating N-body galaxy sandbox (spiral disk + merger) in Rust with WebGPU"
 license = "MIT"
 repository = "https://github.com/tre-systems/galacto"

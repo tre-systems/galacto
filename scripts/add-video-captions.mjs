@@ -19,7 +19,7 @@ Options:
   --start-title "Galacto"
   --start-subtitle "Self-gravitating N-body galaxy simulation"
   --end-title "Galacto"
-  --end-subtitle "galacto.org\\nSimulation and sound: Robert Gilks"
+  --end-subtitle "galacto.org\\nSimulation and sound: Multivibrator"
   --start-at 1.7
   --start-duration 4
   --end-duration 7
@@ -193,7 +193,7 @@ const output = required("--output");
 const startTitle = take("--start-title", "Galacto");
 const startSubtitle = take("--start-subtitle", "Self-gravitating N-body galaxy simulation").replaceAll("\\n", "\n");
 const endTitle = take("--end-title", "Galacto");
-const endSubtitle = take("--end-subtitle", "galacto.org\nSimulation and sound: Robert Gilks").replaceAll("\\n", "\n");
+const endSubtitle = take("--end-subtitle", "galacto.org\nSimulation and sound: Multivibrator").replaceAll("\\n", "\n");
 const startAt = takeNumber("--start-at", 1.7);
 const startDuration = takeNumber("--start-duration", 4.0);
 const endDuration = takeNumber("--end-duration", 7.0);

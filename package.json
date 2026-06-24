@@ -34,7 +34,7 @@
     "galaxy",
     "n-body"
   ],
-  "author": "Robert Gilks",
+  "author": "Multivibrator",
   "license": "MIT",
   "devDependencies": {
     "husky": "^9.1.7",
