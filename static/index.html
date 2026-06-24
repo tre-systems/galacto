@@ -130,7 +130,7 @@
             class="switch"
             role="switch"
             checked
-            title="Slowly orbit and glide the camera on its own — a hands-off movie. Grabbing the view turns it off."
+            title="Slowly orbit and glide the camera on its own — a hands-off movie. Dragging or zooming the view turns it off."
           />
           <input
             id="autopilot-speed"
@@ -365,8 +365,10 @@
         apply();
       }
 
-      // Cinematic autopilot: the engine drives the camera by default; grabbing the
-      // view (press or scroll on the canvas) hands control back and flips the toggle.
+      // Cinematic autopilot: the engine drives the camera by default; an actual
+      // camera gesture (drag, pinch, or scroll) hands control back and flips the
+      // toggle. A plain tap on the canvas is also how the mobile panel is tucked
+      // away, so don't treat pointerdown alone as manual camera control.
       function setupAutopilot(mod) {
         const toggle = document.getElementById("autopilot-toggle");
         const speed = document.getElementById("autopilot-speed");
@@ -376,12 +378,60 @@
         applySpeed();
         toggle.addEventListener("change", () => mod.set_autopilot(toggle.checked));
         speed.addEventListener("input", applySpeed);
+        const DRAG_RELEASE_PX = 8;
+        let pointerStart = null;
+        let touchStart = null;
         const release = () => {
           if (!toggle.checked) return;
           toggle.checked = false;
           mod.set_autopilot(false);
         };
-        canvas.addEventListener("pointerdown", release);
+        const movedFarEnough = (start, x, y) =>
+          Math.hypot(x - start.x, y - start.y) >= DRAG_RELEASE_PX;
+
+        canvas.addEventListener("pointerdown", (e) => {
+          pointerStart = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        });
+        canvas.addEventListener("pointermove", (e) => {
+          if (!pointerStart || e.pointerId !== pointerStart.id) return;
+          if (movedFarEnough(pointerStart, e.clientX, e.clientY)) {
+            pointerStart = null;
+            release();
+          }
+        });
+        const endPointer = (e) => {
+          if (pointerStart && e.pointerId === pointerStart.id) pointerStart = null;
+        };
+        canvas.addEventListener("pointerup", endPointer);
+        canvas.addEventListener("pointercancel", endPointer);
+
+        canvas.addEventListener("touchstart", (e) => {
+          if (e.touches.length >= 2) {
+            touchStart = null;
+            release();
+            return;
+          }
+          const t = e.touches[0];
+          touchStart = t ? { x: t.clientX, y: t.clientY } : null;
+        });
+        canvas.addEventListener("touchmove", (e) => {
+          if (e.touches.length >= 2) {
+            touchStart = null;
+            release();
+            return;
+          }
+          const t = e.touches[0];
+          if (touchStart && t && movedFarEnough(touchStart, t.clientX, t.clientY)) {
+            touchStart = null;
+            release();
+          }
+        });
+        canvas.addEventListener("touchend", () => {
+          touchStart = null;
+        });
+        canvas.addEventListener("touchcancel", () => {
+          touchStart = null;
+        });
         canvas.addEventListener("wheel", release, { passive: true });
       }
 
@@ -761,7 +811,7 @@
           "scenario-select":
             "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
           "autopilot-toggle":
-            "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. The slider beside it sets how fast it drifts. Grab the view (drag or scroll) and it switches off; turn it back on any time.",
+            "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. The slider beside it sets how fast it drifts. Drag, pinch, or scroll the view and it switches off; turn it back on any time.",
           "count-slider":
             "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so high counts cap speed to keep the browser responsive. Re-seeds.",
           "speed-slider":
