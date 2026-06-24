@@ -187,6 +187,12 @@ impl AudioEngine {
         }
     }
 
+    /// Resume the AudioContext (iOS suspends it when the PWA is backgrounded). Does
+    /// not touch enabled / muted / volume — the master gain already reflects them.
+    pub fn resume(&self) {
+        let _ = self.ctx.resume();
+    }
+
     /// Turn sound on or off. Ramps the master level rather than cutting, and
     /// resumes the context on enable. The graph stays built either way.
     pub fn set_enabled(&mut self, on: bool) {

@@ -1033,15 +1033,33 @@
           "touchstart",
           "wheel",
         ];
+        // iOS routes Web Audio to the silent-switch-respecting "ambient" session by
+        // default, so an installed PWA stays silent whenever the ring/silent switch
+        // is on. Ask for the "playback" session so the soundscape plays like a media
+        // app — through the silent switch. (Safari/WebKit only; harmless elsewhere.)
+        const claimPlayback = () => {
+          try {
+            if (navigator.audioSession) navigator.audioSession.type = "playback";
+          } catch (_) {}
+        };
         const start = () => {
           events.forEach((e) =>
             window.removeEventListener(e, start, { capture: true })
           );
+          claimPlayback();
           mod.set_sound_enabled(true);
         };
         events.forEach((e) =>
           window.addEventListener(e, start, { capture: true, passive: true })
         );
+        // iOS suspends the AudioContext when the PWA is backgrounded; re-assert the
+        // session and resume it when we return to the foreground.
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            claimPlayback();
+            mod.resume_audio();
+          }
+        });
       }
 
       // Reveal the "update available" toast and wire its Reload button to take

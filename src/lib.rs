@@ -598,6 +598,15 @@ impl AppState {
         }
     }
 
+    /// Resume the AudioContext if the engine exists — iOS suspends it when the PWA
+    /// is backgrounded, and it must be resumed on return to make sound again. Leaves
+    /// enabled / muted / volume untouched (the master gain already reflects them).
+    pub fn resume_audio(&self) {
+        if let Some(audio) = &self.audio {
+            audio.resume();
+        }
+    }
+
     /// Toggle the soundscape (the page's 🔊 button). The first enable builds the
     /// audio engine inside the click's user gesture, so the AudioContext may start.
     pub fn set_sound(&mut self, on: bool) {
@@ -914,6 +923,17 @@ pub fn set_sound_enabled(on: bool) {
     APP_STATE.with(|cell| {
         if let Some(app) = cell.borrow().as_ref() {
             app.borrow_mut().set_sound(on);
+        }
+    });
+}
+
+/// Resume the AudioContext after the PWA returns to the foreground (iOS suspends it
+/// in the background). No-ops until the engine exists; leaves on/off + volume alone.
+#[wasm_bindgen]
+pub fn resume_audio() {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow().resume_audio();
         }
     });
 }
