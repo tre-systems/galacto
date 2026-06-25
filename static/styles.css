@@ -387,14 +387,36 @@ body {
   transition: transform 0.18s ease;
 }
 
-.export-panel.collapsed .export-caret {
-  transform: rotate(-90deg);
+/* Icon shown only when minimised. */
+.export-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #c7d2fe;
 }
 
+/* Minimised: shrink to a 40px round icon button, mirroring the cog opposite. */
 .export-panel.collapsed {
-  width: auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  gap: 0;
+  border-radius: 50%;
 }
 
+.export-panel.collapsed .export-panel-header {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.export-panel.collapsed .export-icon {
+  display: flex;
+}
+
+.export-panel.collapsed .export-panel-title,
+.export-panel.collapsed .export-caret,
 .export-panel.collapsed .export-body {
   display: none;
 }
