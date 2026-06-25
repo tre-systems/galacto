@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
@@ -20,6 +21,10 @@ function usage() {
 Options:
   --compose <seed>   play the deterministic cinematic arrangement (matches
                      generate_piece with the same seed + duration)
+  --particles <N>    body count for the arrangement (denser galaxy)
+  --produce          render matching audio + mux + start/end captions → final MP4
+  --reuse-chunks     skip the capture; assemble from an existing chunk dir (resume
+                     a run whose capture finished but a later step failed)
   --out-dir renders/proofs
   --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   --bitrate 80000000
@@ -214,6 +219,9 @@ async function main() {
   // --produce renders the matching audio (generate_piece) and muxes + captions the
   // capture into a finished YouTube-ready MP4. Requires --compose <seed>.
   const produce = hasFlag("--produce");
+  // --reuse-chunks skips the capture and assembles from an existing chunk dir (resume
+  // a run whose capture succeeded but whose audio/mux/caption step failed).
+  const reuseChunks = hasFlag("--reuse-chunks");
   const lufs = takeNumber("--lufs", -16);
   // The arrangement's audio rings out a reverb tail past the arc; capture that long
   // so the fade-out is in the picture too. Matches EXPORT_TAIL_SEC in audio.rs.
@@ -237,9 +245,13 @@ async function main() {
   const screenshotPath = join(outDir, `${label}-preview.png`);
   const profileDir = join(outDir, `${label}-chrome-profile`);
   mkdirSync(outDir, { recursive: true });
-  rmSync(chunkDir, { recursive: true, force: true });
+  // --reuse-chunks resumes a run from an existing chunk dir (e.g. after the capture
+  // succeeded but a later step failed) — skip the recording and keep the chunks.
+  if (!reuseChunks) {
+    rmSync(chunkDir, { recursive: true, force: true });
+    mkdirSync(chunkDir, { recursive: true });
+  }
   rmSync(profileDir, { recursive: true, force: true });
-  mkdirSync(chunkDir, { recursive: true });
 
   const { server, port: chunkPort, done, audioDone } = await startChunkServer(
     chunkDir,
@@ -338,6 +350,11 @@ async function main() {
       returnByValue: true,
     });
 
+    let chunkCount;
+    if (reuseChunks) {
+      chunkCount = readdirSync(chunkDir).filter((f) => f.endsWith(".part")).length;
+      console.log(`reusing ${chunkCount} existing chunks from ${chunkDir}`);
+    } else {
     const screenshot = await page.send("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: false,
@@ -434,13 +451,26 @@ async function main() {
       }
     }
 
-    const chunkCount = await done;
+    chunkCount = await done;
     console.log(`chunks received: ${chunkCount}`);
+    }
+
+    // Concatenate the chunks into one webm. MediaRecorder timeslices are valid
+    // back-to-back, so a byte concat is a correct webm. Honour stream backpressure —
+    // a multi-GB 4K capture has hundreds of chunks, and firing every write() at once
+    // (ignoring the `false` return) overruns the buffer and flushes nothing.
     const files = readdirSync(chunkDir).filter((file) => file.endsWith(".part")).sort();
     const out = createWriteStream(webmPath);
-    for (const file of files) out.write(readFileSync(join(chunkDir, file)));
-    await new Promise((resolveWrite) => out.end(resolveWrite));
-    console.log(`raw video: ${webmPath}`);
+    for (const file of files) {
+      if (!out.write(readFileSync(join(chunkDir, file)))) {
+        await new Promise((r) => out.once("drain", r));
+      }
+    }
+    await new Promise((resolve, reject) => {
+      out.on("error", reject);
+      out.end(resolve);
+    });
+    console.log(`raw video: ${webmPath} (${(statSync(webmPath).size / 1e9).toFixed(2)} GB)`);
 
     if (remux) {
       run("ffmpeg", ["-hide_banner", "-y", "-i", webmPath, "-c", "copy", remuxPath]);
