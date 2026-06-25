@@ -410,10 +410,10 @@ async function main() {
       expression: `
         (() => {
           const style = document.createElement("style");
-          style.textContent = "#controls,#rotcurve,#update-toast,#feedback-btn{display:none!important} body{cursor:none!important;background:#05060d!important;overflow:hidden!important}";
+          style.textContent = "#controls,#rotcurve,#update-toast,#feedback-btn{display:none!important} body{cursor:none!important;background:#000000!important;overflow:hidden!important}";
           document.head.appendChild(style);
-          document.documentElement.style.background = "#05060d";
-          document.body.style.background = "#05060d";
+          document.documentElement.style.background = "#000000";
+          document.body.style.background = "#000000";
           window.scrollTo(0, 0);
           return true;
         })()

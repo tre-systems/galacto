@@ -86,19 +86,22 @@ impl Arrangement {
         }
     }
 
-    /// Orbit angle (radians): a slow continuous orbit completing ~1.5 turns over the
-    /// whole piece (so the stereo image averages centred), with a seed phase.
+    /// Orbit angle (radians): a slow continuous orbit completing ~1.1 turns over the
+    /// whole piece (gentle, so the stereo image still averages roughly centred), with
+    /// a seed phase.
     fn orbit(&self, t: f64) -> f32 {
-        TAU * 1.5 * (t / self.duration) as f32 + TAU * hash01(self.seed, 19)
+        TAU * 1.1 * (t / self.duration) as f32 + TAU * hash01(self.seed, 19)
     }
 
-    /// Camera pose at time `t` — wide and distant in the intro, drifting closer
-    /// toward the peak and back out to resolve, over a slow orbit and gentle nod.
+    /// Camera pose at time `t` — the galaxy already reads from the opening, drifting
+    /// closer toward the peak and back out to resolve, over a slow orbit and gentle nod.
     pub fn camera(&self, t: f64) -> CameraPose {
         let a = self.arc(self.progress(t));
         CameraPose {
-            scale: 0.3 * 3.4_f32.powf(a), // 0.3 (wide field) .. ~1.0 (immersive)
-            rot_x: 0.3 * ((t as f32) * 0.06 + TAU * hash01(self.seed, 13)).sin(),
+            // Start already framed (0.55) rather than a distant speck, easing in to the
+            // same immersive peak (~1.0).
+            scale: 0.55 * 1.85_f32.powf(a),
+            rot_x: 0.3 * ((t as f32) * 0.045 + TAU * hash01(self.seed, 13)).sin(),
             rot_y: self.orbit(t),
         }
     }

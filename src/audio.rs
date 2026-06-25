@@ -65,7 +65,7 @@ const STAR_VOICES: usize = 5;
 /// consonant and tracks the scenario/gravity as the pad retunes. Kept below the
 /// ear's fatiguing 2–5 kHz sensitivity peak (≈0.4–1.6 kHz at the default root): a
 /// warm, bell-like sparkle rather than a piercing whine.
-const STAR_MULT: [f32; STAR_VOICES] = [12.0, 16.0, 24.0, 32.0, 44.0];
+const STAR_MULT: [f32; STAR_VOICES] = [8.0, 12.0, 16.0, 24.0, 32.0];
 
 /// The persistent Web Audio node graph, independent of whether a real-time
 /// `AudioContext` or an `OfflineAudioContext` drives it. Only nodes that are
@@ -138,7 +138,7 @@ impl Graph {
         if let Some(ir) = make_impulse_response(ctx, 8.0) {
             convolver.set_buffer(Some(&ir));
         }
-        let reverb_lp = lowpass(ctx, 2600.0, 0.5)?;
+        let reverb_lp = lowpass(ctx, 1900.0, 0.5)?;
         let reverb_wet = gain(ctx, 0.6)?;
         connect(&reverb_in, &convolver);
         connect(&convolver, &reverb_lp);
@@ -190,7 +190,7 @@ impl Graph {
         let shimmer_shaper = octave_up_shaper(ctx)?;
         // Sit the sheen up in the "air" band rather than the forward 2–3 kHz presence
         // region, so it shimmers without the fatigue that tires the ear over time.
-        let shimmer_bp = bandpass(ctx, 3600.0, 0.6)?;
+        let shimmer_bp = bandpass(ctx, 2600.0, 0.5)?;
         let shimmer_gain = gain(ctx, 0.0)?;
         connect(&drone_lp, &shimmer_shaper);
         connect(&shimmer_shaper, &shimmer_bp);
@@ -212,7 +212,7 @@ impl Graph {
         // Starfield: high voices tuned to the pad's upper harmonics, each twinkling on
         // its own slow LFO (a sine into its gain), through a shared brightness filter
         // and level into the field bus.
-        let star_lp = lowpass(ctx, 4000.0, 0.5)?;
+        let star_lp = lowpass(ctx, 2400.0, 0.5)?;
         let star_gain = gain(ctx, 0.0)?;
         connect(&star_lp, &star_gain);
         connect(&star_gain, &field_pan);
@@ -248,10 +248,15 @@ impl Graph {
             noise_src.set_buffer(Some(&buf));
         }
         noise_src.set_loop(true);
-        let noise_lp = lowpass(ctx, 420.0, 0.4)?;
+        // Two cascaded low-passes turn the bed into a deep, smoothed *brown*-noise
+        // rumble (~-24 dB/oct above the corner) — low-frequency-heavy with no harsh
+        // top, the focus-friendly character, rather than a faint hiss-shelf.
+        let noise_lp = lowpass(ctx, 240.0, 0.4)?;
+        let noise_lp2 = lowpass(ctx, 480.0, 0.4)?;
         let noise_gain = gain(ctx, 0.0)?;
         connect(&noise_src, &noise_lp);
-        connect(&noise_lp, &noise_gain);
+        connect(&noise_lp, &noise_lp2);
+        connect(&noise_lp2, &noise_gain);
         connect(&noise_gain, &master_gain);
         let _ = noise_src.start();
 
@@ -333,8 +338,9 @@ impl Graph {
         for (osc, mult) in self.star_oscs.iter().zip(STAR_MULT) {
             ramp(
                 &osc.frequency(),
-                // Hold the sparkle below the ear's fatiguing 2–5 kHz peak.
-                (d.freqs[0] * mult).clamp(120.0, 3000.0),
+                // Hold the sparkle below the ear's fatiguing 2–5 kHz peak, even when
+                // the pad pitch bends up.
+                (d.freqs[0] * mult).clamp(120.0, 2200.0),
                 now,
             );
         }

@@ -413,10 +413,12 @@ impl AppState {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
+                        // Pure black so the captured video blends with a dark page;
+                        // black is the additive identity, so it doesn't dim the stars.
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.01,
-                            g: 0.01,
-                            b: 0.05,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,

@@ -279,15 +279,17 @@ impl MusicEngine {
         // star size, gas, core churn, disk instability, and an extra lift while the
         // core collapses inward. These slider paths are intentionally broad enough
         // to be audible on phone speakers.
-        let octaves = c.brightness * 1.25
-            + state.zoom * 1.45
-            + state.glow * 1.05
-            + state.star_size * 0.35
-            + state.gas * 0.85
-            + state.core_activity * 0.95
+        let octaves = c.brightness * 1.1
+            + state.zoom * 1.2
+            + state.glow * 0.9
+            + state.star_size * 0.3
+            + state.gas * 0.7
+            + state.core_activity * 0.85
             + (1.0 - state.stability) * 0.25
-            + inflow * 0.65;
-        let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 8000.0);
+            + inflow * 0.6;
+        // Ceiling held to 6 kHz so the whole mix keeps a gentle downward (brown-ish)
+        // tilt and never goes bright-flat on top.
+        let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 6000.0);
         // Its body swells with central mass, halo fullness, bulge, and star size.
         let gain = if state.paused {
             0.12
@@ -315,12 +317,12 @@ impl MusicEngine {
         let sub_gain = if state.paused {
             0.05
         } else {
-            (0.06
+            (0.08
                 + 0.11 * state.core_mass
                 + 0.10 * state.halo
                 + 0.10 * state.bulge
                 + 0.04 * state.star_size)
-                .clamp(0.0, 0.36)
+                .clamp(0.0, 0.42)
         };
         DroneTarget {
             freqs,
@@ -356,9 +358,9 @@ impl MusicEngine {
         };
         // Warm low-pass kept well below the fatiguing presence band, so the starfield
         // stays a soft, rounded sparkle rather than a sharp, sustained tone.
-        let star_cutoff_hz = (1000.0
-            * 2.0_f32.powf(0.9 * state.zoom + 0.6 * state.glow + 0.4 * state.gas))
-        .clamp(700.0, 4500.0);
+        let star_cutoff_hz = (900.0
+            * 2.0_f32.powf(0.8 * state.zoom + 0.5 * state.glow + 0.4 * state.gas))
+        .clamp(600.0, 2400.0);
 
         // Octave-up shimmer into the reverb — the cosmic sheen. Reverb-diffused (never
         // a dry tone) and kept gentle so it adds air without sharpness. Opens with glow
@@ -369,7 +371,7 @@ impl MusicEngine {
             + 0.07 * state.zoom
             + 0.08 * inflow
             + 0.03 * lfo_b)
-            .clamp(0.0, 0.3);
+            .clamp(0.0, 0.24);
 
         // The whole pad + starfield image swings with the camera orbit.
         let field_pan = (state.camera_pan * 0.6).clamp(-0.85, 0.85);
@@ -392,21 +394,22 @@ impl MusicEngine {
         let delay_feedback =
             (0.42 + 0.28 * state.motion + 0.10 * state.halo + 0.07 * state.speed).clamp(0.0, 0.86);
 
-        // Noise bed: low and breathing with the core's churn and its own LFO, lifted
-        // by the gas fraction, so it reads as soft background air, not a steady hiss.
-        let noise_gain = (0.025
+        // Brown-noise rumble bed: a warm, low background presence that breathes with
+        // the core's churn and its own LFO, lifted by the gas fraction. A touch more
+        // present than before, for the focus-friendly smoothed-brown character.
+        let noise_gain = (0.035
             + 0.05 * state.core_activity
             + 0.018 * lfo_b
             + 0.09 * state.gas
             + 0.03 * state.glow
             + 0.015 * state.star_size)
-            .clamp(0.0, 0.16);
+            .clamp(0.0, 0.20);
 
         // Resonant pad filter: breathes on the LFO, lifts as the core collapses
         // inward, and widens with gas-rich / low-Q (unstable) disks.
         let pad_resonance =
             (0.7 + 1.8 * lfo_a + 1.35 * inflow + 1.0 * (1.0 - state.stability) + 0.45 * state.gas)
-                .clamp(0.7, 5.2);
+                .clamp(0.7, 3.2);
 
         TextureTarget {
             star_gain,
@@ -720,7 +723,7 @@ mod tests {
                         assert!(v.is_finite() && v >= 0.0, "texture value {v} invalid");
                     }
                     assert!((-1.0..=1.0).contains(&tx.field_pan));
-                    assert!((1200.0..=12000.0).contains(&tx.star_cutoff_hz));
+                    assert!((500.0..=3000.0).contains(&tx.star_cutoff_hz));
                 }
             }
         }
