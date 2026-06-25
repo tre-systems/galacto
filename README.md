@@ -112,7 +112,7 @@ npm run produce -- --seed 5 --duration 600
 #   and start/end captions — visuals and sound rendered from the same seed, so locked.
 ```
 
-It builds, captures the arrangement headlessly, renders the matching mastered audio offline, muxes, and adds captions — no UI needed. The default 10-minute length is the researched sweet spot for a composed ambient piece. See [Video production](docs/VIDEO_PRODUCTION.md).
+It builds, captures the arrangement headlessly, renders the matching mastered audio offline, muxes, and adds captions — no UI needed. The default 10-minute length is the researched sweet spot for a composed ambient piece, rendered at 2× the interactive body count for a denser galaxy (per-particle size scales as `1/√count`, so the frame rate stays smooth at 4K). See [Video production](docs/VIDEO_PRODUCTION.md).
 
 ## Architecture
 

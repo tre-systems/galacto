@@ -192,10 +192,15 @@ async function main() {
   // so the video matches the audio rendered by generate_piece with the same seed +
   // duration. It self-drives via the ?compose=&dur= URL params.
   const composeSeed = take("--compose");
+  // --particles <N> renders the arrangement at a higher body count for a denser
+  // galaxy; the sim self-throttles its step rate to keep the frame rate smooth.
+  const particles = take("--particles");
   const baseUrl = take("--url", "http://localhost:8000/");
   const url =
     composeSeed != null
-      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}compose=${encodeURIComponent(composeSeed)}&dur=${durationSec}`
+      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}compose=${encodeURIComponent(composeSeed)}&dur=${durationSec}${
+          particles != null ? `&particles=${encodeURIComponent(particles)}` : ""
+        }`
       : baseUrl;
   const width = takeNumber("--width", 1920);
   const height = takeNumber("--height", 1080);
@@ -351,6 +356,10 @@ async function main() {
             while (!window.galacto && performance.now() - started < 10000) {
               await new Promise((r) => requestAnimationFrame(r));
             }
+            // Wait for the async engine init before driving it (setters no-op until
+            // ready), then apply the body count so the restart re-seeds at it.
+            if (window.galacto?.whenReady) await window.galacto.whenReady();
+            ${particles != null ? `window.galacto?.setParticleCount(${Number(particles)});` : ""}
             window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
             return true;
           })()
@@ -385,12 +394,24 @@ async function main() {
               uploads.push(fetch("${postUrl}?i=" + i, { method: "POST", body: event.data }));
             }
           };
+          // Sample the render loop's frame rate during capture so the run can confirm
+          // it stayed smooth (and warn if a heavy body count dropped frames).
+          const fpsSamples = [];
+          const fpsTimer = setInterval(() => {
+            const f = window.galacto && window.galacto.fps ? window.galacto.fps() : 0;
+            if (f > 0) fpsSamples.push(+f.toFixed(1));
+          }, 500);
           const stopped = new Promise((resolve, reject) => {
             recorder.onerror = () => reject(recorder.error || new Error("MediaRecorder error"));
             recorder.onstop = async () => {
+              clearInterval(fpsTimer);
               await Promise.all(uploads);
               await fetch("${postUrl}?done=1", { method: "POST", body: new Blob([]) });
-              resolve({ chunks: index, mime, width: canvas.width, height: canvas.height });
+              // Drop the first couple of samples while the meter settles.
+              const s = fpsSamples.slice(2);
+              const fpsMin = s.length ? Math.min(...s) : 0;
+              const fpsAvg = s.length ? +(s.reduce((a, b) => a + b, 0) / s.length).toFixed(1) : 0;
+              resolve({ chunks: index, mime, width: canvas.width, height: canvas.height, fpsMin, fpsAvg });
             };
           });
           recorder.start(1000);
@@ -402,6 +423,16 @@ async function main() {
       returnByValue: true,
     });
     console.log("recorded:", JSON.stringify(recorded.result.value));
+    const { fpsMin, fpsAvg } = recorded.result.value;
+    if (fpsAvg) {
+      const smooth = fpsMin >= fps * 0.92;
+      console.log(`${smooth ? "✓" : "⚠"} frame rate: ${fpsAvg} avg / ${fpsMin} min (target ${fps})`);
+      if (!smooth) {
+        console.log(
+          `  ↳ dropped below target — lower --particles or --fps for a smoother capture.`,
+        );
+      }
+    }
 
     const chunkCount = await done;
     console.log(`chunks received: ${chunkCount}`);

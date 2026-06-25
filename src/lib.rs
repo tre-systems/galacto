@@ -119,6 +119,9 @@ pub struct AppState {
     /// Clamped real seconds elapsed last frame, reused for frame-rate-independent
     /// audio smoothing.
     frame_dt: f32,
+    /// Exponentially-smoothed frames-per-second, exposed via [`fps`] so production
+    /// tooling can confirm a capture is holding a smooth rate at a given body count.
+    fps_ema: f32,
     /// Simulation speed multiplier (1.0 = real time); driven by the page's speed slider.
     speed: f32,
     /// Current scenario and the disk temperature staged for the next (re)seed.
@@ -227,6 +230,7 @@ impl AppState {
             steps_this_frame: 0,
             sim_time: 0.0,
             frame_dt: simulation::FIXED_DT,
+            fps_ema: 60.0,
             speed: 1.0,
             scenario: Scenario::GrandDesign,
             disk_temp: scenarios::DEFAULT_TEMP,
@@ -276,6 +280,11 @@ impl AppState {
         };
         self.last_time = current_time;
         self.frame_dt = frame_dt.clamp(0.0, MAX_FRAME_DT);
+        // Smooth the instantaneous rate so the meter is steady to read.
+        if frame_dt > 1e-4 {
+            let inst = (1.0 / frame_dt).clamp(0.0, 240.0);
+            self.fps_ema += 0.1 * (inst - self.fps_ema);
+        }
 
         self.input_handler.update_camera(&mut self.camera);
 
@@ -370,12 +379,20 @@ impl AppState {
             false
         };
 
-        // Render the particles additively into the HDR scene target.
+        // Render the particles additively into the HDR scene target. Shrink each
+        // billboard as the body count grows (∝ 1/√count), so the total glow area —
+        // the 4K fill-rate cost, and the additive brightness pile-up — stays roughly
+        // constant. More bodies then read as *finer detail* at a steady frame rate
+        // rather than a heavier, brighter blob. At the default count the scale is 1.0,
+        // so the established look is unchanged.
+        let size_scale = (simulation::NUM_PARTICLES as f32 / self.particle_count.max(1) as f32)
+            .sqrt()
+            .clamp(0.3, 1.0);
         self.simulation.update_camera(
             &self.graphics.queue,
             &self.camera,
             self.scenario,
-            self.particle_size,
+            self.particle_size * size_scale,
             self.glow_extent,
         );
         // Dark-matter halo overlay (when shown): size it to the active profile's
@@ -1342,6 +1359,25 @@ pub fn arrangement_active() -> bool {
         cell.borrow()
             .as_ref()
             .is_some_and(|app| app.borrow().arrangement.is_some())
+    })
+}
+
+/// Whether the async GPU/app init has completed and the engine is live. The
+/// `?compose` auto-play and the production tooling poll this before driving the
+/// engine, since setters silently no-op until the app exists.
+#[wasm_bindgen]
+pub fn is_ready() -> bool {
+    APP_STATE.with(|cell| cell.borrow().is_some())
+}
+
+/// Smoothed frames-per-second of the render loop. Production tooling reads this to
+/// confirm a capture is holding a steady rate at a chosen body count.
+#[wasm_bindgen]
+pub fn fps() -> f32 {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map_or(0.0, |app| app.borrow().fps_ema)
     })
 }
 

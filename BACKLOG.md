@@ -20,6 +20,8 @@ The solver in `src/shaders/update.wgsl` runs the same for every `Scenario` (`src
 
 Gravity is the exact all-pairs sum (`compute_accel` in `src/shaders/update.wgsl`), `O(N²)` per step, which caps the count near ~16k for interactive speed (and leaves the arms a little grainy). Reaching 100k–1M bodies needs an approximate force.
 
+The production pipeline already renders denser than the interactive default — billboard size scales as `1/√count`, so the 4K glow fill-rate stays flat and a capture holds a steady 60+ fps at 2× (32k); a few × beyond that, this `O(N²)` gravity (not fill-rate) is the wall. So tree gravity is the prerequisite for both interactive *and* offline body counts past the ~tens-of-thousands range.
+
 Recommended approach: a **GPU LBVH / Barnes–Hut** tree — build a linear tree each step from Morton (Z-order) codes, then traverse stacklessly with a multipole opening criterion (θ). Alternatives fit worse: a particle-mesh/FFT solver is `O(N)` and simplest to build, but a fixed grid fights the sim's huge dynamic range and unbounded extent; a fixed-depth octree wastes cells on the dense bulge.
 
 WebGPU crux (no recursion, no dynamic allocation, weak atomics): tree build is body-AABB → Morton-encode → **radix sort** the codes (the hard part — per-digit histogram + prefix-scan + scatter, several dispatches) → build internal nodes (Karras' branch-free LBVH) → bottom-up centre-of-mass pass; traversal uses a short fixed register stack or rope/skip-pointer trees.

@@ -734,30 +734,44 @@ fn make_impulse_response(ctx: &BaseAudioContext, seconds: f32) -> Option<AudioBu
     let len = (sr * seconds) as u32;
     let ir = ctx.create_buffer(2, len, sr).ok()?;
     let dt = 1.0 / sr;
-    // Early reflections: time (s) and gain, alternating sign for diffusion.
+    // Early reflections: time (s) and gain, alternating sign for diffusion. A dense,
+    // slightly irregular cluster in the first ~170 ms reads as a real room with depth
+    // rather than a single slap echo.
     let early = [
-        (0.011, 0.62),
-        (0.019, 0.5),
-        (0.031, 0.55),
-        (0.046, 0.4),
-        (0.063, 0.45),
-        (0.089, 0.32),
-        (0.117, 0.28),
+        (0.007, 0.70),
+        (0.013, 0.55),
+        (0.019, 0.62),
+        (0.027, 0.45),
+        (0.037, 0.50),
+        (0.049, 0.38),
+        (0.063, 0.42),
+        (0.079, 0.30),
+        (0.097, 0.33),
+        (0.119, 0.24),
+        (0.143, 0.26),
+        (0.171, 0.19),
     ];
     for (ch, seed, jitter) in [(0usize, 0x1234_ABCDu32, 0.0_f32), (1, 0x7890_FEDC, 1.0)] {
         let mut buf = vec![0.0_f32; len as usize];
-        let mut t = 0.0_f32;
-        for (sample, n) in buf.iter_mut().zip(Noise(seed)) {
-            // Long ~3 s decay → a huge, slowly-fading space; a gentle early emphasis
-            // over the first half-second softens the onset.
-            let decay = (-t / 3.0).exp();
-            let onset = (1.0 - t / 0.5).clamp(0.0, 1.0);
-            *sample = n * decay * (0.5 + 0.5 * onset);
-            t += dt;
+        // A one-pole low-pass whose cutoff falls over time, so the diffuse tail grows
+        // darker as it decays — the defining cue of a real hall (high frequencies are
+        // absorbed faster than lows). The filtering also smooths the raw noise from a
+        // grainy hiss into a soft, continuous wash.
+        let mut lp = 0.0_f32;
+        for (i, n) in Noise(seed).take(len as usize).enumerate() {
+            let t = i as f32 * dt;
+            // Coefficient closes from bright (~0.54) toward dark (~0.04) over ~1 s.
+            let cutoff = 0.04 + 0.5 * (-t / 1.1).exp();
+            lp += cutoff * (n - lp);
+            // Long ~3.2 s decay → a huge, slowly-fading space; a smooth ~15 ms onset
+            // avoids a click at the very start of the impulse.
+            let decay = (-t / 3.2).exp();
+            let onset = 1.0 - (-t / 0.015).exp();
+            buf[i] = lp * decay * onset;
         }
         // Overlay the early reflections, nudged per channel so L/R decorrelate.
         for (k, (time, g)) in early.iter().enumerate() {
-            let idx = ((time + jitter * 0.0021 * (k as f32 + 1.0)) * sr) as usize;
+            let idx = ((time + jitter * 0.0017 * (k as f32 + 1.0)) * sr) as usize;
             if idx < buf.len() {
                 buf[idx] += g * if k % 2 == 0 { 1.0 } else { -1.0 };
             }

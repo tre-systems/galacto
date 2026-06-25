@@ -119,8 +119,16 @@ sound are locked), **muxes** them, and adds **start/end captions** (via
 sweet spot for a composed ambient piece (full arc; clears YouTube's 8-min mid-roll
 threshold). Same seed → same piece; change `--seed` for a different one.
 
-Useful flags: `--width/--height/--fps` (default 3840×2160 / 60), `--lufs` (default
-−16), `--start-title/--start-subtitle/--end-title/--end-subtitle`, `--no-build`,
+It renders at **32,768 bodies** by default (2× the interactive default) for a denser,
+finer galaxy. Per-particle billboard size scales as `1/√count`, so the glow's 4K
+fill-rate cost stays flat and the capture holds a rock-steady 60+ fps — the run prints
+the measured frame rate (avg / min) and warns if it ever drops. Higher `--particles`
+(e.g. `49152`) look richer still but become gravity-bound (`O(N²)`) and can dip below
+60 at 4K; the run's frame-rate warning tells you if a chosen count was too heavy.
+
+Useful flags: `--particles` (default 32768), `--width/--height/--fps` (default
+3840×2160 / 60), `--lufs` (default −16),
+`--start-title/--start-subtitle/--end-title/--end-subtitle`, `--no-build`,
 `--no-headless`. The capture is real-time, so a 10-minute piece takes ~10 minutes
 plus a short offline audio render.
 

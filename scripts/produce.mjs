@@ -55,6 +55,10 @@ const duration = take("--duration", "600"); // 10 min — researched length for 
 const width = take("--width", "3840");
 const height = take("--height", "2160");
 const fps = take("--fps", "60");
+// 2× the default body count: a denser, finer galaxy that still holds a rock-steady
+// 60+ fps at 4K (per-particle size scales ∝ 1/√count, so the glow fill-rate stays
+// flat). Higher values (e.g. 49152) look richer but can dip below 60 at 4K.
+const particles = take("--particles", "32768");
 const label = take("--label", `galacto-piece-${seed}`);
 const port = Number(take("--port", "8000"));
 
@@ -79,6 +83,7 @@ try {
     "--width", width,
     "--height", height,
     "--fps", fps,
+    "--particles", particles,
     "--label", label,
     ...passthrough([
       "--start-title",

@@ -586,20 +586,43 @@
           // arrangement (drives camera + galaxy through the arc). The video-capture
           // script loads this so the captured picture matches the audio rendered from
           // generate_piece with the same seed/duration.
+          // The engine inits asynchronously (WebGPU adapter/device), so the setters
+          // no-op until it's live. Wait for is_ready() before driving the engine.
+          const whenReady = async (timeoutMs = 20000) => {
+            const start = performance.now();
+            while (!mod.is_ready() && performance.now() - start < timeoutMs) {
+              await new Promise((r) => requestAnimationFrame(r));
+            }
+            return mod.is_ready();
+          };
           const composeParams = new URLSearchParams(location.search);
           if (composeParams.has("compose")) {
             const seed = parseInt(composeParams.get("compose"), 10) || 1;
             const dur = parseFloat(composeParams.get("dur")) || 240;
+            // ?particles=N renders the piece at a higher body count for a denser,
+            // more detailed galaxy (the sim self-throttles its step rate to hold the
+            // frame rate, so the motion just evolves more slowly).
+            const particles = parseInt(composeParams.get("particles"), 10);
             document.getElementById("export-panel")?.setAttribute("hidden", "");
-            mod.start_arrangement(dur, seed);
+            whenReady().then(() => {
+              if (Number.isFinite(particles) && particles > 0) {
+                activeParticleCount = particles;
+                mod.set_particle_count(particles);
+              }
+              mod.start_arrangement(dur, seed);
+            });
           }
           // Headless control surface for the automated production pipeline
           // (scripts/produce.mjs) — render a piece's audio and drive the arrangement
           // without the UI. Harmless to expose; it's just the offline engine.
           window.galacto = {
+            isReady: () => mod.is_ready(),
+            whenReady,
             startArrangement: (dur, seed) => mod.start_arrangement(dur, seed),
             stopArrangement: () => mod.stop_arrangement(),
             arrangementActive: () => mod.arrangement_active(),
+            setParticleCount: (n) => mod.set_particle_count(n),
+            fps: () => mod.fps(),
             // Render a composed piece's audio and POST the WAV bytes to `postUrl`,
             // so the headless capture run can save it to disk. Returns the report.
             renderPieceTo: async (postUrl, dur, seed, lufs) => {
