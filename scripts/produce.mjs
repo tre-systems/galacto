@@ -6,36 +6,10 @@
 //
 // Defaults to a 10-minute piece at 4K/60 (the researched sweet spot for a composed
 // ambient track). Same seed + duration always yields the same piece.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { take, hasFlag, passArg, run } from "./cli.mjs";
 
-const args = process.argv.slice(2);
-
-function take(name, fallback = null) {
-  const i = args.indexOf(name);
-  if (i === -1) return fallback;
-  const v = args[i + 1];
-  if (v == null || v.startsWith("--")) throw new Error(`${name} requires a value`);
-  return v;
-}
-function hasFlag(name) {
-  return args.includes(name);
-}
-function passthrough(names) {
-  const out = [];
-  for (const n of names) {
-    const i = args.indexOf(n);
-    if (i === -1) continue;
-    out.push(n);
-    const v = args[i + 1];
-    if (v != null && !v.startsWith("--")) out.push(v);
-  }
-  return out;
-}
-function run(cmd, a) {
-  const r = spawnSync(cmd, a, { stdio: "inherit" });
-  if (r.status !== 0) throw new Error(`${cmd} ${a.join(" ")} failed (status ${r.status})`);
-}
 async function waitForPort(url, timeoutMs = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -64,7 +38,7 @@ const port = Number(take("--port", "8000"));
 
 if (!hasFlag("--no-build")) {
   console.log("● Building…");
-  run("npm", ["run", "build"]);
+  run("npm", ["run", "build"], { inherit: true });
 }
 
 console.log("● Serving pkg/…");
@@ -74,28 +48,27 @@ const serve = spawn("npx", ["-y", "serve", "pkg", "-l", String(port), "--cors"],
 try {
   await waitForPort(`http://localhost:${port}/`);
   console.log(`● Producing a ${duration}s piece (seed ${seed}) at ${width}x${height}…`);
-  run("node", [
-    "scripts/capture-canvas-video.mjs",
-    "--produce",
-    "--compose", seed,
-    "--duration", duration,
-    "--url", `http://localhost:${port}/`,
-    "--width", width,
-    "--height", height,
-    "--fps", fps,
-    "--particles", particles,
-    "--label", label,
-    ...passthrough([
-      "--start-title",
-      "--start-subtitle",
-      "--end-title",
-      "--end-subtitle",
-      "--lufs",
-      "--out-dir",
-      "--bitrate",
-    ]),
-    ...(hasFlag("--no-headless") ? ["--no-headless"] : []),
-  ]);
+  run(
+    "node",
+    [
+      "scripts/capture-canvas-video.mjs",
+      "--produce",
+      "--compose", seed,
+      "--duration", duration,
+      "--url", `http://localhost:${port}/`,
+      "--width", width,
+      "--height", height,
+      "--fps", fps,
+      "--particles", particles,
+      "--label", label,
+      // Forward the optional pass-through flags the user supplied.
+      ..."--start-title --start-subtitle --end-title --end-subtitle --lufs --out-dir --bitrate"
+        .split(" ")
+        .flatMap(passArg),
+      ...(hasFlag("--no-headless") ? ["--no-headless"] : []),
+    ],
+    { inherit: true },
+  );
 } finally {
   serve.kill("SIGTERM");
 }

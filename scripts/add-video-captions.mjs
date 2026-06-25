@@ -8,8 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-
-const args = process.argv.slice(2);
+import { take, takeNumber, hasFlag, run } from "./cli.mjs";
 
 function usage() {
   console.error(`Usage:
@@ -28,28 +27,6 @@ Options:
 `);
 }
 
-function take(name, fallback = null) {
-  const index = args.indexOf(name);
-  if (index === -1) return fallback;
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
-}
-
-function takeNumber(name, fallback) {
-  const raw = take(name);
-  if (raw == null) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) throw new Error(`${name} must be a number`);
-  return value;
-}
-
-function hasFlag(name) {
-  return args.includes(name);
-}
-
 function required(name) {
   const value = take(name);
   if (!value) {
@@ -57,19 +34,6 @@ function required(name) {
     throw new Error(`${name} is required`);
   }
   return value;
-}
-
-function run(command, commandArgs) {
-  const result = spawnSync(command, commandArgs, {
-    stdio: "pipe",
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    process.stderr.write(result.stdout);
-    process.stderr.write(result.stderr);
-    throw new Error(`${command} failed with status ${result.status}`);
-  }
-  return result.stdout;
 }
 
 function ensureTool(command, argsForVersion) {

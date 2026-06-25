@@ -9,10 +9,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-
-const args = process.argv.slice(2);
+import { take, takeNumber, hasFlag, passArg, run } from "./cli.mjs";
 
 function usage() {
   console.error(`Usage:
@@ -31,41 +30,6 @@ Options:
   --no-headless
   --no-remux
 `);
-}
-
-function take(name, fallback = null) {
-  const index = args.indexOf(name);
-  if (index === -1) return fallback;
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
-}
-
-function takeNumber(name, fallback) {
-  const raw = take(name);
-  if (raw == null) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) throw new Error(`${name} must be a number`);
-  return value;
-}
-
-function hasFlag(name) {
-  return args.includes(name);
-}
-
-function run(command, commandArgs) {
-  const result = spawnSync(command, commandArgs, {
-    stdio: "pipe",
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    process.stderr.write(result.stdout);
-    process.stderr.write(result.stderr);
-    throw new Error(`${command} failed with status ${result.status}`);
-  }
-  return result.stdout;
 }
 
 function startChunkServer(chunkDir, audioPath) {
@@ -189,6 +153,113 @@ async function waitForJson(url, timeoutMs = 20_000) {
     await sleep(200);
   }
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+// Capture the canvas to a chunked webm via MediaRecorder, POSTing each timeslice to
+// the chunk server. Restarts the arrangement from t=0 first so the picture aligns
+// with the audio, and samples the render frame rate to confirm the capture was smooth.
+async function captureChunks(page, opts) {
+  const { screenshotPath, composeSeed, particles, durationSec, fps, bitrate, captureDuration, chunkPort } =
+    opts;
+
+  const screenshot = await page.send("Page.captureScreenshot", {
+    format: "png",
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
+  console.log(`preview: ${screenshotPath}`);
+
+  // Restart the arrangement at t=0 right before recording, so the captured picture
+  // begins exactly where generate_piece's audio does (precise alignment).
+  if (composeSeed != null) {
+    await page.send("Runtime.evaluate", {
+      expression: `
+        (async () => {
+          const started = performance.now();
+          while (!window.galacto && performance.now() - started < 10000) {
+            await new Promise((r) => requestAnimationFrame(r));
+          }
+          // Wait for the async engine init before driving it (setters no-op until
+          // ready), then apply the body count so the restart re-seeds at it.
+          if (window.galacto?.whenReady) await window.galacto.whenReady();
+          ${particles != null ? `window.galacto?.setParticleCount(${Number(particles)});` : ""}
+          window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
+          return true;
+        })()
+      `,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+  }
+
+  const postUrl = `http://127.0.0.1:${chunkPort}/chunk`;
+  const recorded = await page.send("Runtime.evaluate", {
+    expression: `
+      (async () => {
+        const canvas = document.getElementById("gpu-canvas");
+        const mime = [
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm"
+        ].find((item) => MediaRecorder.isTypeSupported(item));
+        if (!canvas) throw new Error("No canvas");
+        if (!mime) throw new Error("No supported MediaRecorder WebM mime type");
+        const stream = canvas.captureStream(${fps});
+        const recorder = new MediaRecorder(stream, {
+          mimeType: mime,
+          videoBitsPerSecond: ${bitrate}
+        });
+        let index = 0;
+        const uploads = [];
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            const i = index++;
+            uploads.push(fetch("${postUrl}?i=" + i, { method: "POST", body: event.data }));
+          }
+        };
+        // Sample the render loop's frame rate during capture so the run can confirm
+        // it stayed smooth (and warn if a heavy body count dropped frames).
+        const fpsSamples = [];
+        const fpsTimer = setInterval(() => {
+          const f = window.galacto && window.galacto.fps ? window.galacto.fps() : 0;
+          if (f > 0) fpsSamples.push(+f.toFixed(1));
+        }, 500);
+        const stopped = new Promise((resolve, reject) => {
+          recorder.onerror = () => reject(recorder.error || new Error("MediaRecorder error"));
+          recorder.onstop = async () => {
+            clearInterval(fpsTimer);
+            await Promise.all(uploads);
+            await fetch("${postUrl}?done=1", { method: "POST", body: new Blob([]) });
+            // Drop the first couple of samples while the meter settles.
+            const s = fpsSamples.slice(2);
+            const fpsMin = s.length ? Math.min(...s) : 0;
+            const fpsAvg = s.length ? +(s.reduce((a, b) => a + b, 0) / s.length).toFixed(1) : 0;
+            resolve({ chunks: index, mime, width: canvas.width, height: canvas.height, fpsMin, fpsAvg });
+          };
+        });
+        recorder.start(1000);
+        setTimeout(() => recorder.stop(), ${Math.round(captureDuration * 1000)});
+        return await stopped;
+      })()
+    `,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  const result = recorded.result.value;
+  console.log("recorded:", JSON.stringify(result));
+
+  const { fpsMin, fpsAvg } = result;
+  if (fpsAvg) {
+    // The meter reads rAF cadence, which varies a little over a long run, so allow
+    // some slack before flagging — real GPU stalls show up as a much larger drop.
+    const smooth = fpsMin >= fps * 0.85;
+    console.log(`${smooth ? "✓" : "⚠"} frame rate: ${fpsAvg} avg / ${fpsMin} min (target ${fps})`);
+    if (!smooth) {
+      console.log("  ↳ dropped below target — lower --particles or --fps for a smoother capture.");
+    }
+  }
+  return result;
 }
 
 async function main() {
@@ -355,104 +426,18 @@ async function main() {
       chunkCount = readdirSync(chunkDir).filter((f) => f.endsWith(".part")).length;
       console.log(`reusing ${chunkCount} existing chunks from ${chunkDir}`);
     } else {
-    const screenshot = await page.send("Page.captureScreenshot", {
-      format: "png",
-      captureBeyondViewport: false,
-      fromSurface: true,
-    });
-    writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
-    console.log(`preview: ${screenshotPath}`);
-
-    // Restart the arrangement at t=0 right before recording, so the captured picture
-    // begins exactly where generate_piece's audio does (precise alignment).
-    if (composeSeed != null) {
-      await page.send("Runtime.evaluate", {
-        expression: `
-          (async () => {
-            const started = performance.now();
-            while (!window.galacto && performance.now() - started < 10000) {
-              await new Promise((r) => requestAnimationFrame(r));
-            }
-            // Wait for the async engine init before driving it (setters no-op until
-            // ready), then apply the body count so the restart re-seeds at it.
-            if (window.galacto?.whenReady) await window.galacto.whenReady();
-            ${particles != null ? `window.galacto?.setParticleCount(${Number(particles)});` : ""}
-            window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
-            return true;
-          })()
-        `,
-        awaitPromise: true,
-        returnByValue: true,
+      await captureChunks(page, {
+        screenshotPath,
+        composeSeed,
+        particles,
+        durationSec,
+        fps,
+        bitrate,
+        captureDuration,
+        chunkPort,
       });
-    }
-
-    const postUrl = `http://127.0.0.1:${chunkPort}/chunk`;
-    const recorded = await page.send("Runtime.evaluate", {
-      expression: `
-        (async () => {
-          const canvas = document.getElementById("gpu-canvas");
-          const mime = [
-            "video/webm;codecs=vp9",
-            "video/webm;codecs=vp8",
-            "video/webm"
-          ].find((item) => MediaRecorder.isTypeSupported(item));
-          if (!canvas) throw new Error("No canvas");
-          if (!mime) throw new Error("No supported MediaRecorder WebM mime type");
-          const stream = canvas.captureStream(${fps});
-          const recorder = new MediaRecorder(stream, {
-            mimeType: mime,
-            videoBitsPerSecond: ${bitrate}
-          });
-          let index = 0;
-          const uploads = [];
-          recorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0) {
-              const i = index++;
-              uploads.push(fetch("${postUrl}?i=" + i, { method: "POST", body: event.data }));
-            }
-          };
-          // Sample the render loop's frame rate during capture so the run can confirm
-          // it stayed smooth (and warn if a heavy body count dropped frames).
-          const fpsSamples = [];
-          const fpsTimer = setInterval(() => {
-            const f = window.galacto && window.galacto.fps ? window.galacto.fps() : 0;
-            if (f > 0) fpsSamples.push(+f.toFixed(1));
-          }, 500);
-          const stopped = new Promise((resolve, reject) => {
-            recorder.onerror = () => reject(recorder.error || new Error("MediaRecorder error"));
-            recorder.onstop = async () => {
-              clearInterval(fpsTimer);
-              await Promise.all(uploads);
-              await fetch("${postUrl}?done=1", { method: "POST", body: new Blob([]) });
-              // Drop the first couple of samples while the meter settles.
-              const s = fpsSamples.slice(2);
-              const fpsMin = s.length ? Math.min(...s) : 0;
-              const fpsAvg = s.length ? +(s.reduce((a, b) => a + b, 0) / s.length).toFixed(1) : 0;
-              resolve({ chunks: index, mime, width: canvas.width, height: canvas.height, fpsMin, fpsAvg });
-            };
-          });
-          recorder.start(1000);
-          setTimeout(() => recorder.stop(), ${Math.round(captureDuration * 1000)});
-          return await stopped;
-        })()
-      `,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    console.log("recorded:", JSON.stringify(recorded.result.value));
-    const { fpsMin, fpsAvg } = recorded.result.value;
-    if (fpsAvg) {
-      const smooth = fpsMin >= fps * 0.92;
-      console.log(`${smooth ? "✓" : "⚠"} frame rate: ${fpsAvg} avg / ${fpsMin} min (target ${fps})`);
-      if (!smooth) {
-        console.log(
-          `  ↳ dropped below target — lower --particles or --fps for a smoother capture.`,
-        );
-      }
-    }
-
-    chunkCount = await done;
-    console.log(`chunks received: ${chunkCount}`);
+      chunkCount = await done;
+      console.log(`chunks received: ${chunkCount}`);
     }
 
     // Concatenate the chunks into one webm. MediaRecorder timeslices are valid
@@ -511,10 +496,10 @@ async function main() {
         "scripts/add-video-captions.mjs",
         "--input", muxPath,
         "--output", finalPath,
-        ...(take("--start-title") ? ["--start-title", take("--start-title")] : []),
-        ...(take("--start-subtitle") ? ["--start-subtitle", take("--start-subtitle")] : []),
-        ...(take("--end-title") ? ["--end-title", take("--end-title")] : []),
-        ...(take("--end-subtitle") ? ["--end-subtitle", take("--end-subtitle")] : []),
+        ...passArg("--start-title"),
+        ...passArg("--start-subtitle"),
+        ...passArg("--end-title"),
+        ...passArg("--end-subtitle"),
       ]);
       console.log(`\n✅ Finished piece: ${finalPath}`);
     }
