@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>The Sound of Galacto — a galaxy played as generative music</title>
+    <meta
+      name="description"
+      content="How Galacto turns a live N-body galaxy into a generative ambient soundscape: the synthesis graph, a 0.1 Hz breathing pacer, staying out of the ear's harsh band, mapping the galaxy's dynamics to music, and the research on calm, consonance and awe that shaped every choice."
+    />
+    <link rel="canonical" href="https://galacto.org/audio" />
+    <meta property="og:title" content="The Sound of Galacto — a galaxy played as generative music" />
+    <meta
+      property="og:description"
+      content="The synthesis graph, a 0.1 Hz breathing pacer, the ear's tender 2–5 kHz band, mapping galaxy dynamics to music, and the studies on calm and awe behind Galacto's soundscape."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://galacto.org/audio" />
+    <meta property="og:image" content="https://galacto.org/og-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Sound of Galacto — a galaxy played as generative music" />
+    <meta
+      name="twitter:description"
+      content="Generative synthesis, a 0.1 Hz breathing pacer, the ear's harsh band, galaxy-to-music mapping, and the research on calm and awe."
+    />
+    <meta name="twitter:image" content="https://galacto.org/og-card.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#05060d" />
+    <style>
+      :root {
+        --bg: #05060d;
+        --bg2: #0a0e1c;
+        --panel: rgba(14, 19, 38, 0.66);
+        --border: rgba(141, 162, 255, 0.18);
+        --ink: #d7def5;
+        --ink-dim: #9aa6c8;
+        --head: #f3f6ff;
+        --gold: #ffc97a;
+        --blue: #7aa2f7;
+        --cyan: #79d6ff;
+        --violet: #b794ff;
+        --green: #9ece6a;
+        --maxw: 52rem;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font: 17px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      }
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      nav.top {
+        position: sticky; top: 0; z-index: 10; display: flex; gap: 18px; align-items: center;
+        padding:
+          calc(12px + env(safe-area-inset-top))
+          max(clamp(16px, 5vw, 40px), env(safe-area-inset-right))
+          12px
+          max(clamp(16px, 5vw, 40px), env(safe-area-inset-left));
+        background: rgba(5, 6, 13, 0.72);
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border); font-size: 14px;
+      }
+      nav.top .brand {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-weight: 700; color: var(--head); letter-spacing: 0.02em;
+      }
+      nav.top .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
+      nav.top .spacer { flex: 1; }
+      nav.top a { color: var(--ink-dim); }
+      nav.top a:hover { color: var(--cyan); text-decoration: none; }
+
+      header.hero {
+        position: relative; overflow: hidden;
+        padding: clamp(64px, 12vw, 140px) clamp(16px, 5vw, 40px) clamp(48px, 8vw, 90px); text-align: center;
+        background:
+          radial-gradient(70% 90% at 50% -10%, rgba(183, 148, 255, 0.22), transparent 60%),
+          radial-gradient(50% 70% at 78% 8%, rgba(121, 214, 255, 0.14), transparent 60%),
+          radial-gradient(40% 60% at 22% 0%, rgba(255, 201, 122, 0.10), transparent 60%);
+      }
+      header.hero::before {
+        content: ""; position: absolute; inset: 0; z-index: 0; opacity: 0.5;
+        background-image:
+          radial-gradient(1px 1px at 20% 30%, #fff, transparent),
+          radial-gradient(1px 1px at 70% 20%, #cfe0ff, transparent),
+          radial-gradient(1px 1px at 40% 70%, #fff, transparent),
+          radial-gradient(1px 1px at 85% 60%, #ffe6c0, transparent),
+          radial-gradient(1px 1px at 55% 45%, #fff, transparent),
+          radial-gradient(1px 1px at 12% 80%, #cfe0ff, transparent),
+          radial-gradient(1px 1px at 92% 85%, #fff, transparent),
+          radial-gradient(1.5px 1.5px at 33% 18%, #fff, transparent);
+        background-repeat: no-repeat;
+      }
+      header.hero > * { position: relative; z-index: 1; }
+      .eyebrow { text-transform: uppercase; letter-spacing: 0.22em; font-size: 12px; color: var(--violet); font-weight: 700; margin: 0 0 18px; }
+      header.hero h1 {
+        margin: 0 auto 18px; max-width: 17ch; font-size: clamp(33px, 6.2vw, 58px); line-height: 1.05; letter-spacing: -0.02em; font-weight: 800;
+        background: linear-gradient(180deg, #fff, #b9c6ee); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      header.hero p.lede { margin: 0 auto; max-width: 58ch; font-size: clamp(16px, 2.3vw, 20px); color: var(--ink-dim); }
+
+      main { max-width: var(--maxw); margin: 0 auto; padding: 8px clamp(16px, 5vw, 40px) 80px; }
+      section { padding: 36px 0; border-top: 1px solid rgba(141, 162, 255, 0.10); }
+      section:first-of-type { border-top: 0; }
+      h2 { font-size: clamp(23px, 3.4vw, 30px); color: var(--head); font-weight: 750; letter-spacing: -0.01em; margin: 0 0 6px; scroll-margin-top: 70px; }
+      h2 .num { font-size: 0.62em; color: var(--violet); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 0.6em; opacity: 0.85; }
+      h3 { color: var(--head); font-size: 19px; margin: 28px 0 4px; font-weight: 650; }
+      p { margin: 14px 0; }
+      strong { color: #e9eeff; font-weight: 650; }
+      em { color: #cdd6f4; }
+      ul, ol { padding-left: 1.3em; }
+      li { margin: 9px 0; }
+      .dim { color: var(--ink-dim); }
+      code { font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; font-size: 0.86em; color: var(--gold); background: rgba(255, 201, 122, 0.08); padding: 1px 6px; border-radius: 5px; }
+
+      /* ---- code blocks (self-contained) ---- */
+      figure.code { margin: 22px 0; }
+      figure.code figcaption {
+        display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-dim); padding: 0 4px 8px;
+      }
+      figure.code figcaption .lang {
+        font-family: "SF Mono", ui-monospace, monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+        color: var(--violet); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px;
+      }
+      figure.code figcaption .path { color: var(--ink-dim); }
+      pre {
+        margin: 0; padding: 18px 20px; border-radius: 12px; overflow-x: auto;
+        background: #080b16; border: 1px solid var(--border); border-left: 3px solid var(--violet);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+      pre code {
+        font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+        font-size: 13.5px; line-height: 1.62; color: #c6d0f0; background: none; padding: 0; white-space: pre;
+      }
+      pre code .c { color: #6b7aa8; font-style: italic; } /* comment */
+      pre code .k { color: var(--violet); }                /* keyword */
+      pre code .t { color: var(--cyan); }                  /* type / literal */
+      pre code .f { color: var(--gold); }                  /* fn / attr */
+
+      /* ---- equation block ---- */
+      .eq {
+        margin: 22px 0; padding: 16px 22px; border-radius: 12px;
+        background: linear-gradient(180deg, rgba(183, 148, 255, 0.08), rgba(183, 148, 255, 0.03));
+        border: 1px solid var(--border); border-left: 3px solid var(--violet);
+        font-size: 18px; text-align: center; color: #eaf0ff; overflow-x: auto;
+      }
+      .eq .where { display: block; margin-top: 10px; font-size: 13px; color: var(--ink-dim); }
+      var, .var { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
+
+      /* ---- diagrams (inline SVG) ---- */
+      figure.diagram { margin: 26px 0; }
+      figure.diagram svg {
+        width: 100%; height: auto; display: block; border-radius: 12px;
+        background: linear-gradient(180deg, rgba(122, 162, 247, 0.05), rgba(122, 162, 247, 0.015));
+        border: 1px solid var(--border);
+      }
+      figure.diagram figcaption { font-size: 12.5px; color: var(--ink-dim); padding: 9px 6px 0; text-align: center; }
+      .d-box { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
+      .d-box.send { fill: rgba(183, 148, 255, 0.10); stroke: rgba(183, 148, 255, 0.5); }
+      .d-box.master { fill: rgba(121, 214, 255, 0.08); stroke: rgba(121, 214, 255, 0.45); }
+      .d-box.gal { fill: rgba(255, 201, 122, 0.07); stroke: rgba(255, 201, 122, 0.4); }
+      .d-t { fill: var(--head); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; font-weight: 600; }
+      .d-s { fill: var(--ink-dim); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 11px; }
+      .d-head { fill: var(--ink-dim); font-family: -apple-system, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+      .d-note { fill: var(--gold); font-family: -apple-system, sans-serif; font-size: 11px; font-style: italic; }
+      .d-edge { stroke: var(--blue); stroke-width: 1.4; fill: none; opacity: 0.6; }
+      .d-edge.send { stroke: var(--violet); opacity: 0.7; }
+      .d-wave { stroke: var(--violet); stroke-width: 2.4; fill: none; }
+      .d-axis { stroke: var(--border); stroke-width: 1; }
+      .d-guide { stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.5; }
+
+      /* ---- callouts ---- */
+      .note { margin: 22px 0; padding: 16px 20px; border-radius: 12px; font-size: 15.5px; background: var(--panel); border: 1px solid var(--border); }
+      .note .tag { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; font-weight: 700; margin-bottom: 6px; }
+      .note.key { border-left: 3px solid var(--cyan); } .note.key .tag { color: var(--cyan); }
+      .note.honesty { border-left: 3px solid var(--gold); } .note.honesty .tag { color: var(--gold); }
+      .note p:first-of-type { margin-top: 0; } .note p:last-of-type { margin-bottom: 0; }
+
+      .pill { color: var(--violet); font-weight: 600; }
+
+      /* ---- references ---- */
+      ol.refs { font-size: 14.5px; color: var(--ink-dim); padding-left: 1.5em; }
+      ol.refs li { margin: 10px 0; }
+      ol.refs cite { color: var(--ink); font-style: normal; }
+
+      footer { border-top: 1px solid var(--border); padding: 40px clamp(16px, 5vw, 40px); text-align: center; color: var(--ink-dim); font-size: 14px; }
+      footer a { color: var(--ink-dim); }
+      .crosslink { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px; padding: 10px 18px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--head); font-weight: 600; font-size: 14px; }
+      .crosslink:hover { border-color: var(--violet); text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <nav class="top">
+      <span class="brand"><img class="brand-mark" src="/icons/icon.svg" alt="" width="26" height="26" decoding="async"> Galacto</span>
+      <span class="spacer"></span>
+      <a href="https://galacto.org/">Open the simulator</a>
+      <a href="physics.html">The physics</a>
+      <a href="engineering.html">The engineering</a>
+    </nav>
+
+    <header class="hero">
+      <p class="eyebrow">The sound</p>
+      <h1>A galaxy, played as music</h1>
+      <p class="lede">
+        Galacto's soundscape is not a backing track. It is <em>generated</em>, in real time, from the
+        same simulation you are watching — the gathering mass, the inward collapse, the camera's drift
+        all become sound. This is how the physics is turned into music, and the research on calm,
+        consonance and awe that shaped every choice.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2><span class="num">01</span>A soundscape, not a soundtrack</h2>
+        <p>
+          Every sound you hear is <strong>synthesized on the fly</strong> — oscillators, a noise bed, a
+          code-generated reverb, a feedback delay, a compressor. There are no audio files. Nothing is
+          pre-recorded or looped; if you change the galaxy, the sound changes with it, because the sound
+          <em>is</em> a reading of the galaxy.
+        </p>
+        <p>
+          Two pieces do the work. A pure-Rust <strong>music engine</strong> decides <em>what</em> to play:
+          each frame it takes a <code>GalaxyState</code> — the camera, the live controls, and above all the
+          galaxy's own core dynamics — and emits targets for a drone pad, the surrounding texture, and a
+          sparse stream of notes. A Web Audio layer is the <em>how</em>: it owns the node graph and
+          schedules notes ahead on the audio clock so timing stays sample-accurate even when frames stutter.
+          Keeping the musical logic free of any audio dependency means it can be unit-tested like any other
+          pure function — the same discipline the <a href="physics.html">physics</a> uses.
+        </p>
+        <div class="note key">
+          <span class="tag">The shape of it</span>
+          <p>
+            Visuals → <code>GalaxyState</code> → <em>what to play</em> (pure, testable) → <em>how to play it</em>
+            (Web Audio). The generative seed is fixed, so a given run of the galaxy sounds reproducible — and
+            the very same graph renders a finished piece offline, faster than real time.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2><span class="num">02</span>What the research says about calm and awe</h2>
+        <p>
+          The two feelings the soundscape aims for — deep calm and a sense of <em>awe</em> — are not guesses.
+          Each rests on a finding from psychoacoustics and affective science, and each maps to a concrete
+          decision in the synthesis:
+        </p>
+        <ul>
+          <li><strong>Consonance is the absence of roughness.</strong> Plomp &amp; Levelt showed dissonance is the <em>beating</em> of partials that fall too close together inside a critical band <a href="#r1">[1]</a>. So the pad and starfield are tuned to octaves and fifths, and the scales are consonant — no clustered, beating intervals unless the galaxy is violently colliding.</li>
+          <li><strong>The ear has a tender band at 2–5 kHz.</strong> The equal-loudness contours peak there — it is where we hear most acutely <a href="#r2">[2]</a> — and the sounds people rate most unpleasant cluster in roughly that range <a href="#r3">[3]</a>. So the sparkle is kept <em>below</em> it, and intermittent (see §05).</li>
+          <li><strong>Breathing near 0.1 Hz settles the nervous system.</strong> Slow breathing at about six breaths a minute hits the body's cardiovascular <em>resonance</em>, maximising heart-rate variability and parasympathetic ("rest") tone <a href="#r4">[4]</a><a href="#r5">[5]</a>. So the whole bed swells at exactly 0.1 Hz, a passive pacer (§04).</li>
+          <li><strong>Slow tempi lower arousal.</strong> The note grid sits near a resting heart rate and never turns frantic (§06).</li>
+          <li><strong>Soft onsets avoid the startle reflex.</strong> A sharp, loud attack is an arousal trigger; every note fades in, and the bed has no transients.</li>
+          <li><strong>Awe comes from vastness.</strong> Awe is the response to perceived <em>vastness</em> that asks the mind to accommodate it <a href="#r6">[6]</a>. Sonically that is deep sub-bass, a long cavernous reverb, and a wide stereo field — scale you can hear (§07).</li>
+          <li><strong>No repeating melody.</strong> A hook invites you to track and predict it; a non-repeating wander stays, in Eno's phrase for ambient, "as ignorable as it is interesting" <a href="#r7">[7]</a>. The melody is a slow random walk over the scale, never a tune.</li>
+        </ul>
+        <div class="note honesty">
+          <span class="tag">Honest about the claim</span>
+          <p>
+            These are <em>design heuristics drawn from the literature</em>, applied to a generative art toy —
+            not a clinical or therapeutic instrument. The aim is a soundscape that is pleasant for long,
+            unattended listening and rewards stillness; it is not a medical intervention, and nothing here is
+            a health claim.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2><span class="num">03</span>The instrument: layers and signal flow</h2>
+        <p>
+          The bed is a small ensemble of synth voices feeding one master chain, with three parallel
+          <em>sends</em> that paint the surrounding space. The pad and the starfield share a stereo
+          <strong>field pan</strong> that swings with the camera's orbit; the sub-bass and noise stay centred,
+          so the low end is mono and solid on any system.
+        </p>
+        <figure class="diagram">
+          <svg viewBox="0 0 800 300" role="img" aria-label="Signal flow: synth sources feed a master gain, low-pass and compressor to the output, with reverb, delay and shimmer as parallel sends.">
+            <defs>
+              <marker id="ar1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--blue)" opacity="0.75" /></marker>
+              <marker id="ar1v" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--violet)" opacity="0.85" /></marker>
+            </defs>
+            <text x="14" y="18" class="d-head">SOURCES</text>
+            <!-- source pills -->
+            <g>
+              <rect class="d-box" x="12" y="30" width="150" height="30" rx="8" /><text class="d-t" x="24" y="49">Drone pad</text>
+              <rect class="d-box" x="12" y="66" width="150" height="30" rx="8" /><text class="d-t" x="24" y="85">Starfield ×5</text>
+              <rect class="d-box" x="12" y="102" width="150" height="30" rx="8" /><text class="d-t" x="24" y="121">Sub-bass</text>
+              <rect class="d-box" x="12" y="138" width="150" height="30" rx="8" /><text class="d-t" x="24" y="157">Noise bed</text>
+              <rect class="d-box" x="12" y="174" width="150" height="30" rx="8" /><text class="d-t" x="24" y="193">Notes</text>
+            </g>
+            <!-- mix bus -->
+            <rect x="196" y="30" width="7" height="174" rx="3.5" fill="var(--blue)" opacity="0.4" />
+            <g class="d-edge">
+              <path d="M162,45 H196" marker-end="url(#ar1)" /><path d="M162,81 H196" marker-end="url(#ar1)" />
+              <path d="M162,117 H196" marker-end="url(#ar1)" /><path d="M162,153 H196" marker-end="url(#ar1)" />
+              <path d="M162,189 H196" marker-end="url(#ar1)" />
+            </g>
+            <text x="208" y="26" class="d-note">pad + stars: field pan (orbit) · sub + noise: centred</text>
+            <!-- master chain -->
+            <path class="d-edge" d="M203,117 H236" marker-end="url(#ar1)" />
+            <rect class="d-box master" x="238" y="95" width="120" height="44" rx="9" /><text class="d-t" x="298" y="116" text-anchor="middle">Master gain</text><text class="d-s" x="298" y="131" text-anchor="middle">× breath swell</text>
+            <path class="d-edge" d="M358,117 H390" marker-end="url(#ar1)" />
+            <rect class="d-box master" x="392" y="95" width="118" height="44" rx="9" /><text class="d-t" x="451" y="116" text-anchor="middle">Brightness</text><text class="d-s" x="451" y="131" text-anchor="middle">low-pass</text>
+            <path class="d-edge" d="M510,117 H542" marker-end="url(#ar1)" />
+            <rect class="d-box master" x="544" y="95" width="120" height="44" rx="9" /><text class="d-t" x="604" y="121" text-anchor="middle">Compressor</text>
+            <path class="d-edge" d="M664,117 H700" marker-end="url(#ar1)" />
+            <circle class="d-box" cx="742" cy="117" r="28" /><text class="d-t" x="742" y="122" text-anchor="middle">out</text>
+            <!-- sends -->
+            <rect class="d-box send" x="238" y="232" width="426" height="42" rx="9" />
+            <text class="d-t" x="451" y="252" text-anchor="middle">Reverb · Delay · Shimmer</text>
+            <text class="d-s" x="451" y="267" text-anchor="middle">the “space” — convolver, feedback echo, octave-up sheen</text>
+            <path class="d-edge send" d="M300,139 V232" marker-end="url(#ar1v)" />
+            <path class="d-edge send" d="M604,232 V141" marker-end="url(#ar1v)" />
+            <text x="312" y="200" class="d-s">send</text>
+            <text x="568" y="200" class="d-s">wet return</text>
+          </svg>
+          <figcaption>The synthesis graph: five synth sources mix into a master gain → brightness low-pass → compressor → output, with reverb, delay and shimmer as parallel sends.</figcaption>
+        </figure>
+        <p>
+          The <strong>shimmer</strong> send is a small trick worth showing. Tapping the pad through a
+          <code>2x² − 1</code> transfer curve turns a sine into its octave — a clean frequency doubler — which
+          is then band-passed up into the "air" band and fed to the reverb, for a cosmic sheen that floats
+          over the pad without adding harshness:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the octave-up shimmer shaper</span></figcaption>
+          <pre><code><span class="c">// A 2x² − 1 transfer curve: feed it a sine and out comes its octave.</span>
+<span class="k">fn</span> <span class="f">octave_up_shaper</span>(ctx: &amp;<span class="t">BaseAudioContext</span>) -&gt; <span class="t">WaveShaperNode</span> {
+    <span class="k">let mut</span> curve = [<span class="t">0.0_f32</span>; <span class="t">N</span>];
+    <span class="k">for</span> (i, c) <span class="k">in</span> curve.<span class="f">iter_mut</span>().<span class="f">enumerate</span>() {
+        <span class="k">let</span> x = (i <span class="k">as</span> <span class="t">f32</span> / (<span class="t">N</span> - <span class="t">1</span>) <span class="k">as</span> <span class="t">f32</span>) * <span class="t">2.0</span> - <span class="t">1.0</span>;  <span class="c">// −1..1</span>
+        *c = <span class="t">2.0</span> * x * x - <span class="t">1.0</span>;
+    }
+    <span class="c">// 4× oversampling keeps the doubling clean instead of aliased and gritty.</span>
+    shaper.<span class="f">set_oversample</span>(<span class="t">OverSampleType</span>::<span class="t">N4x</span>);
+}</code></pre>
+        </figure>
+      </section>
+
+      <section>
+        <h2><span class="num">04</span>Breathing at six breaths a minute</h2>
+        <p>
+          The single most direct piece of the relaxation research is the <strong>breathing pacer</strong>.
+          Slow breathing at about six breaths per minute — 0.1 Hz — sits at the body's cardiovascular
+          <em>resonance frequency</em>, where the heartbeat and the breath couple most strongly, driving
+          heart-rate variability and parasympathetic tone to their peak <a href="#r4">[4]</a><a href="#r5">[5]</a>.
+          You cannot make someone breathe; but a slow, regular swell in the sound is a cue people
+          unconsciously fall into step with.
+        </p>
+        <p>
+          So the entire sustained bed rises and falls on a 10-second cycle — a gentle <code>+0.15</code> swell
+          on top of its level:
+        </p>
+        <figure class="diagram">
+          <svg viewBox="0 0 760 168" role="img" aria-label="A slow sine wave at 0.1 hertz, one cycle every ten seconds, swelling the bed level between 0.85 and 1.0.">
+            <line class="d-axis" x1="20" y1="95" x2="744" y2="95" />
+            <line class="d-guide" x1="20" y1="57" x2="744" y2="57" />
+            <line class="d-guide" x1="20" y1="133" x2="744" y2="133" />
+            <text class="d-s" x="748" y="61">1.00</text>
+            <text class="d-s" x="748" y="99">0.92</text>
+            <text class="d-s" x="748" y="137">0.85</text>
+            <path class="d-wave" d="M 20 95 q 60 -76 120 0 t 120 0 t 120 0 t 120 0 t 120 0 t 120 0" />
+            <!-- one-period bracket -->
+            <line class="d-axis" x1="80" y1="150" x2="200" y2="150" />
+            <line class="d-axis" x1="80" y1="146" x2="80" y2="154" />
+            <line class="d-axis" x1="200" y1="146" x2="200" y2="154" />
+            <text class="d-note" x="140" y="165" text-anchor="middle">10 s · 0.1 Hz · ≈ 6 breaths / min</text>
+          </svg>
+          <figcaption>The bed's amplitude swells on a 0.1 Hz sine — a passive breathing pacer at the cardiovascular resonance frequency.</figcaption>
+        </figure>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the pacer, and where it is applied</span></figcaption>
+          <pre><code><span class="c">// ~0.1 Hz — six breaths a minute, the cardiovascular resonance frequency that</span>
+<span class="c">// maximises HRV and parasympathetic ("rest") tone.</span>
+<span class="k">const</span> BREATH_RATE: <span class="t">f32</span> = <span class="t">TAU</span> / <span class="t">10.0</span>;
+<span class="k">fn</span> <span class="f">breathing</span>(t: <span class="t">f32</span>) -&gt; <span class="t">f32</span> { <span class="f">lfo</span>(t, BREATH_RATE, <span class="t">0.0</span>) }   <span class="c">// 0..1</span>
+
+<span class="c">// A gentle amplitude swell on the whole sustained bed (pad + sub):</span>
+<span class="k">let</span> breath = <span class="t">0.85</span> + <span class="t">0.15</span> * <span class="f">breathing</span>(now);
+<span class="f">ramp</span>(&amp;<span class="k">self</span>.drone_gain.<span class="f">gain</span>(), d.gain * breath, now);</code></pre>
+        </figure>
+        <p class="dim">
+          The same 0.1 Hz breath is mirrored, in phase, on the master output gain, so the whole mix — not
+          just the bed — quietly inhales and exhales together.
+        </p>
+      </section>
+
+      <section>
+        <h2><span class="num">05</span>Staying out of the ear's tender band</h2>
+        <p>
+          Early versions had a "starfield" that sat in the 2–5 kHz region and, over minutes, became a
+          fatiguing whine. That band is exactly where human hearing is most sensitive — the equal-loudness
+          contours dip to their lowest there <a href="#r2">[2]</a> — and it overlaps the range of the sounds
+          people rate most aversive <a href="#r3">[3]</a>. A sound can be perfectly in tune and still tire
+          you out simply by living there.
+        </p>
+        <p>
+          The fix is twofold. First, the twinkling voices are tuned to octaves and fifths well
+          <em>below</em> the band, so they stay consonant and warm:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the starfield, kept warm and consonant</span></figcaption>
+          <pre><code><span class="c">// Frequency multipliers for the 5 starfield voices, relative to the low pad</span>
+<span class="c">// root. Octaves and fifths only — consonant — and kept BELOW the ear's tender</span>
+<span class="c">// 2–5 kHz band (these land ≈0.4–1.6 kHz): a bell-like sparkle, never a whine.</span>
+<span class="k">const</span> STAR_MULT: [<span class="t">f32</span>; <span class="t">5</span>] = [<span class="t">8.0</span>, <span class="t">12.0</span>, <span class="t">16.0</span>, <span class="t">24.0</span>, <span class="t">32.0</span>];</code></pre>
+        </figure>
+        <p>
+          Second, each star <em>twinkles</em> — every voice rides its own slow LFO and dips to silence rather
+          than holding a steady tone, because a sustained pure tone is far more wearing than an intermittent
+          one. The shimmer sheen is allowed up into the "air" (a band-pass near 2.6 kHz), but as a brief,
+          reverberant glint rather than a continuous presence, so it reads as space, not stridency.
+        </p>
+      </section>
+
+      <section>
+        <h2><span class="num">06</span>How the galaxy plays the instrument</h2>
+        <p>
+          What makes it feel <em>alive</em> is that the controls of the instrument are the galaxy's own
+          numbers. A small, throttled GPU read-back (the same one the <a href="engineering.html">engineering</a>
+          calls the one sanctioned exception to keeping state on the GPU) returns how much mass has gathered
+          at the core, whether matter is falling in or streaming out, how much it is churning, and whether
+          that motion is <em>organised</em> or random. Those, with the camera and the live sliders, drive the
+          sound:
+        </p>
+        <figure class="diagram">
+          <svg viewBox="0 0 800 392" role="img" aria-label="Mapping from galaxy signals on the left to sound parameters on the right.">
+            <defs>
+              <marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--blue)" opacity="0.6" /></marker>
+            </defs>
+            <text x="150" y="26" class="d-head" text-anchor="middle">THE GALAXY</text>
+            <text x="650" y="26" class="d-head" text-anchor="middle">THE SOUND</text>
+            <!-- rows -->
+            <g>
+              <!-- 1 -->
+              <rect class="d-box gal" x="30" y="50" width="240" height="38" rx="8" /><text class="d-t" x="44" y="74">Core mass gathered</text>
+              <rect class="d-box" x="530" y="50" width="240" height="38" rx="8" /><text class="d-t" x="544" y="74">Pad body · sub-bass · density</text>
+              <path class="d-edge" d="M274,69 H526" marker-end="url(#ar2)" />
+              <!-- 2 -->
+              <rect class="d-box gal" x="30" y="98" width="240" height="38" rx="8" /><text class="d-t" x="44" y="122">Radial flux (in / out)</text>
+              <rect class="d-box" x="530" y="98" width="240" height="38" rx="8" /><text class="d-t" x="544" y="122">Tension · brightness · breath</text>
+              <path class="d-edge" d="M274,117 H526" marker-end="url(#ar2)" />
+              <!-- 3 -->
+              <rect class="d-box gal" x="30" y="146" width="240" height="38" rx="8" /><text class="d-t" x="44" y="170">Core churn</text>
+              <rect class="d-box" x="530" y="146" width="240" height="38" rx="8" /><text class="d-t" x="544" y="170">Reverb depth · note density</text>
+              <path class="d-edge" d="M274,165 H526" marker-end="url(#ar2)" />
+              <!-- 4 -->
+              <rect class="d-box gal" x="30" y="194" width="240" height="38" rx="8" /><text class="d-t" x="44" y="212">Coherence</text><text class="d-s" x="44" y="226">ordered vs random</text>
+              <rect class="d-box" x="530" y="194" width="240" height="38" rx="8" /><text class="d-t" x="544" y="218">Focus ↔ detuned beating</text>
+              <path class="d-edge" d="M274,213 H526" marker-end="url(#ar2)" />
+              <!-- 5 -->
+              <rect class="d-box gal" x="30" y="242" width="240" height="38" rx="8" /><text class="d-t" x="44" y="266">Camera zoom</text>
+              <rect class="d-box" x="530" y="242" width="240" height="38" rx="8" /><text class="d-t" x="544" y="266">Bright &amp; dry ↔ dark &amp; vast</text>
+              <path class="d-edge" d="M274,261 H526" marker-end="url(#ar2)" />
+              <!-- 6 -->
+              <rect class="d-box gal" x="30" y="290" width="240" height="38" rx="8" /><text class="d-t" x="44" y="314">Camera orbit</text>
+              <rect class="d-box" x="530" y="290" width="240" height="38" rx="8" /><text class="d-t" x="544" y="314">Stereo pan across the field</text>
+              <path class="d-edge" d="M274,309 H526" marker-end="url(#ar2)" />
+              <!-- 7 -->
+              <rect class="d-box gal" x="30" y="338" width="240" height="38" rx="8" /><text class="d-t" x="44" y="362">Scenario</text>
+              <rect class="d-box" x="530" y="338" width="240" height="38" rx="8" /><text class="d-t" x="544" y="362">Scale &amp; mode</text>
+              <path class="d-edge" d="M274,357 H526" marker-end="url(#ar2)" />
+            </g>
+          </svg>
+          <figcaption>Each galaxy signal drives a distinct, legible musical voice — so changes on screen are heard, not just seen.</figcaption>
+        </figure>
+        <p>
+          Two of these mappings are worth seeing in code. <strong>Radial flux</strong> makes the pad breathe
+          with the galaxy's own collapse; <strong>coherence</strong> decides whether the voices lock into one
+          clear tone or smear into a wide, beating shimmer — turning the consonance/dissonance dial straight
+          from the physics:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/music.rs — flux and coherence shape the pad</span></figcaption>
+          <pre><code><span class="c">// Radial flux makes the pad *breathe*: matter collapsing inward (flux &lt; 0)</span>
+<span class="c">// lifts it into tension; matter streaming back out (flux &gt; 0) lets it settle.</span>
+<span class="k">let</span> bend = (gravity - <span class="t">0.5</span>) * <span class="t">4.5</span> + (halo - <span class="t">0.5</span>) * <span class="t">1.2</span> - <span class="t">3.4</span> * core_flux;
+
+<span class="c">// Coherence focuses the voices: an organised collapse pulls them into one clear</span>
+<span class="c">// tone; a hot, random core (coherence → 0) detunes them into a wide beating shimmer.</span>
+<span class="k">let</span> churn_detune = core_activity * (<span class="t">6.0</span> + <span class="t">12.0</span> * (<span class="t">1.0</span> - coherence));</code></pre>
+        </figure>
+        <p>
+          The <strong>scenario</strong> sets the musical character: the lone disk and the M51 flyby get serene,
+          consonant modes (a major pentatonic, or Lydian held calm over the drama), while the violent
+          collisions shift to darker, busier modes (Dorian, Phrygian) with more tension in the pad. And the
+          <strong>tempo</strong> follows the research directly — a slow grid near a resting heart rate that
+          never turns frantic, even at full simulation speed:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/music.rs — the note grid stays calm</span></figcaption>
+          <pre><code><span class="c">// ~50 BPM (1.3 s) when calm, easing only to ~85 BPM at full speed — near a</span>
+<span class="c">// resting heart rate, never frantic. Slow tempi are what the studies favour.</span>
+<span class="k">pub fn</span> <span class="f">step_seconds</span>(&amp;<span class="k">self</span>, state: &amp;<span class="t">GalaxyState</span>) -&gt; <span class="t">f64</span> {
+    (<span class="t">1.3</span> - <span class="t">0.6</span> * state.speed.<span class="f">clamp</span>(<span class="t">0.0</span>, <span class="t">1.0</span>)).<span class="f">max</span>(<span class="t">0.7</span>)
+}</code></pre>
+        </figure>
+      </section>
+
+      <section>
+        <h2><span class="num">07</span>Vastness, and the feeling of awe</h2>
+        <p>
+          Calm is only half of it. The other goal is <em>awe</em> — and awe, the research says, is the
+          response to perceived <strong>vastness</strong>, something large enough that the mind has to stretch
+          to take it in <a href="#r6">[6]</a>. There is a sonic vocabulary for vastness: weight at the very
+          bottom, a huge reverberant space, and a wide stereo image. Galacto leans on all three — a deep
+          sub-bass for scale (floored at 36 Hz, below which it is felt by nothing and only muddies the mix), a
+          long convolver reverb, and voices spread hard across the field.
+        </p>
+        <p>
+          The reverb is generated entirely in code, and its realism comes from one detail: the diffuse tail
+          <em>darkens as it decays</em>, because a real hall absorbs high frequencies faster than low ones. A
+          one-pole filter whose cutoff falls over time does exactly that:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the reverb tail, darkening like a real space</span></figcaption>
+          <pre><code><span class="k">let mut</span> lp = <span class="t">0.0</span>;
+<span class="k">for</span> i <span class="k">in</span> <span class="t">0</span>..len {
+    <span class="k">let</span> t = i <span class="k">as</span> <span class="t">f32</span> * dt;
+    <span class="c">// Cutoff closes from bright to dark over ~1 s — highs absorbed first.</span>
+    <span class="k">let</span> cutoff = <span class="t">0.04</span> + <span class="t">0.5</span> * (-t / <span class="t">1.1</span>).<span class="f">exp</span>();
+    lp += cutoff * (<span class="f">noise</span>() - lp);              <span class="c">// one-pole low-pass on the noise</span>
+    buf[i] = lp * (-t / <span class="t">3.2</span>).<span class="f">exp</span>() * onset;  <span class="c">// × long decay, soft onset</span>
+}</code></pre>
+        </figure>
+        <p>
+          Crucially, the dynamics <em>expand slowly</em> — the breath, the swelling core, layers opening as you
+          zoom — rather than arriving as crescendos. Vastness held calm is the whole point: scale without
+          startle.
+        </p>
+      </section>
+
+      <section>
+        <h2><span class="num">08</span>Recording it properly</h2>
+        <p>
+          The same graph that plays live can render a finished piece <strong>offline</strong>, faster than real
+          time and free of any frame-rate glitches, by replaying a recorded timeline of the galaxy through an
+          <code>OfflineAudioContext</code>. What comes out is then mastered by a pure, native-tested DSP module
+          — no Web Audio involved, so it unit-tests like the physics does.
+        </p>
+        <p>
+          Mastering means making the piece translate across earbuds, laptops and big speakers alike. It is
+          measured with the broadcast loudness standard (ITU-R BS.1770 K-weighting), normalised to a streaming
+          target, and held under a true-peak ceiling so nothing clips after lossy encoding:
+        </p>
+        <figure class="code">
+          <figcaption><span class="lang">rust</span><span class="path">src/mastering.rs — the delivery target</span></figcaption>
+          <pre><code><span class="k">impl</span> <span class="t">Default</span> <span class="k">for</span> <span class="t">MasterSettings</span> {
+    <span class="k">fn</span> <span class="f">default</span>() -&gt; <span class="t">Self</span> {
+        <span class="t">Self</span> {
+            sample_rate: <span class="t">48_000</span>,
+            target_lufs: <span class="t">-16.0</span>,        <span class="c">// integrated loudness (BS.1770)</span>
+            true_peak_ceiling_db: <span class="t">-1.0</span>, <span class="c">// oversampled true-peak headroom</span>
+        }
+    }
+}</code></pre>
+        </figure>
+        <p>
+          Around that, the chain sums the very low end to mono (so the sub is solid on any system), trims sub-30 Hz
+          rumble, applies raised-cosine fades, and writes a 24-bit WAV. The result is a finished audiovisual
+          piece — the same arc on screen and in the speakers, rendered from a single seed.
+        </p>
+      </section>
+
+      <section>
+        <h2><span class="num">09</span>What's evidence-based, and what's taste</h2>
+        <p>
+          As with the physics, it is worth being clear about the line between the research-grounded choices and
+          the aesthetic ones.
+        </p>
+        <p><strong>Grounded in the literature:</strong></p>
+        <ul>
+          <li>consonant tuning to avoid critical-band roughness <a href="#r1">[1]</a>;</li>
+          <li>keeping sustained energy out of the 2–5 kHz fatigue band <a href="#r2">[2]</a><a href="#r3">[3]</a>;</li>
+          <li>the 0.1 Hz breathing swell at the cardiovascular resonance <a href="#r4">[4]</a><a href="#r5">[5]</a>;</li>
+          <li>slow tempi and soft note onsets to keep arousal low;</li>
+          <li>sub-bass, long reverb and width to evoke vastness, hence awe <a href="#r6">[6]</a>;</li>
+          <li>a non-repeating melodic wander, in the generative-ambient tradition <a href="#r7">[7]</a>.</li>
+        </ul>
+        <p><strong>Taste, tuned by ear:</strong> the specific scale for each scenario, the exact weighting of every galaxy signal onto every parameter, the timbres of the voices, the length and colour of the reverb, and the overall balance. The science says <em>which dials matter</em>; where to set them is a creative choice.</p>
+        <div class="note key">
+          <span class="tag">The takeaway</span>
+          <p>
+            The sound is a real-time reading of the simulation, shaped by what the research says keeps a
+            listener calm and moved. None of it is pre-recorded, and none of it is random noise dressed up —
+            it is the galaxy, made audible.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2><span class="num">10</span>Sources</h2>
+        <ol class="refs">
+          <li id="r1"><cite>Plomp, R. &amp; Levelt, W. J. M.</cite> (1965). “Tonal Consonance and Critical Bandwidth.” <em>Journal of the Acoustical Society of America</em> 38(4), 548–560.</li>
+          <li id="r2"><cite>ISO 226:2003.</cite> “Acoustics — Normal equal-loudness-level contours.” International Organization for Standardization.</li>
+          <li id="r3"><cite>Kumar, S., von Kriegstein, K., Friston, K. &amp; Griffiths, T. D.</cite> (2012). “Features versus Feelings: Dissociable Representations of the Acoustic Features and Valence of Aversive Sounds.” <em>Journal of Neuroscience</em> 32(41), 14184–14192.</li>
+          <li id="r4"><cite>Lehrer, P. M. &amp; Gevirtz, R.</cite> (2014). “Heart rate variability biofeedback: how and why does it work?” <em>Frontiers in Psychology</em> 5, 756.</li>
+          <li id="r5"><cite>Vaschillo, E. G., Vaschillo, B. &amp; Lehrer, P. M.</cite> (2006). “Characteristics of resonance in heart rate variability stimulated by biofeedback.” <em>Applied Psychophysiology and Biofeedback</em> 31(2), 129–142.</li>
+          <li id="r6"><cite>Keltner, D. &amp; Haidt, J.</cite> (2003). “Approaching awe, a moral, spiritual, and aesthetic emotion.” <em>Cognition &amp; Emotion</em> 17(2), 297–314.</li>
+          <li id="r7"><cite>Eno, B.</cite> (1978). <em>Ambient 1: Music for Airports</em>, sleeve notes — ambient music as “as ignorable as it is interesting.”</li>
+        </ol>
+      </section>
+
+      <p style="text-align: center; margin-top: 24px;">
+        <a class="crosslink" href="physics.html">The physics behind it →</a>
+        &nbsp;
+        <a class="crosslink" href="engineering.html">How it's built →</a>
+      </p>
+    </main>
+
+    <footer>
+      <a class="crosslink" href="https://ko-fi.com/robgilks" target="_blank" rel="noopener noreferrer"><span aria-hidden="true" style="color: var(--gold)">♥</span> Support this project</a>
+      <p>
+        <a href="https://galacto.org/">Open the simulator</a> · <a href="physics.html">The physics</a> ·
+        <a href="engineering.html">The engineering</a> · <a href="https://github.com/tre-systems/galacto">Source on GitHub</a>
+      </p>
+      <p class="dim">Galacto — a GPU-accelerated N-body galaxy sandbox, written in Rust and rendered with WebGPU.</p>
+    </footer>
+  </body>
+</html>
