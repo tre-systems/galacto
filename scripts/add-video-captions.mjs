@@ -127,8 +127,8 @@ function textBlock(lines, { x, y, fontSize, lineHeight, weight = 500 }) {
       font-weight="${weight}"
       fill="#f7f9ff"
       stroke="#02030a"
-      stroke-width="${Math.max(2, Math.round(fontSize * 0.045))}"
-      stroke-opacity="0.55"
+      stroke-width="${Math.max(2, Math.round(fontSize * 0.06))}"
+      stroke-opacity="0.8"
       paint-order="stroke fill"
       letter-spacing="0"
     >${spans}</text>
@@ -139,9 +139,28 @@ function writeCaptionSvg(path, { width, height, title, subtitle, titleY, titleSi
   const subtitleLines = subtitle.split("\n").map((line) => line.trim()).filter(Boolean);
   const titleLines = title.split("\n").map((line) => line.trim()).filter(Boolean);
   const subtitleY = titleY + titleSize * 1.25;
+
+  // A soft dark scrim behind the text — a radial darkening that fades to nothing at
+  // the edges — so the white caption stays legible even over the galaxy's bright core
+  // or bloom, without a hard box. It fades in/out with the caption overlay.
+  const scrimTop = titleY - titleSize * (1.0 + (titleLines.length - 1) * 1.15);
+  const scrimBottom =
+    subtitleY + (subtitleLines.length - 1) * subtitleSize * 1.35 + subtitleSize * 0.7;
+  const scrimCy = (scrimTop + scrimBottom) / 2;
+  const scrimRy = (scrimBottom - scrimTop) / 2 + titleSize * 0.7;
+  const scrimRx = width * 0.44;
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <defs>
+    <radialGradient id="scrim" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#01020a" stop-opacity="0.8"/>
+      <stop offset="55%" stop-color="#01020a" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#01020a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
   <rect width="100%" height="100%" fill="none"/>
+  <ellipse cx="${width / 2}" cy="${scrimCy}" rx="${scrimRx}" ry="${scrimRy}" fill="url(#scrim)"/>
   <g opacity="0.98">
     ${textBlock(titleLines, {
       x: width / 2,
@@ -224,7 +243,8 @@ try {
       height: meta.height,
       title: startTitle,
       subtitle: startSubtitle,
-      titleY: meta.height * 0.66,
+      // Lower third — clear of the galaxy's bright centre.
+      titleY: meta.height * 0.72,
       titleSize,
       subtitleSize,
     });
@@ -240,7 +260,8 @@ try {
       height: meta.height,
       title: endTitle,
       subtitle: endSubtitle,
-      titleY: meta.height * 0.38,
+      // Upper third — clear of the galaxy's bright centre.
+      titleY: meta.height * 0.28,
       titleSize,
       subtitleSize,
     });
