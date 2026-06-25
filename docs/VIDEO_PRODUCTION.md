@@ -333,8 +333,10 @@ upload bitrates in the 66-85 Mbps range:
 
 ## Direct Audio Export Design
 
-A self-contained audio export already ships in the app: **Record** captures the live
-`GalaxyState` timeline, and **Export** rebuilds the same node graph on an
+A self-contained audio export already ships as a **local-only Studio export panel**
+(revealed only when the page is served from localhost, so it stays off the public
+site): **Record** captures the live `GalaxyState` timeline, and **Export** rebuilds
+the same node graph on an
 `OfflineAudioContext`, replays the timeline through it (faster than real time,
 glitch-free), and runs the result through the pure-Rust master in `src/mastering.rs`
 (subsonic high-pass, mono bass, BS.1770 loudness to a target LUFS, a −1 dBTP

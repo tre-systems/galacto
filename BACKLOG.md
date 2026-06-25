@@ -48,7 +48,7 @@ The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the vis
 
 ## Production export
 
-The in-app **mastered WAV export** (Record → Export in the panel; `audio::render_offline` replays a captured `GalaxyState` timeline through the shared `Graph` on an `OfflineAudioContext`, then `mastering.rs` masters it to a target LUFS under a −1 dBTP ceiling) covers self-contained audio delivery. The remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)) want direct media beyond browser screen capture:
+The **mastered WAV export** — a local-only Studio export panel (revealed only when served from localhost, so it stays off the public site; `audio::render_offline` replays a captured `GalaxyState` timeline through the shared `Graph` on an `OfflineAudioContext`, then `mastering.rs` masters it to a target LUFS under a −1 dBTP ceiling) — covers self-contained audio delivery. The remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)) want direct media beyond browser screen capture:
 
 - **Stems + MIDI for a DAW.** Export the pure `MusicEngine`'s note events and automation curves (MIDI/JSON) plus per-layer stems, so a track can be re-synthesised with studio instruments and mastered by ear — a higher quality ceiling than the automatic in-app master, for a deliberate release. **Effort: M.**
 - **Recording mode (video).** Hide UI, lock a camera path/timeline, and add clean start/end fades so browser capture can make a decent proof cut. **Effort: S.**

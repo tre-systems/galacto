@@ -276,41 +276,6 @@
             🔊
           </button>
         </div>
-        <div
-          class="control-group"
-          role="group"
-          aria-labelledby="export-group-label"
-        >
-          <div class="group-label" id="export-group-label">Record &amp; export</div>
-          <div class="control">
-            <label for="record-btn">Record</label>
-            <button
-              id="record-btn"
-              type="button"
-              class="rec-btn"
-              aria-pressed="false"
-            >
-              ● Rec
-            </button>
-            <span id="record-readout" class="export-readout">0:00</span>
-          </div>
-          <div class="control">
-            <label for="export-target">Loudness</label>
-            <select id="export-target">
-              <option value="-16" selected>Ambient · −16</option>
-              <option value="-14">Streaming · −14</option>
-              <option value="-18">Dynamic · −18</option>
-            </select>
-          </div>
-          <div class="control">
-            <label for="export-btn">Export</label>
-            <button id="export-btn" type="button" class="export-btn" disabled>
-              Export WAV
-            </button>
-            <span id="export-status" class="export-readout"></span>
-          </div>
-          <p id="export-report" class="export-report" hidden></p>
-        </div>
         <div class="panel-footer">
           <!-- Row 1: quiet links to the illustrated docs. Same-window navigation keeps
                them inside the installed iOS PWA instead of opening a Done-sheet browser. -->
@@ -361,6 +326,47 @@
       <span class="update-text">A new version is available.</span>
       <button id="update-reload" type="button">Reload</button>
       <button id="update-dismiss" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
+    </div>
+
+    <!-- Studio export: an authoring tool to record a take and render a mastered WAV.
+         Kept off the public site — the init script only unhides it on localhost.
+         Pinned top-right (opposite the cog) and collapsible via its header. -->
+    <div id="export-panel" class="export-panel" hidden>
+      <button
+        id="export-toggle"
+        class="export-panel-header"
+        type="button"
+        aria-expanded="true"
+        aria-controls="export-body"
+      >
+        <span class="export-panel-title">
+          Studio export <span class="export-local-tag">local</span>
+        </span>
+        <span class="export-caret" aria-hidden="true">▾</span>
+      </button>
+      <div id="export-body" class="export-body">
+        <p class="export-hint">
+          Record the live galaxy, then render a mastered WAV offline.
+        </p>
+        <div class="export-row">
+          <button id="record-btn" type="button" class="rec-btn" aria-pressed="false">
+            ● Rec
+          </button>
+          <span id="record-readout" class="export-readout">0:00</span>
+          <select id="export-target" aria-label="Loudness target">
+            <option value="-16" selected>−16 LUFS · ambient</option>
+            <option value="-14">−14 LUFS · streaming</option>
+            <option value="-18">−18 LUFS · dynamic</option>
+          </select>
+        </div>
+        <div class="export-row">
+          <button id="export-btn" type="button" class="export-btn" disabled>
+            Export WAV
+          </button>
+          <span id="export-status" class="export-readout"></span>
+        </div>
+        <p id="export-report" class="export-report" hidden></p>
+      </div>
     </div>
 
     <script type="module">
@@ -521,7 +527,12 @@
           setupGlowControl(mod);
           setupVolumeControl(mod);
           setupMuteButton(mod);
-          setupExport(mod);
+          // The WAV export is an authoring tool, not for casual visitors: only wire
+          // it up (and reveal its panel) when the page is served locally.
+          if (isLocalHost()) {
+            document.getElementById("export-panel").hidden = false;
+            setupExport(mod);
+          }
           setupRestartButton(mod);
           setupAutoSound(mod);
           setupInfoButtons();
@@ -878,8 +889,6 @@
             "How far each star's soft halo reaches around its bright central point. The core stays crisp; turning this up spreads a fainter glow further out and opens the soundscape brightness/echo. It never touches the simulation or its speed.",
           "volume-slider":
             "Loudness of the generative soundscape, which is synthesized live and driven by the galaxy's own core dynamics.",
-          "export-target":
-            "Press Record and let it play (autopilot drives the camera and the galaxy evolves), then Export to render a mastered 24-bit / 48 kHz WAV — rendered offline so it's glitch-free, with subsonic filtering, mono bass, loudness normalisation, and a true-peak limit applied automatically. The loudness target sets the integrated LUFS: −16 keeps ambient dynamics, −14 matches streaming normalisation, −18 stays more dynamic. All true-peak-limited to −1 dBTP for clean streaming.",
         };
 
         const pop = document.createElement("div");
@@ -1104,6 +1113,20 @@
         apply();
       }
 
+      // Is the page served locally (dev) rather than from the public site? Used to
+      // keep the authoring-only WAV export off galacto.org.
+      function isLocalHost() {
+        const h = location.hostname;
+        return (
+          h === "localhost" ||
+          h === "127.0.0.1" ||
+          h === "0.0.0.0" ||
+          h === "::1" ||
+          h === "[::1]" ||
+          h.endsWith(".local")
+        );
+      }
+
       // Record & export: capture the live GalaxyState timeline while the autopilot
       // plays, then render it offline (faster than real time, glitch-free) into a
       // mastered 24-bit / 48 kHz WAV and download it, with a quality report. The
@@ -1118,6 +1141,14 @@
         const targetSel = document.getElementById("export-target");
         let recording = false;
         let timer = null;
+
+        // Minimise / restore the panel from its header.
+        const panel = document.getElementById("export-panel");
+        const toggle = document.getElementById("export-toggle");
+        toggle.addEventListener("click", () => {
+          const collapsed = panel.classList.toggle("collapsed");
+          toggle.setAttribute("aria-expanded", String(!collapsed));
+        });
 
         const fmt = (s) => {
           const m = Math.floor(s / 60);
