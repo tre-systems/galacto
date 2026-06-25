@@ -434,8 +434,8 @@ pub fn master(
     // camera-orbit pan that didn't average out over a short take). Capped so a
     // genuinely panned mix isn't forced to mono.
     balance_stereo(&mut l, &mut r);
-    // 1. Subsonic high-pass (~36 Hz) clears the infrasonic energy that nothing
-    // reproduces and that only wastes headroom.
+    // 1. Subsonic high-pass (~36 Hz) clears the very low energy that common
+    // playback systems reproduce poorly and that mostly spends headroom on rumble.
     let hp = rbj_highpass(sr, 36.0, 0.707);
     hp.process(&mut l);
     hp.process(&mut r);

@@ -18,8 +18,8 @@
 //!                                       (tap) └▶ shimmer shaper ─▶ BP ─▶ shimmer ─▶ reverb in
 //!   star oscs ─▶ voice gains ─▶ star LP ─▶ star gain ───┘ (field pan) │
 //!   sub osc ─▶ sub LP ─▶ sub gain ──────────────────────────────────┐│
-//!   noise src ─▶ noise LP ─▶ noise gain ────────────────────────────┤│
-//!   note osc ─▶ env ─▶ panner ───────────────────────────────────────┼─▶ master gain ─▶ master LP ─▶ comp ─▶ out
+//!   noise src ─▶ noise LPs ─▶ noise gain ───────────────────────────┤│
+//!   note osc ─▶ env ─▶ panner ───────────────────────────────────────┼─▶ master gain ─▶ saturator ─▶ master LP ─▶ comp ─▶ breath ─▶ out
 //!                          ├─▶ reverb in ─▶ convolver ─▶ reverb LP ─▶ reverb wet ─┤
 //!                          └─▶ delay in ─▶ delay ⇄ feedback ─▶ delay wet ─────────┘
 //! ```
@@ -52,9 +52,9 @@ pub const ENGINE_SEED: u64 = 0x6A1AC701;
 /// Extra seconds rendered past the recorded timeline so the reverb/echo tail rings
 /// out instead of being chopped off at the end of an export.
 const EXPORT_TAIL_SEC: f64 = 6.0;
-/// Breathing-pacer rate (rad/s): a ~0.1 Hz / 10 s swell on the sustained bed, the
-/// cardiovascular resonance frequency (≈6 breaths per minute) that maximises HRV
-/// and parasympathetic tone — a passive cue that gently slows the listener's breath.
+/// Breathing-cue rate (rad/s): a ~0.1 Hz / 10 s swell on the sustained bed, near
+/// the cardiovascular resonance frequency used in voluntary HRV breathing. This is
+/// a calm design cue, not a measured biofeedback loop.
 const BREATH_RATE: f32 = std::f32::consts::TAU / 10.0;
 
 /// High twinkling "starfield" voices. Each is an oscillator tuned to an upper
@@ -62,9 +62,9 @@ const BREATH_RATE: f32 = std::f32::consts::TAU / 10.0;
 const STAR_VOICES: usize = 5;
 /// Frequency multipliers (relative to the lowest pad voice, ~2 octaves below the
 /// root) for the starfield — octaves and fifths above the root, so it stays
-/// consonant and tracks the scenario/gravity as the pad retunes. Kept below the
-/// ear's fatiguing 2–5 kHz sensitivity peak (≈0.4–1.6 kHz at the default root): a
-/// warm, bell-like sparkle rather than a piercing whine.
+/// consonant and tracks the scenario/gravity as the pad retunes. The actual
+/// oscillator values are clamped below 2.2 kHz, keeping sustained sparkle below the
+/// ear's most sensitive upper-mid presence region.
 const STAR_MULT: [f32; STAR_VOICES] = [8.0, 12.0, 16.0, 24.0, 32.0];
 
 /// Depth (cents) of the slow per-voice "analog drift" on the drone oscillators — a
@@ -123,7 +123,7 @@ impl Graph {
         let master_lp = lowpass(ctx, 1400.0, 0.7)?;
         let comp = compressor(ctx)?;
         // Post-compressor breath gain: a gentle ~0.1 Hz swell of the whole output so
-        // the breathing pacer is coherent across the entire mix (placed after the
+        // the breathing cue is coherent across the entire mix (placed after the
         // compressor so the swell isn't squashed). Starts at unity.
         let breath_gain = gain(ctx, 1.0)?;
         connect(&master_gain, &saturator);
@@ -309,9 +309,8 @@ impl Graph {
     /// Glide the pad (voices, brightness, detune, level) and the sub-bass toward this
     /// frame's [`DroneTarget`]. `on` gates the sources silent (live, while disabled).
     fn apply_drone(&self, d: &DroneTarget, on: bool, now: f64) {
-        // A slow ~0.1 Hz (6 breaths/min) amplitude swell on the sustained bed — the
-        // cardiovascular resonance frequency — a passive breathing pacer that nudges
-        // the listener toward slow, parasympathetic breathing.
+        // A slow ~0.1 Hz (6 breaths/min) amplitude swell on the sustained bed — near
+        // the common voluntary HRV-breathing resonance, offered here as a calm cue.
         let breath = 0.85 + 0.15 * breathing(now as f32);
         for (i, osc) in self.drone_oscs.iter().enumerate() {
             ramp(&osc.frequency(), d.freqs[i], now);
@@ -330,8 +329,9 @@ impl Graph {
         );
         ramp(
             &self.sub_osc.frequency(),
-            // Floor at 36 Hz: below that it's infrasonic — felt by nothing, reproduced
-            // by nothing, and just wasted headroom that darkens the balance.
+            // Floor at 36 Hz: lower fundamentals are poorly reproduced by many
+            // consumer systems and mostly spend headroom on rumble rather than useful
+            // musical weight.
             (d.freqs[0] * 0.5).clamp(36.0, 120.0),
             now,
         );
@@ -359,8 +359,8 @@ impl Graph {
         for (osc, mult) in self.star_oscs.iter().zip(STAR_MULT) {
             ramp(
                 &osc.frequency(),
-                // Hold the sparkle below the ear's fatiguing 2–5 kHz peak, even when
-                // the pad pitch bends up.
+                // Hold the sparkle below the ear's most sensitive upper-mid presence
+                // region, even when the pad pitch bends up.
                 (d.freqs[0] * mult).clamp(120.0, 2200.0),
                 now,
             );
@@ -375,7 +375,7 @@ impl Graph {
 
     /// Whole-mix brightness from zoom (close = bright, far = muffled), plus the
     /// coherent ~0.1 Hz breath: a gentle swell of the whole output and a matching
-    /// softening of the cutoff, so the entire mix breathes together as the pacer.
+    /// softening of the cutoff, so the entire mix breathes together.
     fn apply_master_brightness(&self, cutoff_hz: f32, now: f64) {
         let b = breathing(now as f32);
         ramp(
@@ -741,8 +741,8 @@ fn lfo(t: f32, rate: f32, phase: f32) -> f32 {
     0.5 + 0.5 * (t * rate + phase).sin()
 }
 
-/// The breathing-pacer LFO in 0..1 at [`BREATH_RATE`] (~0.1 Hz, 6 breaths/min) — the
-/// cardiovascular resonance frequency that maximises HRV and parasympathetic tone.
+/// The breathing-cue LFO in 0..1 at [`BREATH_RATE`] (~0.1 Hz, 6 breaths/min), near
+/// the common voluntary HRV-breathing resonance.
 fn breathing(t: f32) -> f32 {
     lfo(t, BREATH_RATE, 0.0)
 }

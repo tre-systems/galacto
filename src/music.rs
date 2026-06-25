@@ -157,11 +157,14 @@ pub struct GalaxyState {
     pub paused: bool,
 }
 
-/// A4 (MIDI 69) = 432 Hz — the slightly-lower reference favoured across ambient
-/// and meditation music; it sits a touch warmer than concert pitch (440 Hz).
+/// A4 (MIDI 69) = 440 Hz, the standard MIDI/concert-pitch anchor. The soundscape's
+/// warmth comes from voicing, filtering, and dynamics rather than from a nonstandard
+/// tuning reference.
+const A4_HZ: f32 = 440.0;
+
 /// Monotonic, with +12 semitones doubling the frequency.
 pub fn midi_to_hz(midi: f32) -> f32 {
-    432.0 * 2.0_f32.powf((midi - 69.0) / 12.0)
+    A4_HZ * 2.0_f32.powf((midi - 69.0) / 12.0)
 }
 
 // Scale degrees as semitone offsets within one octave. The engine wraps an
@@ -428,8 +431,7 @@ impl MusicEngine {
 
     /// Seconds between note-grid steps. Kept in the slow, meditative tempo range
     /// (~50 BPM / 1.3 s when calm, easing only to ~85 BPM / 0.7 s at full speed) so
-    /// the soundscape never turns frantic — slow tempi near a resting heart rate are
-    /// what the relaxation studies favour.
+    /// the soundscape never turns frantic — slow tempo is the useful arousal lever.
     pub fn step_seconds(&self, state: &GalaxyState) -> f64 {
         (1.3 - 0.6 * state.speed.clamp(0.0, 1.0)).max(0.7) as f64
     }
@@ -554,9 +556,9 @@ mod tests {
 
     #[test]
     fn midi_to_hz_anchors_and_octaves() {
-        assert!((midi_to_hz(69.0) - 432.0).abs() < 1e-3);
-        assert!((midi_to_hz(81.0) - 864.0).abs() < 1e-2);
-        assert!((midi_to_hz(57.0) - 216.0).abs() < 1e-2);
+        assert!((midi_to_hz(69.0) - 440.0).abs() < 1e-3);
+        assert!((midi_to_hz(81.0) - 880.0).abs() < 1e-2);
+        assert!((midi_to_hz(57.0) - 220.0).abs() < 1e-2);
     }
 
     #[test]

@@ -164,11 +164,6 @@
       }
       figure.diagram figcaption { font-size: 12.5px; color: var(--ink-dim); padding: 9px 6px 0; text-align: center; }
 
-      /* ---- video embed ---- */
-      figure.video { margin: 26px 0; }
-      .video-wrap { position: relative; padding-bottom: 56.25%; height: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #000; }
-      .video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-      figure.video figcaption { font-size: 12.5px; color: var(--ink-dim); padding: 9px 6px 0; text-align: center; }
       .d-box { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
       .d-box.send { fill: rgba(183, 148, 255, 0.10); stroke: rgba(183, 148, 255, 0.5); }
       .d-box.master { fill: rgba(121, 214, 255, 0.08); stroke: rgba(121, 214, 255, 0.45); }
@@ -249,19 +244,6 @@
             the very same graph renders a finished piece offline, faster than real time.
           </p>
         </div>
-        <figure class="video">
-          <div class="video-wrap">
-            <iframe
-              src="https://www.youtube-nocookie.com/embed/BYSD40vCUnA"
-              title="Galacto — a ten-minute composed audiovisual piece"
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerpolicy="strict-origin-when-cross-origin"
-              allowfullscreen
-            ></iframe>
-          </div>
-          <figcaption>A ten-minute composed piece — the visuals and this soundscape rendered together from one seed. Press play and read on.</figcaption>
-        </figure>
       </section>
 
       <section>
@@ -276,8 +258,8 @@
         <ul>
           <li><strong>Consonance, mostly.</strong> In the classic psychoacoustic account, Plomp &amp; Levelt (1965) modelled <em>sensory</em> dissonance as the roughness of partials beating within a critical band — which consonant intervals tend to avoid <a href="#r1">[1]</a>. It is <em>one</em> factor among several: later work finds harmonicity and cultural familiarity matter at least as much <a href="#r2">[2]</a><a href="#r3">[3]</a>. The pad and starfield are tuned to octaves and fifths, which read as consonant on all of these accounts; the violent collisions deliberately let tension in.</li>
           <li><strong>Keep clear of the ear's most sensitive band.</strong> Hearing is most acute in the low kHz, with the threshold reaching its minimum around <strong>3–4 kHz</strong> (an ear-canal resonance) <a href="#r4">[4]</a>; energy up there also drives perceived <em>sharpness</em>, a known contributor to acoustic annoyance <a href="#r5">[5]</a>. So the sparkle sits <em>below</em> that band, and twinkles rather than holds (§05).</li>
-          <li><strong>A slow, regular swell.</strong> Voluntary breathing near six breaths a minute (~0.1 Hz) is, for most people, close to a cardiovascular <em>resonance</em> where heart rate and breath reinforce each other, producing large heart-rate swings (high HRV) and strong cardiac-vagal activity <a href="#r6">[6]</a><a href="#r7">[7]</a>. The bed swells at 0.1 Hz as a gentle pacer — an invitation, not a proven reflex (§04).</li>
-          <li><strong>Slow tempo.</strong> Faster musical tempo reliably <em>raises</em> arousal; slower lowers it <a href="#r10">[10]</a><a href="#r11">[11]</a>. So the note grid stays slow (§06).</li>
+          <li><strong>A slow, regular swell.</strong> Voluntary breathing near six breaths a minute (~0.1 Hz) is, for most people, close to a cardiovascular <em>resonance</em> where heart rate and breath reinforce each other, producing large heart-rate swings (high HRV) and strong cardiac-vagal activity <a href="#r6">[6]</a><a href="#r7">[7]</a>. The bed swells at 0.1 Hz as a gentle cue — an invitation, not a proven reflex (§04).</li>
+          <li><strong>Slow tempo.</strong> Faster musical tempo tends to <em>raise</em> arousal; slower or meditative music tends to lower it <a href="#r10">[10]</a><a href="#r11">[11]</a>. So the note grid stays slow (§06).</li>
           <li><strong>Soft onsets.</strong> The acoustic startle reflex is triggered by sudden, fast-rising onsets, and lengthening the rise time suppresses it <a href="#r12">[12]</a>. So every note fades in and the bed has no transients.</li>
           <li><strong>A reach for scale.</strong> Awe is the response to perceived <em>vastness</em> that the mind must stretch to accommodate <a href="#r13">[13]</a>. The design reaches for sonic spaciousness — reverberant depth and width — to <em>suggest</em> that scale, though linking these textures to the emotion itself is a hypothesis, not a result (§07).</li>
           <li><strong>No melody to track.</strong> Ambient music, in Eno's framing, should be "as ignorable as it is interesting" <a href="#r16">[16]</a>; the melody is a low-surprise random walk over the scale, never a hook.</li>
@@ -408,8 +390,8 @@
         </figure>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the swell, and where it is applied</span></figcaption>
-          <pre><code><span class="c">// ~0.1 Hz — six breaths a minute, near the cardiovascular resonance frequency</span>
-<span class="c">// (large HRV swings, strong cardiac-vagal activity when you breathe with it).</span>
+          <pre><code><span class="c">// ~0.1 Hz — six breaths a minute, near voluntary HRV-breathing resonance.</span>
+<span class="c">// A calm design cue, not a measured biofeedback loop.</span>
 <span class="k">const</span> BREATH_RATE: <span class="t">f32</span> = <span class="t">TAU</span> / <span class="t">10.0</span>;
 <span class="k">fn</span> <span class="f">breathing</span>(t: <span class="t">f32</span>) -&gt; <span class="t">f32</span> { <span class="f">lfo</span>(t, BREATH_RATE, <span class="t">0.0</span>) }   <span class="c">// 0..1</span>
 
@@ -435,7 +417,7 @@
       </section>
 
       <section>
-        <h2><span class="num">05</span>Staying out of the ear's tender band</h2>
+        <h2><span class="num">05</span>Staying below the ear's most sensitive band</h2>
         <p>
           Early versions had a starfield up in the low-kHz region that, over minutes, became a fatiguing
           whine. That is the most sensitive part of human hearing: the threshold of hearing reaches its
@@ -559,14 +541,14 @@
           The <strong>scenario</strong> sets the musical character: the lone disk and the M51 flyby get serene,
           consonant modes (a major pentatonic, or Lydian held calm over the drama), while the violent
           collisions shift to darker, busier modes (Dorian, Phrygian) with more tension in the pad. And the
-          <strong>tempo</strong> follows the research directly — slower tempo reliably lowers arousal
-          <a href="#r10">[10]</a>, so the grid stays slow (~50–85 events per minute) and never turns frantic,
+          <strong>tempo</strong> follows the research directly — faster tempo tends to raise arousal
+          <a href="#r10">[10]</a><a href="#r11">[11]</a>, so the grid stays slow (~50–85 events per minute) and never turns frantic,
           even at full simulation speed:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/music.rs — the note grid stays calm</span></figcaption>
           <pre><code><span class="c">// ~50 BPM (1.3 s) when calm, easing only to ~85 BPM at full speed — slow and</span>
-<span class="c">// never frantic. Slower tempo reliably lowers arousal, which the studies favour.</span>
+<span class="c">// never frantic. Slow tempo is the useful arousal lever.</span>
 <span class="k">pub fn</span> <span class="f">step_seconds</span>(&amp;<span class="k">self</span>, state: &amp;<span class="t">GalaxyState</span>) -&gt; <span class="t">f64</span> {
     (<span class="t">1.3</span> - <span class="t">0.6</span> * state.speed.<span class="f">clamp</span>(<span class="t">0.0</span>, <span class="t">1.0</span>)).<span class="f">max</span>(<span class="t">0.7</span>)
 }</code></pre>
@@ -581,7 +563,7 @@
           mind has to stretch to take it in <a href="#r13">[13]</a>. There's a real perceptual hook to reach
           for: reverberation and stereo width genuinely shape how large and distant a space <em>sounds</em>.
           So the design leans on spaciousness — a long reverb, voices spread wide, weight at the bottom
-          (a sub-bass floored at 36 Hz, below which it is felt by nothing and only muddies the mix) — to
+          (a sub-bass floored at 36 Hz, below which many playback systems mostly spend headroom on rumble) — to
           <em>suggest</em> that scale.
         </p>
         <p>
@@ -662,13 +644,13 @@
         <ul>
           <li>consonant tuning to reduce critical-band roughness — one factor in consonance, alongside harmonicity and cultural familiarity <a href="#r1">[1]</a><a href="#r2">[2]</a><a href="#r3">[3]</a>;</li>
           <li>keeping sustained energy below the most sensitive part of hearing (~3–4 kHz), where sharpness drives annoyance <a href="#r4">[4]</a><a href="#r5">[5]</a>;</li>
-          <li>a slow tempo, because faster tempo reliably raises arousal <a href="#r10">[10]</a><a href="#r11">[11]</a>;</li>
+          <li>a slow tempo, because faster tempo tends to raise arousal <a href="#r10">[10]</a><a href="#r11">[11]</a>;</li>
           <li>soft, slow note onsets, because fast-rising onsets trigger the startle reflex <a href="#r12">[12]</a>;</li>
           <li>0.1 Hz as the swell rate — the resonance of <em>voluntary</em> slow breathing <a href="#r6">[6]</a><a href="#r7">[7]</a>.</li>
         </ul>
         <p><strong>Design hypotheses — plausible, not established:</strong></p>
         <ul>
-          <li>that a passive amplitude swell paces the listener's breath; the sound→breathing evidence is for tempo/rhythm and active recitation, not a loudness envelope <a href="#r8">[8]</a><a href="#r9">[9]</a>;</li>
+          <li>that a passive amplitude swell would pace the listener's breath; the sound→breathing evidence is for tempo/rhythm and active recitation, not a loudness envelope <a href="#r8">[8]</a><a href="#r9">[9]</a>;</li>
           <li>that reverberant depth, width and sub-bass evoke <em>awe</em> specifically; they shape perceived space, but the emotional link isn't demonstrated and the evidence on long reverb and heavy lows is mixed at best <a href="#r13">[13]</a><a href="#r14">[14]</a><a href="#r15">[15]</a>;</li>
           <li>a non-repeating melodic wander, in the generative-ambient tradition <a href="#r16">[16]</a>.</li>
         </ul>
@@ -686,22 +668,22 @@
       <section>
         <h2><span class="num">10</span>Sources</h2>
         <ol class="refs">
-          <li id="r1"><cite>Plomp, R. &amp; Levelt, W. J. M.</cite> (1965). “Tonal Consonance and Critical Bandwidth.” <em>Journal of the Acoustical Society of America</em> 38(4), 548–560.</li>
-          <li id="r2"><cite>McDermott, J. H., Lehr, A. J. &amp; Oxenham, A. J.</cite> (2010). “Individual Differences Reveal the Basis of Consonance.” <em>Current Biology</em> 20(11), 1035–1041.</li>
-          <li id="r3"><cite>McDermott, J. H., Schultz, A. F., Undurraga, E. A. &amp; Godoy, R. A.</cite> (2016). “Indifference to dissonance in native Amazonians reveals cultural variation in music perception.” <em>Nature</em> 535, 547–550.</li>
-          <li id="r4"><cite>ISO 226:2023</cite>, “Acoustics — Normal equal-loudness-level contours” (Int'l Org. for Standardization); see also Moore, B. C. J., <em>An Introduction to the Psychology of Hearing</em>, on the ~3–4 kHz threshold minimum.</li>
-          <li id="r5"><cite>Fastl, H. &amp; Zwicker, E.</cite> (2007). <em>Psychoacoustics: Facts and Models</em> (3rd ed.), Springer — on sharpness and psychoacoustic annoyance.</li>
-          <li id="r6"><cite>Lehrer, P. M. &amp; Gevirtz, R.</cite> (2014). “Heart rate variability biofeedback: how and why does it work?” <em>Frontiers in Psychology</em> 5, 756.</li>
-          <li id="r7"><cite>Vaschillo, E. G., Vaschillo, B. &amp; Lehrer, P. M.</cite> (2006). “Characteristics of resonance in heart rate variability stimulated by biofeedback.” <em>Applied Psychophysiology and Biofeedback</em> 31(2), 129–142.</li>
-          <li id="r8"><cite>Bernardi, L., Porta, C. &amp; Sleight, P.</cite> (2006). “Cardiovascular, cerebrovascular, and respiratory changes induced by different types of music… the importance of silence.” <em>Heart</em> 92(4), 445–452.</li>
-          <li id="r9"><cite>Bernardi, L. et al.</cite> (2001). “Effect of rosary prayer and yoga mantras on autonomic cardiovascular rhythms.” <em>BMJ</em> 323(7327), 1446–1449.</li>
-          <li id="r10"><cite>Husain, G., Thompson, W. F. &amp; Schellenberg, E. G.</cite> (2002). “Effects of musical tempo and mode on arousal, mood, and spatial abilities.” <em>Music Perception</em> 20(2), 151–171.</li>
-          <li id="r11"><cite>Dillman Carpentier, F. R. &amp; Potter, R. F.</cite> (2007). “Effects of Music on Physiological Arousal: Explorations into Tempo and Genre.” <em>Media Psychology</em> 10(3), 339–363.</li>
-          <li id="r12"><cite>Blumenthal, T. D. et al.</cite> (2005). “Committee report: Guidelines for human startle eyeblink electromyographic studies.” <em>Psychophysiology</em> 42(1), 1–15.</li>
-          <li id="r13"><cite>Keltner, D. &amp; Haidt, J.</cite> (2003). “Approaching awe, a moral, spiritual, and aesthetic emotion.” <em>Cognition &amp; Emotion</em> 17(2), 297–314.</li>
-          <li id="r14"><cite>Västfjäll, D., Larsson, P. &amp; Kleiner, M.</cite> (2002). “Emotion and auditory virtual environments: affect-based judgments of music reproduced with virtual reverberation times.” <em>CyberPsychology &amp; Behavior</em> 5(1), 19–32.</li>
-          <li id="r15"><cite>Mühlhans, J. H.</cite> (2017). “Low frequency and infrasound: A critical review of the myths, misbeliefs and their relevance to music perception research.” <em>Musicae Scientiae</em> 21(3), 267–286.</li>
-          <li id="r16"><cite>Eno, B.</cite> (1978). <em>Ambient 1: Music for Airports</em>, sleeve notes — ambient music as “as ignorable as it is interesting.”</li>
+          <li id="r1"><cite>Plomp, R. &amp; Levelt, W. J. M.</cite> (1965). <a href="https://doi.org/10.1121/1.1909741">“Tonal Consonance and Critical Bandwidth.”</a> <em>Journal of the Acoustical Society of America</em> 38(4), 548–560.</li>
+          <li id="r2"><cite>McDermott, J. H., Lehr, A. J. &amp; Oxenham, A. J.</cite> (2010). <a href="https://doi.org/10.1016/j.cub.2010.04.019">“Individual Differences Reveal the Basis of Consonance.”</a> <em>Current Biology</em> 20(11), 1035–1041.</li>
+          <li id="r3"><cite>McDermott, J. H., Schultz, A. F., Undurraga, E. A. &amp; Godoy, R. A.</cite> (2016). <a href="https://doi.org/10.1038/nature18635">“Indifference to dissonance in native Amazonians reveals cultural variation in music perception.”</a> <em>Nature</em> 535, 547–550.</li>
+          <li id="r4"><cite>ISO 226:2023</cite>, <a href="https://www.iso.org/standard/83117.html">“Acoustics — Normal equal-loudness-level contours”</a> (Int'l Org. for Standardization); see also Moore, B. C. J., <em>An Introduction to the Psychology of Hearing</em>, on the ~3–4 kHz threshold minimum.</li>
+          <li id="r5"><cite>Fastl, H. &amp; Zwicker, E.</cite> (2007). <a href="https://doi.org/10.1007/978-3-540-68888-4"><em>Psychoacoustics: Facts and Models</em></a> (3rd ed.), Springer — on sharpness and psychoacoustic annoyance.</li>
+          <li id="r6"><cite>Lehrer, P. M. &amp; Gevirtz, R.</cite> (2014). <a href="https://doi.org/10.3389/fpsyg.2014.00756">“Heart rate variability biofeedback: how and why does it work?”</a> <em>Frontiers in Psychology</em> 5, 756.</li>
+          <li id="r7"><cite>Vaschillo, E. G., Vaschillo, B. &amp; Lehrer, P. M.</cite> (2006). <a href="https://doi.org/10.1007/s10484-006-9009-3">“Characteristics of resonance in heart rate variability stimulated by biofeedback.”</a> <em>Applied Psychophysiology and Biofeedback</em> 31(2), 129–142.</li>
+          <li id="r8"><cite>Bernardi, L., Porta, C. &amp; Sleight, P.</cite> (2006). <a href="https://doi.org/10.1136/hrt.2005.064600">“Cardiovascular, cerebrovascular, and respiratory changes induced by different types of music in musicians and non-musicians: the importance of silence.”</a> <em>Heart</em> 92(4), 445–452.</li>
+          <li id="r9"><cite>Bernardi, L. et al.</cite> (2001). <a href="https://doi.org/10.1136/bmj.323.7327.1446">“Effect of rosary prayer and yoga mantras on autonomic cardiovascular rhythms.”</a> <em>BMJ</em> 323(7327), 1446–1449.</li>
+          <li id="r10"><cite>Husain, G., Thompson, W. F. &amp; Schellenberg, E. G.</cite> (2002). <a href="https://doi.org/10.1525/mp.2002.20.2.151">“Effects of musical tempo and mode on arousal, mood, and spatial abilities.”</a> <em>Music Perception</em> 20(2), 151–171.</li>
+          <li id="r11"><cite>Dillman Carpentier, F. R. &amp; Potter, R. F.</cite> (2007). <a href="https://doi.org/10.1080/15213260701533045">“Effects of Music on Physiological Arousal: Explorations into Tempo and Genre.”</a> <em>Media Psychology</em> 10(3), 339–363.</li>
+          <li id="r12"><cite>Blumenthal, T. D. et al.</cite> (2005). <a href="https://doi.org/10.1111/j.1469-8986.2005.00271.x">“Committee report: Guidelines for human startle eyeblink electromyographic studies.”</a> <em>Psychophysiology</em> 42(1), 1–15.</li>
+          <li id="r13"><cite>Keltner, D. &amp; Haidt, J.</cite> (2003). <a href="https://doi.org/10.1080/02699930302297">“Approaching awe, a moral, spiritual, and aesthetic emotion.”</a> <em>Cognition &amp; Emotion</em> 17(2), 297–314.</li>
+          <li id="r14"><cite>Västfjäll, D., Larsson, P. &amp; Kleiner, M.</cite> (2002). <a href="https://pubmed.ncbi.nlm.nih.gov/11990972/">“Emotion and auditory virtual environments: affect-based judgments of music reproduced with virtual reverberation times.”</a> <em>CyberPsychology &amp; Behavior</em> 5(1), 19–32.</li>
+          <li id="r15"><cite>Mühlhans, J. H.</cite> (2017). <a href="https://doi.org/10.1177/1029864917690931">“Low frequency and infrasound: A critical review of the myths, misbeliefs and their relevance to music perception research.”</a> <em>Musicae Scientiae</em> 21(3), 267–286.</li>
+          <li id="r16"><cite>Eno, B.</cite> (1978). <a href="https://music.hyperreal.org/artists/brian_eno/MFA-txt.html"><em>Ambient 1: Music for Airports</em>, sleeve notes</a> — ambient music as “as ignorable as it is interesting.”</li>
         </ol>
       </section>
 
