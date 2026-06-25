@@ -197,7 +197,9 @@ fn character(scenario: Scenario) -> Character {
             activity: 0.7,
             brightness: 0.72,
         },
-        Scenario::GrandDesign => Character {
+        // The M51 flyby and the composed-piece collision: serene Lydian over the
+        // drama, so the music stays calm and focus-friendly while the galaxies meet.
+        Scenario::GrandDesign | Scenario::Flyby => Character {
             scale: LYDIAN,
             root_midi: 50.0,
             drone: [0.0, 7.0, 16.0],

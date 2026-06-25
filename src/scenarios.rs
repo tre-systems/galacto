@@ -45,6 +45,21 @@ const FLYBY_COMPANION_RADIUS: f32 = 36.0;
 const FLYBY_COMPANION_CENTER: [f32; 3] = [210.0, 150.0, 25.0];
 const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 
+// --- Flyby (composed-video collision): a second, substantial galaxy falls in from
+// the top (+Y) and collides with the main disk around the middle of the piece. It is
+// seeded (near) at rest a long way up the +Y axis — a distance proportional to the
+// piece length — and free-falls under gravity. The composed piece runs the sim at
+// `FLYBY_SIM_SPEED` (see lib.rs), which stretches that infall so the collision lands
+// near the half-way mark and the approach is visible coming in from the top edge.
+// Tune the timing with `FLYBY_DISTANCE_FACTOR` (larger = collides later).
+const FLYBY_DISTANCE_FACTOR: f32 = 11.0; // start Y = factor × duration_secs
+const FLYBY_INTRUDER_MASS: f32 = 180_000.0; // ~0.6× the main core, for a real collision
+const FLYBY_INTRUDER_RADIUS: f32 = 95.0;
+const FLYBY_INTRUDER_X_OFFSET: f32 = 45.0; // slightly off-axis → a graze, not a dead-centre smash
+/// Default piece length (s) used when seeding outside a composed run (tests, the
+/// initial seed). The arrangement passes the real duration via `Reseed`.
+const DEFAULT_PIECE_SECS: f32 = 600.0;
+
 /// The disk "temperature" is expressed as the **Toomre stability parameter Q** (the
 /// disk-Q slider). Q≲1 → the disk fragments into clumps; Q≈1–2 → it swing-amplifies
 /// into spiral arms; Q≫2 → a smooth, featureless disk. The exponential spiral disk
@@ -166,6 +181,9 @@ pub enum Scenario {
     /// A cold spiral disk perturbed by a companion on a close prograde flyby
     /// (M51-like), driving a tidal grand-design two-arm pattern.
     GrandDesign,
+    /// A main spiral disk with a second, substantial galaxy falling in from the top
+    /// to collide near the middle of the piece. Used for the composed video.
+    Flyby,
 }
 
 impl Scenario {
@@ -177,6 +195,7 @@ impl Scenario {
             4 => Scenario::MinorMerger,
             5 => Scenario::Group,
             6 => Scenario::GrandDesign,
+            7 => Scenario::Flyby,
             _ => Scenario::Spiral,
         }
     }
@@ -188,7 +207,7 @@ impl Scenario {
             // The grand-design flyby keeps the sharp spiral softening so the main
             // disk still swing-amplifies; its companion is a lone core, not a second
             // heavy nucleus that would need the larger merger softening.
-            Scenario::Spiral | Scenario::GrandDesign => SPIRAL_SOFTENING,
+            Scenario::Spiral | Scenario::GrandDesign | Scenario::Flyby => SPIRAL_SOFTENING,
             _ => MERGER_SOFTENING,
         }
     }
@@ -198,7 +217,10 @@ impl Scenario {
     /// gas cools onto the plane and sharpens/sustains the spiral arms. The compact
     /// merger disks are treated as gas-free (collisionless stars only).
     pub fn has_gas(self) -> bool {
-        matches!(self, Scenario::Spiral | Scenario::GrandDesign)
+        matches!(
+            self,
+            Scenario::Spiral | Scenario::GrandDesign | Scenario::Flyby
+        )
     }
 
     /// Generate `count` initial bodies for this scenario at a given disk
@@ -218,11 +240,13 @@ impl Scenario {
             DEFAULT_GAS_FRACTION,
             DEFAULT_BULGE_FRAC,
             halo_kind,
+            DEFAULT_PIECE_SECS,
         )
     }
 
     /// As [`generate`], but with explicit gas and bulge fractions (the gas-fraction
-    /// and bulge sliders). Only the disk scenarios use them; the mergers ignore them.
+    /// and bulge sliders) and the composed-piece `duration_secs` (only the `Flyby`
+    /// scenario uses it, to place its incoming galaxy for a mid-piece collision).
     pub fn generate_with(
         self,
         count: u32,
@@ -230,6 +254,7 @@ impl Scenario {
         gas_fraction: f32,
         bulge_frac: f32,
         halo_kind: HaloKind,
+        duration_secs: f32,
     ) -> Vec<Particle> {
         let star_mass = STAR_MASS * NUM_PARTICLES as f32 / count as f32;
         match self {
@@ -244,6 +269,15 @@ impl Scenario {
             Scenario::GrandDesign => {
                 generate_grand_design(count, temp, gas_fraction, bulge_frac, halo_kind, star_mass)
             }
+            Scenario::Flyby => generate_flyby(
+                count,
+                temp,
+                gas_fraction,
+                bulge_frac,
+                halo_kind,
+                star_mass,
+                duration_secs,
+            ),
         }
     }
 }
@@ -766,6 +800,53 @@ fn generate_grand_design(
     particles
 }
 
+/// A main spiral disk (halo-supported, at the origin) with a second, substantial
+/// galaxy seeded near rest a long way up the +Y axis — a distance proportional to the
+/// piece length — that free-falls and collides with the disk around the middle of the
+/// composed piece. The sim runs slowed for the piece (`FLYBY_SIM_SPEED`), so the
+/// infall stretches over the half and the intruder is seen coming in from the top.
+fn generate_flyby(
+    count: u32,
+    temp: f32,
+    gas_fraction: f32,
+    bulge_frac: f32,
+    halo_kind: HaloKind,
+    star_mass: f32,
+    duration_secs: f32,
+) -> Vec<Particle> {
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut particles = Vec::with_capacity(count as usize);
+    let intruder = count / 3;
+    seed_spiral_disk(
+        &mut particles,
+        count - intruder,
+        temp,
+        gas_fraction,
+        bulge_frac,
+        halo_kind,
+        star_mass,
+        &mut rng,
+    );
+    let y0 = FLYBY_DISTANCE_FACTOR * duration_secs.max(1.0);
+    seed_galaxy(
+        &mut particles,
+        &Galaxy {
+            center: [FLYBY_INTRUDER_X_OFFSET, y0, 0.0],
+            bulk: [0.0, 0.0, 0.0], // at rest — it free-falls under gravity
+            core_mass: FLYBY_INTRUDER_MASS,
+            radius: FLYBY_INTRUDER_RADIUS,
+            count: intruder,
+            tint: 1.0,
+            ..Default::default()
+        },
+        dispersion(temp),
+        star_mass,
+        &mut rng,
+    );
+    debug_assert_eq!(particles.len(), count as usize);
+    particles
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -779,6 +860,7 @@ mod tests {
         assert_eq!(Scenario::from_id(4), Scenario::MinorMerger);
         assert_eq!(Scenario::from_id(5), Scenario::Group);
         assert_eq!(Scenario::from_id(6), Scenario::GrandDesign);
+        assert_eq!(Scenario::from_id(7), Scenario::Flyby);
         // Unknown ids fall back to the spiral disk.
         assert_eq!(Scenario::from_id(99), Scenario::Spiral);
     }
@@ -822,7 +904,7 @@ mod tests {
         assert_valid_bodies(&Scenario::Spiral.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Nfw));
     }
 
-    const ALL_SCENARIOS: [Scenario; 7] = [
+    const ALL_SCENARIOS: [Scenario; 8] = [
         Scenario::Spiral,
         Scenario::Merger,
         Scenario::HeadOn,
@@ -830,6 +912,7 @@ mod tests {
         Scenario::MinorMerger,
         Scenario::Group,
         Scenario::GrandDesign,
+        Scenario::Flyby,
     ];
 
     /// Every scenario must fill the buffer exactly (galaxy counts summing to

@@ -36,6 +36,12 @@ const MAX_SUBSTEPS: u32 = 32;
 /// here. Separate from `MAX_SUBSTEPS` (a per-frame catch-up bound).
 const MAX_SPEED: f32 = 8.0;
 
+/// Simulation speed for the composed cinematic piece — slower than real time so the
+/// particle motion is calm and the incoming `Flyby` galaxy is seen drifting in over
+/// the first half before it collides (the audio is rendered from the arrangement's own
+/// timeline, so this only affects the visuals). Tunable.
+const FLYBY_SIM_SPEED: f32 = 0.3;
+
 /// Page slider ranges used to normalise values for the soundscape. Keep these in
 /// sync with `static/index.html`; the sim setters may accept wider developer-console
 /// values, but the musical mapping should use the user's visible 0..1 travel.
@@ -522,6 +528,10 @@ impl AppState {
                 halo_v0: self.halo_v0,
                 halo_rc_scale: self.halo_rc_scale,
                 halo_kind: self.halo_kind,
+                duration_secs: self
+                    .arrangement
+                    .as_ref()
+                    .map_or(600.0, |a| a.duration as f32),
             },
         );
     }
@@ -615,6 +625,11 @@ impl AppState {
     /// is produced separately by [`generate_piece`] from the same `seed`/`duration`.
     pub fn start_arrangement(&mut self, duration: f64, seed: u32) {
         self.autopilot = false;
+        // The composed piece is the two-galaxy flyby, run at a calm, slowed sim rate
+        // (the audio is rendered separately from the arrangement timeline, so this only
+        // slows the visuals — and lets the incoming galaxy be seen drifting in).
+        self.scenario = Scenario::Flyby;
+        self.speed = FLYBY_SIM_SPEED;
         self.arrangement = Some(arrangement::Arrangement::new(duration, seed, self.scenario));
         self.arrangement_t = 0.0;
         self.reseed();

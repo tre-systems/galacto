@@ -170,6 +170,8 @@ pub struct Reseed {
     pub halo_v0: f32,
     pub halo_rc_scale: f32,
     pub halo_kind: HaloKind,
+    /// Composed-piece length (s) — places the `Flyby` intruder for a mid-piece hit.
+    pub duration_secs: f32,
 }
 
 pub struct Simulation {
@@ -704,6 +706,7 @@ impl Simulation {
             r.gas_fraction,
             r.bulge_frac,
             r.halo_kind,
+            r.duration_secs,
         );
         queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
         self.set_physics(
@@ -906,7 +909,7 @@ impl Simulation {
             // The spiral and the M51 flyby colour by live galactocentric radius
             // (warm core → cool arms); the multi-galaxy collisions colour by vel.w
             // (galaxy of origin).
-            Scenario::Spiral | Scenario::GrandDesign => 0.0,
+            Scenario::Spiral | Scenario::GrandDesign | Scenario::Flyby => 0.0,
             _ => 1.0,
         };
         // mat4 (16 floats) then the vec4 of params: billboard size, aspect, colour
