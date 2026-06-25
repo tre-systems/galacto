@@ -64,8 +64,9 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 ### Installation
 
+From a local checkout:
+
 ```bash
-git clone https://github.com/tre-systems/galacto.git
 cd galacto
 npm run setup   # installs deps, wasm-pack, and the wasm32 target
 npm run dev     # builds, then serves on http://localhost:8000
