@@ -100,6 +100,36 @@ renders/proofs/
 Use the `*-video.webm` file for muxing or editing; it is remuxed by ffmpeg after
 capture. `renders/` is git-ignored because these files are large.
 
+### Composed piece — locked visuals + audio (recommended)
+
+For a *finished* piece rather than a free-running capture, use the **cinematic
+arrangement** (`src/arrangement.rs`): a deterministic A→B→C arc (sparse intro →
+gathering build → serene awe peak ~two-thirds in → dispersing resolution) keyed by
+a `seed` + `duration`. Because the arc is deterministic, the captured picture and
+the offline-mastered audio — produced from the *same* `seed`/`duration` — line up.
+
+1. **Capture the visuals**, playing the arrangement (the `--compose <seed>`
+   self-drives the camera + galaxy via `?compose=`):
+
+   ```bash
+   npm run video:capture -- --compose 5 --duration 240 \
+     --width 3840 --height 2160 --fps 60 --label galacto-piece-5
+   ```
+
+2. **Render the matching audio** (mastered): on the local site, open the **Studio
+   export** panel → *Compose* → set the same length (4 min) and seed (5) → **Generate
+   WAV** → `galacto-piece-5.wav`.
+
+3. **Mux** the two into the final video:
+
+   ```bash
+   ffmpeg -i renders/proofs/galacto-piece-5-video.webm -i galacto-piece-5.wav \
+     -c:v copy -c:a aac -b:a 320k -shortest galacto-piece-5.mp4
+   ```
+
+Same seed + duration ⇒ the journey (build, peak, resolution, stereo pan) is shared,
+so audio and picture stay together. Different seeds give different pieces.
+
 This is still not the final production architecture. The simulation is still
 running live in Chrome, so a long capture can land a fraction short of the exact
 requested duration and may still inherit browser timing behaviour. For the

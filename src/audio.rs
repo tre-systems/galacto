@@ -48,7 +48,7 @@ const MAX_STEPS_PER_FRAME: u32 = 12;
 /// volume control scales this, and the page defaults that control below full.
 pub const MASTER_LEVEL: f32 = 0.32;
 /// Generative engine seed — fixed so a given visual sequence sounds reproducible.
-const ENGINE_SEED: u64 = 0x6A1AC701;
+pub const ENGINE_SEED: u64 = 0x6A1AC701;
 /// Extra seconds rendered past the recorded timeline so the reverb/echo tail rings
 /// out instead of being chopped off at the end of an export.
 const EXPORT_TAIL_SEC: f64 = 6.0;
@@ -551,6 +551,7 @@ pub async fn render_offline(
     timeline: &[(f64, GalaxyState)],
     sample_rate: u32,
     render_level: f32,
+    note_seed: u64,
 ) -> Option<(Vec<f32>, Vec<f32>)> {
     if timeline.len() < 2 {
         return None;
@@ -567,7 +568,7 @@ pub async fn render_offline(
     let graph = Graph::build(base)?;
     graph.master_gain.gain().set_value(render_level);
 
-    let mut engine = MusicEngine::new(ENGINE_SEED);
+    let mut engine = MusicEngine::new(note_seed);
 
     // Automation pass: schedule the pad + texture targets across the timeline. The
     // engine's `drone`/`texture` don't touch its note RNG, so this is independent of

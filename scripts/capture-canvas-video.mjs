@@ -18,6 +18,8 @@ function usage() {
   npm run video:capture -- --url http://localhost:8000/ --duration 360 --width 3840 --height 2160 --fps 60 --label galacto-six-minute
 
 Options:
+  --compose <seed>   play the deterministic cinematic arrangement (matches
+                     generate_piece with the same seed + duration)
   --out-dir renders/proofs
   --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   --bitrate 80000000
@@ -165,8 +167,16 @@ async function waitForJson(url, timeoutMs = 20_000) {
 }
 
 async function main() {
-  const url = take("--url", "http://localhost:8000/");
   const durationSec = takeNumber("--duration", 10);
+  // --compose <seed> plays the deterministic cinematic arrangement for the capture,
+  // so the video matches the audio rendered by generate_piece with the same seed +
+  // duration. It self-drives via the ?compose=&dur= URL params.
+  const composeSeed = take("--compose");
+  const baseUrl = take("--url", "http://localhost:8000/");
+  const url =
+    composeSeed != null
+      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}compose=${encodeURIComponent(composeSeed)}&dur=${durationSec}`
+      : baseUrl;
   const width = takeNumber("--width", 1920);
   const height = takeNumber("--height", 1080);
   const fps = takeNumber("--fps", 60);

@@ -375,6 +375,40 @@
           </button>
           <span id="export-status" class="export-readout"></span>
         </div>
+        <div class="export-divider" role="separator"></div>
+        <p class="export-hint">
+          Or compose a complete arranged piece — visuals + audio from one arc
+          (deterministic per seed, for a video).
+        </p>
+        <div class="export-row">
+          <select id="compose-duration" aria-label="Piece length">
+            <option value="120">2 min</option>
+            <option value="240" selected>4 min</option>
+            <option value="360">6 min</option>
+          </select>
+          <input
+            id="compose-seed"
+            type="number"
+            min="0"
+            max="999999"
+            value="1"
+            class="compose-seed"
+            aria-label="Arrangement seed"
+            title="Seed (same seed = same piece)"
+          />
+          <button id="compose-rand" type="button" class="rec-btn" title="Random seed">
+            🎲
+          </button>
+        </div>
+        <div class="export-row">
+          <button id="compose-audio-btn" type="button" class="export-btn">
+            Generate WAV
+          </button>
+          <button id="compose-play-btn" type="button" class="rec-btn" title="Play the arrangement (for video capture)">
+            ▶ Play
+          </button>
+          <span id="compose-status" class="export-readout"></span>
+        </div>
         <p id="export-report" class="export-report" hidden></p>
       </div>
     </div>
@@ -548,6 +582,17 @@
           setupInfoButtons();
           setupAutopilot(mod);
           setupIdleHide();
+          // ?compose=SEED&dur=SECONDS auto-plays the deterministic cinematic
+          // arrangement (drives camera + galaxy through the arc). The video-capture
+          // script loads this so the captured picture matches the audio rendered from
+          // generate_piece with the same seed/duration.
+          const composeParams = new URLSearchParams(location.search);
+          if (composeParams.has("compose")) {
+            const seed = parseInt(composeParams.get("compose"), 10) || 1;
+            const dur = parseFloat(composeParams.get("dur")) || 240;
+            document.getElementById("export-panel")?.setAttribute("hidden", "");
+            mod.start_arrangement(dur, seed);
+          }
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";
@@ -1192,6 +1237,23 @@
           }
         });
 
+        // Turn a {wav, report} result into a download + show the report.
+        const saveWav = (res, name) => {
+          const blob = new Blob([res.wav], { type: "audio/wav" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          reportEl.textContent = res.report;
+          reportEl.hidden = false;
+        };
+        const stamp = () =>
+          new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+
         exportBtn.addEventListener("click", async () => {
           if (recording) recBtn.click(); // stop first
           exportBtn.disabled = true;
@@ -1199,22 +1261,8 @@
           reportEl.hidden = true;
           try {
             const res = await mod.export_audio(parseFloat(targetSel.value));
-            const blob = new Blob([res.wav], { type: "audio/wav" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            const stamp = new Date()
-              .toISOString()
-              .slice(0, 16)
-              .replace(/[:T]/g, "-");
-            a.href = url;
-            a.download = `galacto-${stamp}.wav`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
+            saveWav(res, `galacto-${stamp()}.wav`);
             statusEl.textContent = "Saved ✓";
-            reportEl.textContent = res.report;
-            reportEl.hidden = false;
           } catch (e) {
             statusEl.textContent = "";
             reportEl.textContent =
@@ -1223,6 +1271,67 @@
           } finally {
             exportBtn.disabled = false;
           }
+        });
+
+        // Compose: a complete arranged piece. The same duration+seed drive the audio
+        // (generate_piece) and the visuals (start_arrangement / the ?compose= URL),
+        // so they stay locked for the video.
+        const durSel = document.getElementById("compose-duration");
+        const seedInput = document.getElementById("compose-seed");
+        const composeAudioBtn = document.getElementById("compose-audio-btn");
+        const composePlayBtn = document.getElementById("compose-play-btn");
+        const composeStatus = document.getElementById("compose-status");
+        let playing = false;
+        let playPoll = null;
+
+        document.getElementById("compose-rand").addEventListener("click", () => {
+          seedInput.value = String(Math.floor(Math.random() * 1000000));
+        });
+
+        composeAudioBtn.addEventListener("click", async () => {
+          composeAudioBtn.disabled = true;
+          composeStatus.textContent = "Rendering…";
+          reportEl.hidden = true;
+          try {
+            const seed = parseInt(seedInput.value, 10) || 0;
+            const dur = parseFloat(durSel.value);
+            const res = await mod.generate_piece(dur, seed, parseFloat(targetSel.value));
+            saveWav(res, `galacto-piece-${seed}.wav`);
+            composeStatus.textContent = "Saved ✓";
+          } catch (e) {
+            composeStatus.textContent = "";
+            reportEl.textContent =
+              (e && e.message) || String(e) || "Generate failed.";
+            reportEl.hidden = false;
+          } finally {
+            composeAudioBtn.disabled = false;
+          }
+        });
+
+        const setPlay = (on) => {
+          playing = on;
+          composePlayBtn.textContent = on ? "■ Stop" : "▶ Play";
+          composePlayBtn.classList.toggle("recording", on);
+        };
+        composePlayBtn.addEventListener("click", () => {
+          if (playing) {
+            mod.stop_arrangement();
+            clearInterval(playPoll);
+            setPlay(false);
+            return;
+          }
+          const seed = parseInt(seedInput.value, 10) || 0;
+          const dur = parseFloat(durSel.value);
+          mod.set_sound_enabled(true);
+          mod.start_arrangement(dur, seed);
+          setPlay(true);
+          // Reset the button when the arrangement finishes on its own.
+          playPoll = setInterval(() => {
+            if (!mod.arrangement_active()) {
+              clearInterval(playPoll);
+              setPlay(false);
+            }
+          }, 500);
         });
 
         tick();

@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 
+mod arrangement;
 mod audio;
 mod camera;
 mod error;
@@ -170,6 +171,11 @@ pub struct AppState {
     /// Autopilot speed multiplier (the page's autopilot slider), scaling the base
     /// orbit / glide / nod rates.
     autopilot_speed: f32,
+    /// Active cinematic arrangement (the composed A→B→C piece) and its elapsed time.
+    /// While set, it drives the camera + live physics so the visuals perform the same
+    /// arc the offline audio is rendered from — keeping picture and sound locked.
+    arrangement: Option<arrangement::Arrangement>,
+    arrangement_t: f64,
     /// Smoothed, normalised core signals derived from the GPU readback
     /// (`CoreStats`): central-mass concentration, signed radial flux (matter
     /// moving out of / into the centre), and core churn — the soundscape's primary
@@ -244,6 +250,8 @@ impl AppState {
             autopilot: true,
             autopilot_t: 0.0,
             autopilot_speed: 0.4,
+            arrangement: None,
+            arrangement_t: 0.0,
             core_initialized: false,
             core_mass_ref: 0.0,
             core_mass_dev: 0.0,
@@ -269,10 +277,12 @@ impl AppState {
 
         self.input_handler.update_camera(&mut self.camera);
 
-        // Cinematic autopilot: a slow self-driving orbit + glide so the sim plays
-        // like a movie. Runs even while paused (it moves the camera, not the
-        // physics); the page switches it off the moment the user grabs the view.
-        if self.autopilot {
+        // A composed cinematic arrangement (for a complete piece / video capture)
+        // drives the camera and the live physics through an intentional arc; without
+        // one, the free autopilot gently self-drives the view like a movie.
+        if self.arrangement.is_some() {
+            self.advance_arrangement();
+        } else if self.autopilot {
             // The phase clock advances at the scaled rate, so changing the speed
             // never jumps the glide; `autopilot_step` scales the orbit to match.
             self.autopilot_t += self.frame_dt * self.autopilot_speed;
@@ -586,6 +596,46 @@ impl AppState {
     /// Set the cinematic autopilot speed multiplier (the page's autopilot slider).
     pub fn set_autopilot_speed(&mut self, speed: f32) {
         self.autopilot_speed = speed.clamp(0.0, 4.0);
+    }
+
+    /// Begin a composed cinematic arrangement: re-seed for a clean start, then let the
+    /// arc drive the camera + live physics for `duration` seconds. The matching audio
+    /// is produced separately by [`generate_piece`] from the same `seed`/`duration`.
+    pub fn start_arrangement(&mut self, duration: f64, seed: u32) {
+        self.autopilot = false;
+        self.arrangement = Some(arrangement::Arrangement::new(duration, seed, self.scenario));
+        self.arrangement_t = 0.0;
+        self.reseed();
+    }
+
+    /// Stop the arrangement, leaving the view where it ended.
+    pub fn stop_arrangement(&mut self) {
+        self.arrangement = None;
+    }
+
+    /// One frame of the arrangement: set the camera pose absolutely and push the live
+    /// physics so the galaxy performs the arc (gathers toward the peak, disperses in
+    /// the resolution). Ends — and releases the camera — when the duration elapses.
+    fn advance_arrangement(&mut self) {
+        let Some(arr) = self.arrangement else {
+            return;
+        };
+        self.arrangement_t += self.frame_dt as f64;
+        let pose = arr.camera(self.arrangement_t);
+        self.camera.scale = pose.scale.clamp(0.001, 5.0);
+        self.camera.rotation_x = pose.rot_x.clamp(-1.5, 1.5);
+        self.camera.rotation_y = pose.rot_y;
+        let p = arr.physics(self.arrangement_t);
+        let denorm = |n: f32, lo: f32, hi: f32| lo + n.clamp(0.0, 1.0) * (hi - lo);
+        self.gravity = denorm(p.gravity, UI_MIN_GRAVITY, UI_MAX_GRAVITY);
+        self.halo_v0 = (p.halo.clamp(0.0, 1.0) * UI_MAX_HALO_V0).max(0.0);
+        self.halo_rc_scale = denorm(p.halo_size, UI_MIN_HALO_RC_SCALE, UI_MAX_HALO_RC_SCALE);
+        self.glow_extent = p.glow.clamp(0.0, 1.0);
+        self.particle_size = denorm(p.star_size, UI_MIN_PARTICLE_SIZE, UI_MAX_PARTICLE_SIZE);
+        self.push_physics();
+        if self.arrangement_t >= arr.duration {
+            self.arrangement = None;
+        }
     }
 
     /// Build the per-frame snapshot that drives the soundscape — the camera and
@@ -1213,7 +1263,41 @@ pub async fn export_audio(target_lufs: f32) -> Result<JsValue, JsValue> {
         ));
     }
     let sr = EXPORT_SAMPLE_RATE;
-    let (left, right) = audio::render_offline(&timeline, sr, audio::MASTER_LEVEL)
+    let (left, right) =
+        audio::render_offline(&timeline, sr, audio::MASTER_LEVEL, audio::ENGINE_SEED)
+            .await
+            .ok_or_else(|| JsValue::from_str("Offline audio render failed in this browser."))?;
+    let settings = mastering::MasterSettings {
+        sample_rate: sr,
+        target_lufs,
+        true_peak_ceiling_db: -1.0,
+    };
+    let (ml, mr, report) = mastering::master(&left, &right, &settings);
+    let wav = mastering::encode_wav_24(&ml, &mr, sr);
+    Ok(build_export_result(&wav, &report, sr))
+}
+
+/// Render a complete, *composed* ambient piece — a deterministic A→B→C arrangement
+/// (`src/arrangement.rs`) for the current scenario, varied by `seed` — to a mastered
+/// 24-bit / 48 kHz WAV, with no recording needed. The matching visuals come from
+/// playing the same `seed`/`duration` arrangement (`start_arrangement`), so audio and
+/// picture stay locked for the video. Returns the same `{ wav, report, ... }` object
+/// as [`export_audio`].
+#[wasm_bindgen]
+pub async fn generate_piece(
+    duration_secs: f32,
+    seed: u32,
+    target_lufs: f32,
+) -> Result<JsValue, JsValue> {
+    let duration = (duration_secs as f64).clamp(20.0, MAX_RECORD_SEC);
+    let scenario = APP_STATE.with(|cell| cell.borrow().as_ref().map(|app| app.borrow().scenario));
+    let Some(scenario) = scenario else {
+        return Err(JsValue::from_str("Audio is not ready yet."));
+    };
+    let arr = arrangement::Arrangement::new(duration, seed, scenario);
+    let timeline = arr.timeline(RECORD_DT);
+    let sr = EXPORT_SAMPLE_RATE;
+    let (left, right) = audio::render_offline(&timeline, sr, audio::MASTER_LEVEL, seed as u64)
         .await
         .ok_or_else(|| JsValue::from_str("Offline audio render failed in this browser."))?;
     let settings = mastering::MasterSettings {
@@ -1224,6 +1308,39 @@ pub async fn export_audio(target_lufs: f32) -> Result<JsValue, JsValue> {
     let (ml, mr, report) = mastering::master(&left, &right, &settings);
     let wav = mastering::encode_wav_24(&ml, &mr, sr);
     Ok(build_export_result(&wav, &report, sr))
+}
+
+/// Start playing a composed cinematic arrangement (drives the camera + galaxy through
+/// the arc) — used to preview it and to drive the canvas for video capture. The page
+/// passes the same `seed`/`duration` to [`generate_piece`] for the matching audio.
+#[wasm_bindgen]
+pub fn start_arrangement(duration_secs: f32, seed: u32) {
+    let duration = (duration_secs as f64).clamp(20.0, MAX_RECORD_SEC);
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().start_arrangement(duration, seed);
+        }
+    });
+}
+
+/// Stop the cinematic arrangement, releasing the camera.
+#[wasm_bindgen]
+pub fn stop_arrangement() {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().stop_arrangement();
+        }
+    });
+}
+
+/// Whether a cinematic arrangement is currently playing (false once it finishes).
+#[wasm_bindgen]
+pub fn arrangement_active() -> bool {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .is_some_and(|app| app.borrow().arrangement.is_some())
+    })
 }
 
 /// A human-readable mastering summary for the export panel.

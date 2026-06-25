@@ -468,6 +468,23 @@ body {
   color: #fff;
 }
 
+.export-divider {
+  height: 1px;
+  margin: 4px 0 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.compose-seed {
+  width: 6ch;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
 .rec-btn,
 .export-btn {
   appearance: none;
