@@ -363,6 +363,35 @@ fn apply_fades(left: &mut [f32], right: &mut [f32], sr: f32, fade_in_s: f32, fad
     }
 }
 
+/// RMS level of a buffer.
+fn rms_of(buf: &[f32]) -> f32 {
+    if buf.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = buf.iter().map(|&x| (x as f64) * (x as f64)).sum();
+    (sum / buf.len() as f64).sqrt() as f32
+}
+
+/// Correct a left/right level imbalance so the image sits centred, bringing both
+/// channels toward their mean RMS. Capped at ±3 dB so a deliberately panned mix
+/// isn't flattened.
+fn balance_stereo(left: &mut [f32], right: &mut [f32]) {
+    let (rl, rr) = (rms_of(left), rms_of(right));
+    if rl < 1e-6 || rr < 1e-6 {
+        return;
+    }
+    let mean = 0.5 * (rl + rr);
+    let cap = db_to_lin(3.0);
+    let gl = (mean / rl).clamp(1.0 / cap, cap);
+    let gr = (mean / rr).clamp(1.0 / cap, cap);
+    for v in left.iter_mut() {
+        *v *= gl;
+    }
+    for v in right.iter_mut() {
+        *v *= gr;
+    }
+}
+
 /// Stereo (Pearson) correlation, -1..1.
 fn correlation(left: &[f32], right: &[f32]) -> f32 {
     let (mut lr, mut ll, mut rr) = (0.0_f64, 0.0, 0.0);
@@ -401,12 +430,17 @@ pub fn master(
     l.truncate(n);
     r.truncate(n);
 
-    // 1. Subsonic high-pass (~30 Hz) clears rumble that only wastes headroom.
-    let hp = rbj_highpass(sr, 30.0, 0.707);
+    // 0. Centre the stereo image: correct any left/right level imbalance (e.g. from a
+    // camera-orbit pan that didn't average out over a short take). Capped so a
+    // genuinely panned mix isn't forced to mono.
+    balance_stereo(&mut l, &mut r);
+    // 1. Subsonic high-pass (~36 Hz) clears the infrasonic energy that nothing
+    // reproduces and that only wastes headroom.
+    let hp = rbj_highpass(sr, 36.0, 0.707);
     hp.process(&mut l);
     hp.process(&mut r);
-    // 2. Mono-sum the deep bass for translation.
-    mono_bass(&mut l, &mut r, sr, 120.0);
+    // 2. Mono-sum the deep bass for translation on phones / mono / single-speaker.
+    mono_bass(&mut l, &mut r, sr, 150.0);
 
     // 3. Measure, 4. gain to target.
     let lufs_in = integrated_lufs(&l, &r, s.sample_rate);

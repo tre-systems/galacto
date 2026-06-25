@@ -75,6 +75,9 @@ struct Graph {
     master_gain: GainNode,
     /// Global brightness filter — its cutoff tracks camera zoom.
     master_lp: BiquadFilterNode,
+    /// Post-compressor output gain, swelling on the ~0.1 Hz breath so the whole mix
+    /// breathes coherently.
+    breath_gain: GainNode,
     reverb_in: GainNode,
     reverb_wet: GainNode,
     delay_in: GainNode,
@@ -106,13 +109,18 @@ impl Graph {
     /// Build the full node graph on `ctx` (real-time or offline). The master gain
     /// starts silent; the caller ramps or sets it.
     fn build(ctx: &BaseAudioContext) -> Option<Self> {
-        // Master chain: gain → low-pass (brightness) → compressor → output.
+        // Master chain: gain → low-pass (brightness) → compressor → breath → output.
         let master_gain = gain(ctx, 0.0)?;
         let master_lp = lowpass(ctx, 1400.0, 0.7)?;
         let comp = compressor(ctx)?;
+        // Post-compressor breath gain: a gentle ~0.1 Hz swell of the whole output so
+        // the breathing pacer is coherent across the entire mix (placed after the
+        // compressor so the swell isn't squashed). Starts at unity.
+        let breath_gain = gain(ctx, 1.0)?;
         connect(&master_gain, &master_lp);
         connect(&master_lp, &comp);
-        connect(&comp, &ctx.destination());
+        connect(&comp, &breath_gain);
+        connect(&breath_gain, &ctx.destination());
 
         // Field bus: the pad + starfield route through one stereo panner that swings
         // with the camera orbit, into the master mix and the reverb send. The sub and
@@ -250,6 +258,7 @@ impl Graph {
         Some(Self {
             master_gain,
             master_lp,
+            breath_gain,
             reverb_in,
             reverb_wet,
             delay_in,
@@ -295,7 +304,9 @@ impl Graph {
         );
         ramp(
             &self.sub_osc.frequency(),
-            (d.freqs[0] * 0.5).clamp(20.0, 120.0),
+            // Floor at 36 Hz: below that it's infrasonic — felt by nothing, reproduced
+            // by nothing, and just wasted headroom that darkens the balance.
+            (d.freqs[0] * 0.5).clamp(36.0, 120.0),
             now,
         );
         ramp(
@@ -335,11 +346,17 @@ impl Graph {
         );
     }
 
-    /// Whole-mix brightness from zoom (close = bright, far = muffled), with a gentle
-    /// breath on the cutoff so the whole space softly opens and closes as it swells.
+    /// Whole-mix brightness from zoom (close = bright, far = muffled), plus the
+    /// coherent ~0.1 Hz breath: a gentle swell of the whole output and a matching
+    /// softening of the cutoff, so the entire mix breathes together as the pacer.
     fn apply_master_brightness(&self, cutoff_hz: f32, now: f64) {
-        let breath = 0.92 + 0.08 * breathing(now as f32);
-        ramp(&self.master_lp.frequency(), cutoff_hz * breath, now);
+        let b = breathing(now as f32);
+        ramp(
+            &self.master_lp.frequency(),
+            cutoff_hz * (0.92 + 0.08 * b),
+            now,
+        );
+        ramp(&self.breath_gain.gain(), 0.9 + 0.1 * b, now);
     }
 
     /// Render one note: a fresh oscillator through a soft envelope and a stereo
