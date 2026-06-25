@@ -60,6 +60,41 @@ pub struct DroneTarget {
     /// Detune spread (cents) between voices — the slow beating that gives the
     /// pad its shimmer.
     pub detune_cents: f32,
+    /// Deep sub-bass foundation level (0..1): a sine an octave below the lowest pad
+    /// voice. Swells with the mass gathered at the centre, the halo, and the bulge —
+    /// the weight that makes the space feel huge.
+    pub sub_gain: f32,
+}
+
+/// The ambient *texture* targets for a frame: the layers and effects that sit
+/// around the pad and bells — the deep space itself. Like [`DroneTarget`], these
+/// are glided toward by `audio.rs`. Split from the pad so the whole generative
+/// mapping (what the space should sound like for a given galaxy) lives here and
+/// stays native-testable; `audio.rs` only renders it.
+#[derive(Clone, Copy, Debug)]
+pub struct TextureTarget {
+    /// High twinkling "starfield" layer level (0..1): autonomous shimmering tones
+    /// tuned to the pad's upper harmonics. Density follows the body count, glow, and
+    /// zoom — more, closer, brighter stars.
+    pub star_gain: f32,
+    /// Starfield brightness — its low-pass cutoff (Hz). Opens with glow, gas, zoom.
+    pub star_cutoff_hz: f32,
+    /// Octave-up shimmer send into the reverb (0..1): the signature cosmic sheen,
+    /// opening with glow, gas, a close view, and a collapsing core.
+    pub shimmer_gain: f32,
+    /// Stereo bias for the pad + starfield (-1..1), following the camera orbit.
+    pub field_pan: f32,
+    /// Airy noise-bed level (0..1): soft background "air" lifted by gas and churn.
+    pub noise_gain: f32,
+    /// Reverb wet level — the size/presence of the surrounding space.
+    pub reverb_wet: f32,
+    /// Feedback-delay wet level — the long echoes trailing into the void.
+    pub delay_wet: f32,
+    /// Feedback-delay feedback amount — how many times the echoes repeat.
+    pub delay_feedback: f32,
+    /// Resonant pad-filter Q — the pad's vocal "shimmer", breathing on the LFO and
+    /// lifting as the core collapses.
+    pub pad_resonance: f32,
 }
 
 /// A per-frame snapshot of the visuals, all normalised to 0..1 (except the
@@ -110,6 +145,15 @@ pub struct GalaxyState {
     /// Halo scale radius, normalised 0..1 (the halo-size slider): a larger, more
     /// diffuse halo opens up the reverb space.
     pub halo_size: f32,
+    /// Camera orbit mapped to a smooth stereo bias (-1 left .. 1 right): as the
+    /// view circles the galaxy the whole soundscape swings across the field, so the
+    /// pan is audibly tied to where the camera is looking.
+    pub camera_pan: f32,
+    /// Core coherence (0..1): is the central matter's radial motion *organized* — a
+    /// unified collapse or expansion (→1) — or *random thermal churn* (→0)? A
+    /// coherent event focuses the pad into a clear tone; disordered churn widens,
+    /// beats, and detunes it. Derived from the same readback as the flux/activity.
+    pub coherence: f32,
     pub paused: bool,
 }
 
@@ -255,17 +299,122 @@ impl MusicEngine {
                 + 0.05 * state.star_size)
                 .clamp(0.0, 0.70)
         };
+        // Disordered core churn detunes far more than organized motion: an
+        // incoherent, thermally hot core (coherence→0) beats and shimmers, while a
+        // unified collapse or expansion (coherence→1) pulls the voices into focus.
+        let churn_detune = state.core_activity * (6.0 + 12.0 * (1.0 - state.coherence));
         let detune_cents = 3.0
-            + 11.0 * state.core_activity
+            + churn_detune
             + 8.0 * state.motion
             + 13.0 * (1.0 - state.stability)
             + 4.0 * state.gas
             + 3.0 * state.glow;
+        // Sub-bass foundation: the weight that makes the space feel huge. Swells with
+        // the mass gathered at the centre, the halo, the bulge, and star size; hushed
+        // (but never gone) when paused, so the floor holds under the still galaxy.
+        let sub_gain = if state.paused {
+            0.05
+        } else {
+            (0.06
+                + 0.11 * state.core_mass
+                + 0.10 * state.halo
+                + 0.10 * state.bulge
+                + 0.04 * state.star_size)
+                .clamp(0.0, 0.36)
+        };
         DroneTarget {
             freqs,
             cutoff_hz,
             gain,
             detune_cents,
+            sub_gain,
+        }
+    }
+
+    /// The ambient texture targets for this frame: the starfield, the octave-up
+    /// shimmer, the surrounding reverb/echo space, the airy noise bed, and the
+    /// camera-driven stereo bias — everything around the pad that makes the galaxy
+    /// sit in a vast space. `lfo_a`/`lfo_b` are slow free-running 0..1 oscillators
+    /// (passed in so this stays pure and testable); pass 0.5 for a steady snapshot.
+    pub fn texture(&self, state: &GalaxyState, lfo_a: f32, lfo_b: f32) -> TextureTarget {
+        let inflow = (-state.core_flux).max(0.0); // collapse strength, 0..1
+        let silent = state.paused;
+
+        // Starfield: a high, twinkling layer that tracks how many stars there are
+        // (body count) and how bright/close they read (glow, zoom, gas). Silent while
+        // paused — the stars hold still.
+        let star_gain = if silent {
+            0.0
+        } else {
+            (0.015
+                + 0.11 * state.richness
+                + 0.07 * state.glow
+                + 0.06 * state.zoom
+                + 0.04 * state.gas
+                + 0.03 * lfo_a)
+                .clamp(0.0, 0.26)
+        };
+        let star_cutoff_hz = (1700.0
+            * 2.0_f32.powf(1.2 * state.zoom + 0.85 * state.glow + 0.5 * state.gas))
+        .clamp(1200.0, 12000.0);
+
+        // Octave-up shimmer into the reverb — the cosmic sheen. Opens with glow and
+        // gas (the bright blue arms), a close view, and a collapsing core.
+        let shimmer_gain = (0.04
+            + 0.18 * state.glow
+            + 0.12 * state.gas
+            + 0.10 * state.zoom
+            + 0.12 * inflow
+            + 0.05 * lfo_b)
+            .clamp(0.0, 0.5);
+
+        // The whole pad + starfield image swings with the camera orbit.
+        let field_pan = (state.camera_pan * 0.6).clamp(-0.85, 0.85);
+
+        // Cavernous, washy reverb: wet by default so the space feels vast even when
+        // the galaxy is still, deeper when pulled back, opening with core churn, halo
+        // strength/size, and slowly swelling and ebbing on its own LFO.
+        let reverb_wet = (0.52
+            + 0.32 * (1.0 - state.zoom)
+            + 0.22 * state.core_activity
+            + 0.24 * lfo_b
+            + 0.08 * state.motion
+            + 0.55 * state.halo_size
+            + 0.14 * state.halo)
+            .clamp(0.0, 1.85);
+        // Long, present echo with sustained, trailing repeats.
+        let delay_wet =
+            (0.18 + 0.28 * state.motion + 0.16 * state.speed + 0.10 * state.glow + 0.08 * lfo_a)
+                .clamp(0.0, 0.78);
+        let delay_feedback =
+            (0.42 + 0.28 * state.motion + 0.10 * state.halo + 0.07 * state.speed).clamp(0.0, 0.86);
+
+        // Noise bed: low and breathing with the core's churn and its own LFO, lifted
+        // by the gas fraction, so it reads as soft background air, not a steady hiss.
+        let noise_gain = (0.025
+            + 0.05 * state.core_activity
+            + 0.018 * lfo_b
+            + 0.09 * state.gas
+            + 0.03 * state.glow
+            + 0.015 * state.star_size)
+            .clamp(0.0, 0.16);
+
+        // Resonant pad filter: breathes on the LFO, lifts as the core collapses
+        // inward, and widens with gas-rich / low-Q (unstable) disks.
+        let pad_resonance =
+            (0.7 + 1.8 * lfo_a + 1.35 * inflow + 1.0 * (1.0 - state.stability) + 0.45 * state.gas)
+                .clamp(0.7, 5.2);
+
+        TextureTarget {
+            star_gain,
+            star_cutoff_hz,
+            shimmer_gain,
+            field_pan,
+            noise_gain,
+            reverb_wet,
+            delay_wet,
+            delay_feedback,
+            pad_resonance,
         }
     }
 
@@ -384,6 +533,8 @@ mod tests {
             richness: 0.3,
             stability: 0.5,
             halo_size: 0.2,
+            camera_pan: 0.0,
+            coherence: 0.5,
             paused,
         }
     }
@@ -532,6 +683,99 @@ mod tests {
             bright.detune_cents > quiet.detune_cents + 15.0,
             "low-Q/gas/glow should clearly widen pad shimmer"
         );
+    }
+
+    #[test]
+    fn texture_is_well_formed_for_every_scenario() {
+        let eng = MusicEngine::new(0);
+        for s in [
+            Scenario::Spiral,
+            Scenario::Merger,
+            Scenario::HeadOn,
+            Scenario::GrandDesign,
+        ] {
+            for &paused in &[false, true] {
+                let mut gs = state(0.6, 0.4, paused);
+                gs.scenario = s;
+                for &(a, b) in &[(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)] {
+                    let tx = eng.texture(&gs, a, b);
+                    for v in [
+                        tx.star_gain,
+                        tx.shimmer_gain,
+                        tx.noise_gain,
+                        tx.reverb_wet,
+                        tx.delay_wet,
+                        tx.delay_feedback,
+                        tx.pad_resonance,
+                        tx.star_cutoff_hz,
+                    ] {
+                        assert!(v.is_finite() && v >= 0.0, "texture value {v} invalid");
+                    }
+                    assert!((-1.0..=1.0).contains(&tx.field_pan));
+                    assert!((1200.0..=12000.0).contains(&tx.star_cutoff_hz));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn texture_sliders_have_distinct_effects() {
+        let eng = MusicEngine::new(0);
+        let base = state(0.4, 0.2, false);
+        let tx = |f: &dyn Fn(&mut GalaxyState)| {
+            let mut gs = base;
+            f(&mut gs);
+            eng.texture(&gs, 0.5, 0.5)
+        };
+        let lo = eng.texture(&base, 0.5, 0.5);
+        // Body count → starfield; glow → shimmer; halo size → reverb; gas → air.
+        assert!(tx(&|g| g.richness = 1.0).star_gain > lo.star_gain + 0.05);
+        assert!(tx(&|g| g.glow = 1.0).shimmer_gain > lo.shimmer_gain + 0.08);
+        assert!(tx(&|g| g.halo_size = 1.0).reverb_wet > lo.reverb_wet + 0.2);
+        assert!(tx(&|g| g.gas = 1.0).noise_gain > lo.noise_gain + 0.04);
+    }
+
+    #[test]
+    fn camera_orbit_pans_the_field() {
+        let eng = MusicEngine::new(0);
+        let mut left = state(0.4, 0.2, false);
+        left.camera_pan = -1.0;
+        let mut right = state(0.4, 0.2, false);
+        right.camera_pan = 1.0;
+        assert!(eng.texture(&left, 0.5, 0.5).field_pan < -0.3);
+        assert!(eng.texture(&right, 0.5, 0.5).field_pan > 0.3);
+    }
+
+    #[test]
+    fn incoherent_churn_detunes_more_than_coherent() {
+        let eng = MusicEngine::new(0);
+        // A churning core (high activity): random/disordered motion (low coherence)
+        // should beat and detune far more than an organized collapse (high coherence).
+        let mut chaos = state(0.9, 0.0, false);
+        chaos.coherence = 0.05;
+        let mut order = state(0.9, 0.0, false);
+        order.coherence = 0.95;
+        assert!(
+            eng.drone(&chaos).detune_cents > eng.drone(&order).detune_cents + 6.0,
+            "disordered churn should widen the pad more than an organized event"
+        );
+    }
+
+    #[test]
+    fn sub_swells_with_central_mass_and_hushes_when_paused() {
+        let eng = MusicEngine::new(0);
+        let mut light = state(0.4, 0.0, false);
+        light.core_mass = 0.0;
+        light.halo = 0.0;
+        light.bulge = 0.0;
+        let mut heavy = light;
+        heavy.core_mass = 1.0;
+        heavy.bulge = 1.0;
+        assert!(eng.drone(&heavy).sub_gain > eng.drone(&light).sub_gain + 0.1);
+        // Paused keeps a floor but silences the starfield.
+        let paused = state(1.0, 0.0, true);
+        assert!(eng.drone(&paused).sub_gain > 0.0);
+        assert_eq!(eng.texture(&paused, 0.5, 0.5).star_gain, 0.0);
     }
 
     #[test]

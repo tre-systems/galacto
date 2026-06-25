@@ -149,6 +149,9 @@ pub struct AppState {
     /// react to how fast the view is being stirred.
     prev_rotation: (f32, f32),
     motion: f32,
+    /// Smoothed stereo bias from the camera azimuth (sin of the orbit angle, -1..1),
+    /// so the soundscape swings across the field as the view circles the galaxy.
+    camera_pan_s: f32,
     /// Cinematic autopilot: a slow self-driving camera orbit + glide, on by default
     /// until the user grabs the view (the page's toggle turns it back on). Its clock
     /// advances only while it runs, so resuming continues smoothly.
@@ -168,6 +171,9 @@ pub struct AppState {
     core_mass_s: f32,
     core_flux_s: f32,
     core_activity_s: f32,
+    /// Smoothed core coherence (0..1): organized infall/expansion vs. random churn,
+    /// from `|flux| / activity` of the readback. Focuses or widens the pad.
+    core_coherence_s: f32,
 }
 
 impl AppState {
@@ -218,6 +224,7 @@ impl AppState {
             sound_muted: false,
             prev_rotation: (0.0, 0.0),
             motion: 0.0,
+            camera_pan_s: 0.0,
             autopilot: true,
             autopilot_t: 0.0,
             autopilot_speed: 0.4,
@@ -227,6 +234,7 @@ impl AppState {
             core_mass_s: 0.0,
             core_flux_s: 0.0,
             core_activity_s: 0.0,
+            core_coherence_s: 0.0,
         })
     }
 
@@ -578,6 +586,11 @@ impl AppState {
         let raw_motion = (delta / 0.06).clamp(0.0, 1.0);
         self.motion = self.motion * 0.85 + raw_motion * 0.15;
 
+        // Stereo bias from the orbit angle: sin(azimuth) swings smoothly L↔R through a
+        // full cycle per revolution, so circling the galaxy pans the whole soundscape.
+        // Lightly slewed so a fast flick still glides rather than snapping.
+        self.camera_pan_s = ease_slew(self.camera_pan_s, ry.sin(), self.frame_dt, 0.3, 2.5);
+
         // Core dynamics read back from the GPU — how much mass sits at the centre
         // and how fast it is moving in or out. These are the primary drivers, so
         // the sound reacts to the galaxy itself, not just the camera.
@@ -603,11 +616,16 @@ impl AppState {
         let inv_mass = 1.0 / stats.mass.max(1.0);
         let flux = (stats.flux * inv_mass / CORE_V_SCALE).clamp(-1.0, 1.0);
         let activity = (stats.activity * inv_mass / CORE_V_SCALE).clamp(0.0, 1.0);
+        // Coherence = how organized the radial motion is, |Σ m·vr| / Σ m·|vr| ∈ [0,1]:
+        // 1 = a unified collapse or expansion, 0 = random thermal churn. Taken from the
+        // raw window sums (where the ratio is exact), independent of the scale factors.
+        let coherence = (stats.flux.abs() / stats.activity.max(1e-3)).clamp(0.0, 1.0);
         // Glide toward the targets with a hard slew cap, so a sudden event (a
         // collision spike) eases in over ~2 s rather than snapping — cinematic.
         self.core_mass_s = ease_slew(self.core_mass_s, concentration, dt, 0.7, 0.5);
         self.core_activity_s = ease_slew(self.core_activity_s, activity, dt, 0.7, 0.5);
         self.core_flux_s = ease_slew(self.core_flux_s, flux, dt, 0.9, 0.6);
+        self.core_coherence_s = ease_slew(self.core_coherence_s, coherence, dt, 0.8, 0.6);
 
         music::GalaxyState {
             scenario: self.scenario,
@@ -640,6 +658,8 @@ impl AppState {
                 UI_MIN_HALO_RC_SCALE,
                 UI_MAX_HALO_RC_SCALE,
             ),
+            camera_pan: self.camera_pan_s,
+            coherence: self.core_coherence_s,
             paused: self.paused,
         }
     }

@@ -41,11 +41,10 @@ Data layout: gas rides in `vel.w` (shared with the colour tint), which is why me
 
 ## Audio — deeper coupling
 
-The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the visuals — the camera, the scenario, the live knobs, and the galaxy's own core dynamics (central mass + radial flux) from the throttled `reduce_core` GPU readback (see [ARCHITECTURE § Audio](docs/ARCHITECTURE.md#audio)). One direction remains to close the loop:
+The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the visuals — the camera (zoom, orbit, rotation speed), the scenario, the live knobs, and the galaxy's own core dynamics (central mass, radial flux, churn, and a derived coherence) from the throttled `reduce_core` GPU readback (see [ARCHITECTURE § Audio](docs/ARCHITECTURE.md#audio)). Two directions remain:
 
 - **Audio-reactive visuals.** The reverse of the current coupling — let note onsets or the pad's energy feed a subtle visual response (a bloom/exposure pulse, or a brightness nudge) so the two reinforce each other, as in the sibling `geno` projects. Cheap once an audio energy signal exists; the care is in keeping it tasteful and not fighting the existing star-size / bloom look. **Effort: S–M.**
-
-Richer core signals are a cheap extension if the sound wants more nuance: the `reduce_core` reduction already returns windowed central mass + radial flux, and could add velocity dispersion, net angular momentum, or a coarse radial histogram in the same pass.
+- **Richer GPU core signals.** `reduce_core` returns windowed central mass + signed radial flux + radial churn in three of a `vec4`'s lanes; the fourth is free. A true velocity dispersion (sum of `m·vr²` to pair with the existing `m·vr`), net angular momentum, or a coarse radial histogram would each give the sound an emergent, evolving quantity the controls don't expose, at the cost of one more accumulation in the read-only reduction kernel and one CPU sum. **Effort: S.**
 
 ## Production export
 
