@@ -61,9 +61,11 @@ const BREATH_RATE: f32 = std::f32::consts::TAU / 10.0;
 /// harmonic of the pad, breathing on its own slow LFO — a field of stars.
 const STAR_VOICES: usize = 5;
 /// Frequency multipliers (relative to the lowest pad voice, ~2 octaves below the
-/// root) for the starfield — octaves and fifths high above the root, so the shimmer
-/// is always consonant and tracks the scenario/gravity as the pad retunes.
-const STAR_MULT: [f32; STAR_VOICES] = [32.0, 48.0, 64.0, 96.0, 128.0];
+/// root) for the starfield — octaves and fifths above the root, so it stays
+/// consonant and tracks the scenario/gravity as the pad retunes. Kept below the
+/// ear's fatiguing 2–5 kHz sensitivity peak (≈0.4–1.6 kHz at the default root): a
+/// warm, bell-like sparkle rather than a piercing whine.
+const STAR_MULT: [f32; STAR_VOICES] = [12.0, 16.0, 24.0, 32.0, 44.0];
 
 /// The persistent Web Audio node graph, independent of whether a real-time
 /// `AudioContext` or an `OfflineAudioContext` drives it. Only nodes that are
@@ -213,13 +215,16 @@ impl Graph {
             osc.set_type(OscillatorType::Sine);
             osc.frequency().set_value(880.0);
             osc.detune().set_value((i as f32 - 2.0) * 4.0);
-            let voice_gain = gain(ctx, 0.55)?; // base the LFO swings around
+            // Base ≈ depth, so each star's deep tremolo dips all the way to silence and
+            // back — an intermittent twinkle, not a steady tone. A sustained pure tone
+            // reads as a whine; one that comes and goes reads as a sparkling star.
+            let voice_gain = gain(ctx, 0.5)?; // base the LFO swings around
             connect(&osc, &voice_gain);
             connect(&voice_gain, &star_lp);
             let lfo = OscillatorNode::new(ctx).ok()?;
             lfo.set_type(OscillatorType::Sine);
             lfo.frequency().set_value(0.05 + 0.031 * i as f32); // decorrelated, slow
-            let depth = gain(ctx, 0.42)?;
+            let depth = gain(ctx, 0.5)?;
             connect(&lfo, &depth);
             connect_param(&depth, &voice_gain.gain());
             let _ = lfo.start();
@@ -317,7 +322,8 @@ impl Graph {
         for (osc, mult) in self.star_oscs.iter().zip(STAR_MULT) {
             ramp(
                 &osc.frequency(),
-                (d.freqs[0] * mult).clamp(200.0, 16000.0),
+                // Hold the sparkle below the ear's fatiguing 2–5 kHz peak.
+                (d.freqs[0] * mult).clamp(120.0, 3000.0),
                 now,
             );
         }

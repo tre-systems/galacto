@@ -346,27 +346,30 @@ impl MusicEngine {
         let star_gain = if silent {
             0.0
         } else {
-            (0.015
-                + 0.11 * state.richness
-                + 0.07 * state.glow
-                + 0.06 * state.zoom
-                + 0.04 * state.gas
-                + 0.03 * lfo_a)
-                .clamp(0.0, 0.26)
+            (0.01
+                + 0.08 * state.richness
+                + 0.05 * state.glow
+                + 0.04 * state.zoom
+                + 0.03 * state.gas
+                + 0.02 * lfo_a)
+                .clamp(0.0, 0.18)
         };
-        let star_cutoff_hz = (1700.0
-            * 2.0_f32.powf(1.2 * state.zoom + 0.85 * state.glow + 0.5 * state.gas))
-        .clamp(1200.0, 12000.0);
+        // Warm low-pass kept well below the fatiguing presence band, so the starfield
+        // stays a soft, rounded sparkle rather than a sharp, sustained tone.
+        let star_cutoff_hz = (1000.0
+            * 2.0_f32.powf(0.9 * state.zoom + 0.6 * state.glow + 0.4 * state.gas))
+        .clamp(700.0, 4500.0);
 
-        // Octave-up shimmer into the reverb — the cosmic sheen. Opens with glow and
-        // gas (the bright blue arms), a close view, and a collapsing core.
-        let shimmer_gain = (0.04
-            + 0.18 * state.glow
-            + 0.12 * state.gas
-            + 0.10 * state.zoom
-            + 0.12 * inflow
-            + 0.05 * lfo_b)
-            .clamp(0.0, 0.5);
+        // Octave-up shimmer into the reverb — the cosmic sheen. Reverb-diffused (never
+        // a dry tone) and kept gentle so it adds air without sharpness. Opens with glow
+        // and gas (the bright blue arms), a close view, and a collapsing core.
+        let shimmer_gain = (0.03
+            + 0.12 * state.glow
+            + 0.08 * state.gas
+            + 0.07 * state.zoom
+            + 0.08 * inflow
+            + 0.03 * lfo_b)
+            .clamp(0.0, 0.3);
 
         // The whole pad + starfield image swings with the camera orbit.
         let field_pan = (state.camera_pan * 0.6).clamp(-0.85, 0.85);
@@ -734,8 +737,8 @@ mod tests {
         };
         let lo = eng.texture(&base, 0.5, 0.5);
         // Body count → starfield; glow → shimmer; halo size → reverb; gas → air.
-        assert!(tx(&|g| g.richness = 1.0).star_gain > lo.star_gain + 0.05);
-        assert!(tx(&|g| g.glow = 1.0).shimmer_gain > lo.shimmer_gain + 0.08);
+        assert!(tx(&|g| g.richness = 1.0).star_gain > lo.star_gain + 0.04);
+        assert!(tx(&|g| g.glow = 1.0).shimmer_gain > lo.shimmer_gain + 0.05);
         assert!(tx(&|g| g.halo_size = 1.0).reverb_wet > lo.reverb_wet + 0.2);
         assert!(tx(&|g| g.gas = 1.0).noise_gain > lo.noise_gain + 0.04);
     }
