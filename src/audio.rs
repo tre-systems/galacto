@@ -67,6 +67,11 @@ const STAR_VOICES: usize = 5;
 /// warm, bell-like sparkle rather than a piercing whine.
 const STAR_MULT: [f32; STAR_VOICES] = [8.0, 12.0, 16.0, 24.0, 32.0];
 
+/// Depth (cents) of the slow per-voice "analog drift" on the drone oscillators — a
+/// few cents of continuous wander so the pad never sits sterilely, perfectly in tune
+/// the way a digital oscillator does.
+const ANALOG_DRIFT_CENTS: f32 = 4.0;
+
 /// The persistent Web Audio node graph, independent of whether a real-time
 /// `AudioContext` or an `OfflineAudioContext` drives it. Only nodes that are
 /// modulated (or that notes connect to) are kept; fixed nodes stay alive through
@@ -109,15 +114,20 @@ impl Graph {
     /// Build the full node graph on `ctx` (real-time or offline). The master gain
     /// starts silent; the caller ramps or sets it.
     fn build(ctx: &BaseAudioContext) -> Option<Self> {
-        // Master chain: gain → low-pass (brightness) → compressor → breath → output.
+        // Master chain: gain → tape saturation → low-pass (brightness) → compressor →
+        // breath → output.
         let master_gain = gain(ctx, 0.0)?;
+        // Gentle tape/console saturation for analog warmth — placed before the
+        // brightness low-pass so its harmonics are tamed and never turn shrill.
+        let saturator = tape_saturator(ctx)?;
         let master_lp = lowpass(ctx, 1400.0, 0.7)?;
         let comp = compressor(ctx)?;
         // Post-compressor breath gain: a gentle ~0.1 Hz swell of the whole output so
         // the breathing pacer is coherent across the entire mix (placed after the
         // compressor so the swell isn't squashed). Starts at unity.
         let breath_gain = gain(ctx, 1.0)?;
-        connect(&master_gain, &master_lp);
+        connect(&master_gain, &saturator);
+        connect(&saturator, &master_lp);
         connect(&master_lp, &comp);
         connect(&comp, &breath_gain);
         connect(&breath_gain, &ctx.destination());
@@ -168,6 +178,8 @@ impl Graph {
         connect(&drone_gain, &drone_lp);
         connect(&drone_lp, &field_pan);
         let mut drone_oscs = Vec::with_capacity(DRONE_VOICES);
+        // Slow free-running LFOs (drift + starfield twinkle), kept alive together.
+        let mut lfos = Vec::new();
         for i in 0..DRONE_VOICES {
             let osc = OscillatorNode::new(ctx).ok()?;
             osc.set_type(if i == 0 {
@@ -177,6 +189,16 @@ impl Graph {
             });
             osc.frequency().set_value(110.0);
             osc.detune().set_value((i as f32 - 1.0) * 5.0);
+            // Analog oscillator drift: a slow, per-voice wander of a few cents, summed
+            // onto the set detune, so the pad is never perfectly, sterilely in tune.
+            let drift = OscillatorNode::new(ctx).ok()?;
+            drift.set_type(OscillatorType::Sine);
+            drift.frequency().set_value(0.027 + 0.019 * i as f32); // ~0.03–0.07 Hz, decorrelated
+            let drift_depth = gain(ctx, ANALOG_DRIFT_CENTS)?;
+            connect(&drift, &drift_depth);
+            connect_param(&drift_depth, &osc.detune());
+            let _ = drift.start();
+            lfos.push(drift);
             let vp = panner(ctx, voice_spread(i))?;
             connect(&osc, &vp);
             connect(&vp, &drone_gain);
@@ -217,7 +239,6 @@ impl Graph {
         connect(&star_lp, &star_gain);
         connect(&star_gain, &field_pan);
         let mut star_oscs = Vec::with_capacity(STAR_VOICES);
-        let mut lfos = Vec::with_capacity(STAR_VOICES);
         for i in 0..STAR_VOICES {
             let osc = OscillatorNode::new(ctx).ok()?;
             osc.set_type(OscillatorType::Sine);
@@ -666,6 +687,24 @@ fn bandpass(ctx: &BaseAudioContext, freq: f32, q: f32) -> Option<BiquadFilterNod
 /// A waveshaper whose transfer curve is `y = 2x² − 1`: feeding it a sine doubles the
 /// frequency (−cos 2θ), so a near-sinusoidal pad gains a clean octave above. 4×
 /// oversampled so the doubling doesn't alias.
+/// A gentle "tape / console" soft-saturation curve: `tanh(drive·x)/drive` — unity for
+/// small signals, softly rounding louder peaks and adding the low-order harmonic
+/// warmth (and subtle glue) that makes a clean digital mix read as analog. Oversampled
+/// so the added harmonics don't alias.
+fn tape_saturator(ctx: &BaseAudioContext) -> Option<WaveShaperNode> {
+    const DRIVE: f32 = 2.5;
+    let shaper = WaveShaperNode::new(ctx).ok()?;
+    let n = 1024usize;
+    let mut curve = vec![0.0_f32; n];
+    for (i, c) in curve.iter_mut().enumerate() {
+        let x = -1.0 + 2.0 * i as f32 / (n as f32 - 1.0);
+        *c = (DRIVE * x).tanh() / DRIVE;
+    }
+    shaper.set_curve_opt_f32_slice(Some(&mut curve));
+    shaper.set_oversample(OverSampleType::N4x);
+    Some(shaper)
+}
+
 fn octave_up_shaper(ctx: &BaseAudioContext) -> Option<WaveShaperNode> {
     let shaper = WaveShaperNode::new(ctx).ok()?;
     let n = 1024usize;
