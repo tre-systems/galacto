@@ -48,11 +48,11 @@ The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the vis
 
 ## Production export
 
-The YouTube-production path in [docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md) wants direct media export rather than browser screen capture:
+The in-app **mastered WAV export** (Record → Export in the panel; `audio::render_offline` replays a captured `GalaxyState` timeline through the shared `Graph` on an `OfflineAudioContext`, then `mastering.rs` masters it to a target LUFS under a −1 dBTP ceiling) covers self-contained audio delivery. The remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)) want direct media beyond browser screen capture:
 
-- **Recording mode.** Hide UI, lock a camera path/timeline, and add clean start/end fades so browser capture can make a decent proof cut. **Effort: S.**
-- **Offline audio export.** Reuse the pure `MusicEngine` to render 48 kHz WAV stems, MIDI/JSON note events, and automation curves for Logic, instead of recording the browser's mixed Web Audio output. This gives the biggest audio-production gain first. **Effort: M.**
-- **Headless video export.** Add a native `wgpu` binary that runs the same simulation/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg. This avoids capture compression and frame drops, but is more engineering than audio export. **Effort: L.**
+- **Stems + MIDI for a DAW.** Export the pure `MusicEngine`'s note events and automation curves (MIDI/JSON) plus per-layer stems, so a track can be re-synthesised with studio instruments and mastered by ear — a higher quality ceiling than the automatic in-app master, for a deliberate release. **Effort: M.**
+- **Recording mode (video).** Hide UI, lock a camera path/timeline, and add clean start/end fades so browser capture can make a decent proof cut. **Effort: S.**
+- **Headless video export.** Add a native `wgpu` binary that runs the same simulation/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg. This avoids capture compression and frame drops, but is more engineering than the audio export. **Effort: L.**
 
 ## Definition of Done
 

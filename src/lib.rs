@@ -5,6 +5,7 @@ mod camera;
 mod error;
 mod graphics;
 mod input;
+mod mastering;
 mod music;
 mod postprocess;
 mod scenarios;
@@ -57,6 +58,15 @@ const MAX_FRAME_DT: f32 = 0.25;
 /// signals to ~0..1: ordinary disk churn sits low (~0.4), while a merger infall or
 /// a close flyby pushes it toward the top. Tunable.
 const CORE_V_SCALE: f32 = 110.0;
+
+/// Audio export render sample rate. 48 kHz keeps the BS.1770 loudness coefficients
+/// exact (`src/mastering.rs`) and is a standard streaming delivery rate.
+const EXPORT_SAMPLE_RATE: u32 = 48_000;
+/// Capture cadence for the export timeline (~30 Hz is ample for smooth automation,
+/// and keeps the offline scheduling cheap).
+const RECORD_DT: f64 = 1.0 / 30.0;
+/// Maximum recorded length (seconds) for an export — bounds memory and render cost.
+const MAX_RECORD_SEC: f64 = 360.0;
 
 /// Count-aware per-frame step cap. The gravity cost scales as N², so the catch-up
 /// budget shrinks with the square of the active body-count ratio; at the 10× public
@@ -174,6 +184,12 @@ pub struct AppState {
     /// Smoothed core coherence (0..1): organized infall/expansion vs. random churn,
     /// from `|flux| / activity` of the readback. Focuses or widens the pad.
     core_coherence_s: f32,
+    /// Rolling capture of the live `GalaxyState` timeline — `(seconds_from_start,
+    /// state)` — replayed offline by the WAV export. Captured at [`RECORD_DT`] while
+    /// `recording_on`, starting from `record_start_ms` on the rAF clock.
+    recording: Vec<(f64, music::GalaxyState)>,
+    recording_on: bool,
+    record_start_ms: f32,
 }
 
 impl AppState {
@@ -235,6 +251,9 @@ impl AppState {
             core_flux_s: 0.0,
             core_activity_s: 0.0,
             core_coherence_s: 0.0,
+            recording: Vec::new(),
+            recording_on: false,
+            record_start_ms: 0.0,
         })
     }
 
@@ -670,9 +689,38 @@ impl AppState {
             return;
         }
         let state = self.galaxy_state();
+        self.capture_frame(&state);
         if let Some(audio) = &mut self.audio {
             audio.update(&state);
         }
+    }
+
+    /// Append the current state to the export timeline when recording, throttled to
+    /// [`RECORD_DT`] and capped at [`MAX_RECORD_SEC`] so memory stays bounded.
+    fn capture_frame(&mut self, state: &music::GalaxyState) {
+        if !self.recording_on {
+            return;
+        }
+        let t = ((self.last_time - self.record_start_ms) / 1000.0).max(0.0) as f64;
+        if let Some(&(last, _)) = self.recording.last() {
+            if t - last < RECORD_DT {
+                return;
+            }
+        }
+        self.recording.push((t, *state));
+        if t >= MAX_RECORD_SEC {
+            self.recording_on = false; // stop at the cap; the buffer is kept to export
+        }
+    }
+
+    /// Start or stop capturing the export timeline (the page's Record control). A
+    /// fresh start clears the previous take and re-anchors the clock.
+    pub fn set_recording(&mut self, on: bool) {
+        if on && !self.recording_on {
+            self.recording.clear();
+            self.record_start_ms = self.last_time;
+        }
+        self.recording_on = on;
     }
 
     /// Resume the AudioContext if the engine exists — iOS suspends it when the PWA
@@ -1104,6 +1152,125 @@ pub fn set_glow(glow: f32) {
             app.borrow_mut().set_glow(glow);
         }
     });
+}
+
+/// Start or stop capturing the soundscape timeline for the WAV export (the page's
+/// Record control). Recording captures the live `GalaxyState` each frame, so the
+/// export reproduces exactly what drove the sound. No-ops until ready.
+#[wasm_bindgen]
+pub fn set_recording(on: bool) {
+    APP_STATE.with(|cell| {
+        if let Some(app) = cell.borrow().as_ref() {
+            app.borrow_mut().set_recording(on);
+        }
+    });
+}
+
+/// Whether a take is currently being captured.
+#[wasm_bindgen]
+pub fn is_recording() -> bool {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|app| app.borrow().recording_on)
+            .unwrap_or(false)
+    })
+}
+
+/// Seconds captured in the current take (for the page's recording readout).
+#[wasm_bindgen]
+pub fn recording_seconds() -> f32 {
+    APP_STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|app| app.borrow().recording.last().map(|&(t, _)| t as f32))
+            .unwrap_or(0.0)
+    })
+}
+
+/// Render the recorded take to a mastered 24-bit / 48 kHz WAV and return it with an
+/// analysis report. Stops recording, renders the timeline offline (faster than real
+/// time, glitch-free), masters it (`src/mastering.rs`: subsonic HP, mono bass, BS.1770
+/// loudness to `target_lufs`, a -1 dBTP true-peak limiter, fades), then hands the page
+/// a `{ wav, report, lufs, truePeakDb, durationSec, sampleRate }` object. The page
+/// makes the download. Rejects with a message if there's nothing to render.
+#[wasm_bindgen]
+pub async fn export_audio(target_lufs: f32) -> Result<JsValue, JsValue> {
+    // Snapshot the timeline under a short borrow, released before the async render.
+    let timeline = APP_STATE.with(|cell| {
+        cell.borrow().as_ref().map(|app| {
+            let mut a = app.borrow_mut();
+            a.recording_on = false;
+            a.recording.clone()
+        })
+    });
+    let Some(timeline) = timeline else {
+        return Err(JsValue::from_str("Audio is not ready yet."));
+    };
+    if timeline.len() < 8 {
+        return Err(JsValue::from_str(
+            "Nothing recorded yet — enable sound, press Record, let it play, then Export.",
+        ));
+    }
+    let sr = EXPORT_SAMPLE_RATE;
+    let (left, right) = audio::render_offline(&timeline, sr, audio::MASTER_LEVEL)
+        .await
+        .ok_or_else(|| JsValue::from_str("Offline audio render failed in this browser."))?;
+    let settings = mastering::MasterSettings {
+        sample_rate: sr,
+        target_lufs,
+        true_peak_ceiling_db: -1.0,
+    };
+    let (ml, mr, report) = mastering::master(&left, &right, &settings);
+    let wav = mastering::encode_wav_24(&ml, &mr, sr);
+    Ok(build_export_result(&wav, &report, sr))
+}
+
+/// A human-readable mastering summary for the export panel.
+fn format_report(r: &mastering::MasterReport, sr: u32) -> String {
+    format!(
+        "{:.0}s · {} kHz / 24-bit WAV\nLoudness: {:.1} → {:.1} LUFS ({:+.1} dB)\nTrue peak: {:.1} dBTP · Sample peak: {:.1} dBFS\nStereo: {:.2} correlation · Tonal tilt: {:+.1} dB\n{}",
+        r.duration_secs,
+        sr / 1000,
+        r.lufs_in,
+        r.lufs_out,
+        r.gain_db,
+        r.true_peak_db,
+        r.sample_peak_db,
+        r.stereo_correlation,
+        r.spectral_tilt_db,
+        if r.limited {
+            "Peak limiter engaged to hold the -1 dBTP ceiling."
+        } else {
+            "Clean headroom — no limiting needed."
+        }
+    )
+}
+
+/// Package the WAV bytes and report into a JS object for the page to download/show.
+fn build_export_result(wav: &[u8], report: &mastering::MasterReport, sr: u32) -> JsValue {
+    let obj = js_sys::Object::new();
+    let bytes = js_sys::Uint8Array::new_with_length(wav.len() as u32);
+    bytes.copy_from(wav);
+    let _ = js_sys::Reflect::set(&obj, &"wav".into(), &bytes.into());
+    let _ = js_sys::Reflect::set(&obj, &"report".into(), &format_report(report, sr).into());
+    let _ = js_sys::Reflect::set(
+        &obj,
+        &"lufs".into(),
+        &JsValue::from_f64(report.lufs_out as f64),
+    );
+    let _ = js_sys::Reflect::set(
+        &obj,
+        &"truePeakDb".into(),
+        &JsValue::from_f64(report.true_peak_db as f64),
+    );
+    let _ = js_sys::Reflect::set(
+        &obj,
+        &"durationSec".into(),
+        &JsValue::from_f64(report.duration_secs as f64),
+    );
+    let _ = js_sys::Reflect::set(&obj, &"sampleRate".into(), &JsValue::from_f64(sr as f64));
+    obj.into()
 }
 
 /// Physical (device-pixel) size to render the canvas at, derived from its CSS

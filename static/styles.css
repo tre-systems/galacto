@@ -326,6 +326,60 @@ body {
   opacity: 0.85;
 }
 
+/* Record & export controls (capture a take, render a mastered WAV). */
+.rec-btn,
+.export-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.rec-btn:hover,
+.export-btn:hover:not(:disabled) {
+  border-color: #7aa2f7;
+  background: rgba(122, 162, 247, 0.16);
+}
+
+.rec-btn.recording {
+  border-color: #f7768e;
+  background: rgba(247, 118, 142, 0.22);
+  color: #ffd7df;
+}
+
+.export-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.control span.export-readout {
+  font-weight: 500;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.export-report {
+  margin: 2px 0 0;
+  padding: 7px 9px;
+  background: rgba(122, 162, 247, 0.08);
+  border: 1px solid rgba(122, 162, 247, 0.25);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #cdd6f4;
+  white-space: pre-line;
+}
+
+.export-report[hidden] {
+  display: none;
+}
+
 /* Toggle switch (a styled checkbox) — used for the halo visibility toggle. */
 .switch {
   appearance: none;

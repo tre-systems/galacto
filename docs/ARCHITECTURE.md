@@ -13,7 +13,7 @@
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `halo.wgsl` (halo overlay), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
 | WASM bindings    | `wasm-bindgen` + `web-sys`      | Canvas, events, `requestAnimationFrame`, console               |
-| Audio            | Web Audio (`web-sys`)           | Synthesized layered soundscape — drone pad, sub-bass, twinkling starfield, octave-up shimmer, procedural reverb/delay, compressor (no sample files) |
+| Audio            | Web Audio (`web-sys`)           | Synthesized layered soundscape — drone pad, sub-bass, twinkling starfield, octave-up shimmer, procedural reverb/delay, compressor (no sample files); offline render + pure-Rust mastering to a 24-bit WAV export |
 | Build            | `wasm-pack` (`--target web`)    | Emits `pkg/galacto.js` + `galacto_bg.wasm`                     |
 | Host             | Cloudflare Pages                | Serves the static `pkg/` directory                             |
 | Scale            | 16,384 self-gravitating bodies (default; adjustable up to 10× = 163,840) | Three compute passes per step (leapfrog: half-drift, all-pairs gravity, kick + half-drift) + one instanced draw |
@@ -31,7 +31,8 @@ src/
 ├── camera.rs            # Orbit camera: scale + rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
 ├── music.rs             # Pure generative engine: GalaxyState → pad + texture + note events
-├── audio.rs             # Web Audio graph + scheduler that renders the soundscape
+├── audio.rs             # Web Audio graph + scheduler (live), plus the offline render for export
+├── mastering.rs         # Pure mastering/analysis DSP: LUFS, true-peak limit, 24-bit WAV
 ├── utils.rs             # set_panic_hook, console_log! macro
 ├── error.rs             # AppError — the core's domain error (no JsValue)
 ├── postprocess.rs       # HDR scene target + bloom (bright-pass, blur, tonemap composite)
@@ -172,6 +173,8 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 **Always eased, never abrupt.** Two stages keep it cinematic. The core signals are slew-rate-limited as they're built (`ease_slew` in `lib.rs`), so even a sudden collision spike ramps in over ~2 s rather than snapping; then every Web Audio parameter is moved with a long `set_target_at_time` time constant, so the graph glides between states. The coupling is one-way — visuals → audio.
 
 **Lifecycle.** Browsers block an `AudioContext` until a user gesture, so the soundscape starts on the visitor's first interaction: the page arms a one-shot pointer/key/touch/wheel listener that calls the `set_sound_enabled` export, and that first enable constructs the `AudioEngine` inside the gesture so the context is allowed to start (true on-load autoplay is not possible). It is stored as an `Option` on `AppState` (absent until then, or if the browser denies a context — in which case the sim simply runs silent), and enabling ramps the master gain up rather than cutting it in.
+
+**Export — a mastered WAV with no DAW.** The page can render a take to a release-ready file. While Record is on, `AppState` keeps a rolling capture of the per-frame `GalaxyState` (`(seconds, state)`, ~30 Hz, capped). On Export, `audio::render_offline` rebuilds the *same* node graph (factored out as `Graph`, so live and offline share one definition) on an `OfflineAudioContext` and replays the timeline through it — scheduling the drone/texture automation and the generative notes across the whole duration up front, then rendering faster than real time and glitch-free (no underruns, fixed 48 kHz). The rendered stereo `f32` then goes through `mastering.rs` — pure DSP that mirrors a real mastering session on a finished mixdown: a subsonic high-pass, the deep bass summed to mono (for translation), **ITU-R BS.1770** integrated-loudness measurement and normalisation to the chosen target LUFS, a stereo-linked **look-ahead true-peak limiter** holding a −1 dBTP ceiling (so it survives lossy-codec inter-sample peaks), and raised-cosine fades — before a 24-bit WAV encode. A `MasterReport` (loudness in/out, true peak, stereo correlation, spectral tilt) comes back with it. The whole render-and-master path is pure enough to unit-test, and runs entirely in WASM; the page only turns the returned bytes into a download. The split keeps the contract clean: real-time playback never tries to be a mastering chain (integrated loudness is a whole-file measurement, and a target-LUFS render is inherently a measure-then-apply pass), so mastering lives on the offline path where it belongs.
 
 ## Build & Deploy
 

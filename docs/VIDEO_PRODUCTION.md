@@ -333,18 +333,24 @@ upload bitrates in the 66-85 Mbps range:
 
 ## Direct Audio Export Design
 
-Direct audio export is also worth doing, but it should not try to record the Web
-Audio output from the browser. The better approach is to render the music engine
-offline.
+A self-contained audio export already ships in the app: **Record** captures the live
+`GalaxyState` timeline, and **Export** rebuilds the same node graph on an
+`OfflineAudioContext`, replays the timeline through it (faster than real time,
+glitch-free), and runs the result through the pure-Rust master in `src/mastering.rs`
+(subsonic high-pass, mono bass, BS.1770 loudness to a target LUFS, a −1 dBTP
+true-peak limiter, fades) to a downloadable 24-bit / 48 kHz WAV with a quality
+report. This is the right path for a quick, release-ready single file with no DAW —
+it renders the actual browser synthesis rather than recording it.
 
-The current split helps:
+The higher-ceiling route, for a deliberately produced release, is **stems + MIDI for
+a DAW**. It builds on the same split:
 
-- `src/music.rs` is pure Rust and already produces `DroneTarget` and `NoteEvent`
-  values.
-- `src/audio.rs` is browser-specific Web Audio rendering.
+- `src/music.rs` is pure Rust and already produces `DroneTarget`, `TextureTarget`,
+  and `NoteEvent` values; `src/mastering.rs` is the pure render-side DSP.
+- `src/audio.rs` holds the Web Audio rendering (live and the offline export).
 
-For production, add a native audio renderer that consumes the same `GalaxyState`
-timeline as the video export and writes WAV files directly:
+A native audio renderer would consume the same `GalaxyState` timeline as the video
+export and write separate WAV stems plus a MIDI/automation sidecar:
 
 ```text
 cargo run --release --bin render_audio -- \
@@ -420,9 +426,11 @@ This still uses browser capture, but makes the captured result much cleaner.
 
 ### Phase 2: Audio Export
 
-Add a native audio/export tool from `music.rs`:
+The in-app **Record → Export** path already renders a mastered 24-bit / 48 kHz WAV
+of the actual synthesis (offline render + `mastering.rs`), which covers a quick
+release-ready single file. What remains is the DAW route for a produced release:
 
-- render note events and drone automation from a timeline;
+- render note events and drone/texture automation from a timeline;
 - write 48 kHz WAV stems and MIDI/JSON events;
 - import stems into Logic for sound design and mastering.
 

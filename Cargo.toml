@@ -38,6 +38,8 @@ web-sys = { version = "0.3", features = [
     # sample files — so only oscillator/filter/effect nodes are needed.
     "AudioContext",
     "AudioContextState",
+    "BaseAudioContext",
+    "OfflineAudioContext",
     "AudioDestinationNode",
     "AudioNode",
     "AudioParam",
@@ -53,6 +55,7 @@ web-sys = { version = "0.3", features = [
     "DynamicsCompressorNode",
     "StereoPannerNode",
     "WaveShaperNode",
+    "OverSampleType",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = { version = "0.1", optional = true }
