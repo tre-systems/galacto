@@ -80,11 +80,9 @@
         position: relative; overflow: hidden;
         padding: clamp(64px, 12vw, 140px) clamp(16px, 5vw, 40px) clamp(48px, 8vw, 90px); text-align: center;
         background:
-          linear-gradient(180deg, rgba(5, 6, 13, 0.52), rgba(5, 6, 13, 0.92)),
           radial-gradient(70% 90% at 50% -10%, rgba(183, 148, 255, 0.22), transparent 60%),
           radial-gradient(50% 70% at 78% 8%, rgba(121, 214, 255, 0.14), transparent 60%),
-          radial-gradient(40% 60% at 22% 0%, rgba(255, 201, 122, 0.10), transparent 60%),
-          url("/og-card.png") center / cover no-repeat;
+          radial-gradient(40% 60% at 22% 0%, rgba(255, 201, 122, 0.10), transparent 60%);
       }
       header.hero::before {
         content: ""; position: absolute; inset: 0; z-index: 0; opacity: 0.5;
