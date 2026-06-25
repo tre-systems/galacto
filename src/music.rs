@@ -418,10 +418,12 @@ impl MusicEngine {
         }
     }
 
-    /// Seconds between note-grid steps: a faster simulation ticks a quicker grid
-    /// (about 0.95 s when slow, down to ~0.25 s when fast).
+    /// Seconds between note-grid steps. Kept in the slow, meditative tempo range
+    /// (~50 BPM / 1.3 s when calm, easing only to ~85 BPM / 0.7 s at full speed) so
+    /// the soundscape never turns frantic — slow tempi near a resting heart rate are
+    /// what the relaxation studies favour.
     pub fn step_seconds(&self, state: &GalaxyState) -> f64 {
-        (0.95 - 0.70 * state.speed.clamp(0.0, 1.0)).max(0.22) as f64
+        (1.3 - 0.6 * state.speed.clamp(0.0, 1.0)).max(0.7) as f64
     }
 
     /// Generate the notes for one grid step, pushing any into `out`. Density and
@@ -437,18 +439,20 @@ impl MusicEngine {
         let c = character(state.scenario);
         // Note density follows the core, then leans into visible/user controls:
         // richness, speed, motion, gas, glow, disk instability, and halo strength.
-        let energy = (0.08
-            + 0.50 * state.core_activity
-            + 0.20 * state.core_mass
-            + 0.20 * state.richness
-            + 0.16 * state.intensity
-            + 0.10 * state.motion
-            + 0.10 * state.gas
-            + 0.08 * state.glow
-            + 0.08 * (1.0 - state.stability)
-            + 0.06 * state.halo)
+        // Kept sparse on purpose — space and silence between sparse "starlight" notes
+        // (over the continuous pad) read as calm; a wall of notes does not.
+        let energy = (0.05
+            + 0.34 * state.core_activity
+            + 0.14 * state.core_mass
+            + 0.14 * state.richness
+            + 0.11 * state.intensity
+            + 0.07 * state.motion
+            + 0.07 * state.gas
+            + 0.06 * state.glow
+            + 0.06 * (1.0 - state.stability)
+            + 0.04 * state.halo)
             * c.activity;
-        if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.95) {
+        if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.72) {
             return;
         }
 
@@ -474,8 +478,9 @@ impl MusicEngine {
             + 0.05 * state.halo
             + 0.12 * self.rng.random_range(0.0_f32..1.0))
         .clamp(0.05, 0.85);
-        // Slower sims breathe with longer notes.
-        let duration = 1.6 + 2.6 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.2);
+        // Long, sustained notes that fade in and out gently — soft, legato tones are
+        // calming; short plucks are not. Slower sims breathe with even longer notes.
+        let duration = 2.6 + 3.2 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.6);
         let pan =
             (self.rng.random_range(-1.0_f32..1.0) * (0.35 + 0.5 * state.motion)).clamp(-0.9, 0.9);
         let waveform = if self.step.is_multiple_of(4) {
@@ -776,6 +781,22 @@ mod tests {
         let paused = state(1.0, 0.0, true);
         assert!(eng.drone(&paused).sub_gain > 0.0);
         assert_eq!(eng.texture(&paused, 0.5, 0.5).star_gain, 0.0);
+    }
+
+    #[test]
+    fn step_seconds_stays_in_a_calm_tempo_range() {
+        let eng = MusicEngine::new(0);
+        // Across the whole speed range the note grid stays in the relaxing
+        // ~50–85 BPM band (0.7–1.3 s) — never frantic, even at full sim speed.
+        for speed in [0.0_f32, 0.5, 1.0] {
+            let mut s = state(0.5, 0.0, false);
+            s.speed = speed;
+            let dt = eng.step_seconds(&s);
+            assert!(
+                (0.69..=1.31).contains(&dt),
+                "step {dt} out of the calm range at speed {speed}"
+            );
+        }
     }
 
     #[test]

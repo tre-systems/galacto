@@ -52,6 +52,10 @@ const ENGINE_SEED: u64 = 0x6A1AC701;
 /// Extra seconds rendered past the recorded timeline so the reverb/echo tail rings
 /// out instead of being chopped off at the end of an export.
 const EXPORT_TAIL_SEC: f64 = 6.0;
+/// Breathing-pacer rate (rad/s): a ~0.1 Hz / 10 s swell on the sustained bed, the
+/// cardiovascular resonance frequency (≈6 breaths per minute) that maximises HRV
+/// and parasympathetic tone — a passive cue that gently slows the listener's breath.
+const BREATH_RATE: f32 = std::f32::consts::TAU / 10.0;
 
 /// High twinkling "starfield" voices. Each is an oscillator tuned to an upper
 /// harmonic of the pad, breathing on its own slow LFO — a field of stars.
@@ -174,7 +178,9 @@ impl Graph {
         // frequency doubler (the `2x²−1` waveshaper turns a sine into its octave) and a
         // band-pass that keeps only the high sheen, sent into the reverb.
         let shimmer_shaper = octave_up_shaper(ctx)?;
-        let shimmer_bp = bandpass(ctx, 2600.0, 0.6)?;
+        // Sit the sheen up in the "air" band rather than the forward 2–3 kHz presence
+        // region, so it shimmers without the fatigue that tires the ear over time.
+        let shimmer_bp = bandpass(ctx, 3600.0, 0.6)?;
         let shimmer_gain = gain(ctx, 0.0)?;
         connect(&drone_lp, &shimmer_shaper);
         connect(&shimmer_shaper, &shimmer_bp);
@@ -263,6 +269,10 @@ impl Graph {
     /// Glide the pad (voices, brightness, detune, level) and the sub-bass toward this
     /// frame's [`DroneTarget`]. `on` gates the sources silent (live, while disabled).
     fn apply_drone(&self, d: &DroneTarget, on: bool, now: f64) {
+        // A slow ~0.1 Hz (6 breaths/min) amplitude swell on the sustained bed — the
+        // cardiovascular resonance frequency — a passive breathing pacer that nudges
+        // the listener toward slow, parasympathetic breathing.
+        let breath = 0.85 + 0.15 * breathing(now as f32);
         for (i, osc) in self.drone_oscs.iter().enumerate() {
             ramp(&osc.frequency(), d.freqs[i], now);
             ramp(&osc.detune(), (i as f32 - 1.0) * d.detune_cents, now);
@@ -273,7 +283,11 @@ impl Graph {
             (d.cutoff_hz * 0.45).clamp(110.0, 2400.0),
             now,
         );
-        ramp(&self.drone_gain.gain(), if on { d.gain } else { 0.0 }, now);
+        ramp(
+            &self.drone_gain.gain(),
+            if on { d.gain * breath } else { 0.0 },
+            now,
+        );
         ramp(
             &self.sub_osc.frequency(),
             (d.freqs[0] * 0.5).clamp(20.0, 120.0),
@@ -281,7 +295,7 @@ impl Graph {
         );
         ramp(
             &self.sub_gain.gain(),
-            if on { d.sub_gain } else { 0.0 },
+            if on { d.sub_gain * breath } else { 0.0 },
             now,
         );
     }
@@ -315,9 +329,11 @@ impl Graph {
         );
     }
 
-    /// Whole-mix brightness from zoom (close = bright, far = muffled).
+    /// Whole-mix brightness from zoom (close = bright, far = muffled), with a gentle
+    /// breath on the cutoff so the whole space softly opens and closes as it swells.
     fn apply_master_brightness(&self, cutoff_hz: f32, now: f64) {
-        ramp(&self.master_lp.frequency(), cutoff_hz, now);
+        let breath = 0.92 + 0.08 * breathing(now as f32);
+        ramp(&self.master_lp.frequency(), cutoff_hz * breath, now);
     }
 
     /// Render one note: a fresh oscillator through a soft envelope and a stereo
@@ -341,7 +357,9 @@ impl Graph {
         pan.pan().set_value(ev.pan.clamp(-1.0, 1.0));
 
         let dur = ev.duration as f64;
-        let attack = (dur * 0.4).min(0.35);
+        // A long, soft fade-in (no pluck) — gentle onsets avoid the startle/orienting
+        // response that sharp transients trigger, keeping the texture calming.
+        let attack = (dur * 0.5).min(0.6);
         let peak = (ev.velocity * 0.4).max(0.0008);
         let g = env.gain();
         let _ = g.set_value_at_time(0.0001, t0);
@@ -652,6 +670,12 @@ fn ramp(param: &web_sys::AudioParam, value: f32, now: f64) {
 /// `phase`, folded to 0..1. Lets the space drift independent of the simulation.
 fn lfo(t: f32, rate: f32, phase: f32) -> f32 {
     0.5 + 0.5 * (t * rate + phase).sin()
+}
+
+/// The breathing-pacer LFO in 0..1 at [`BREATH_RATE`] (~0.1 Hz, 6 breaths/min) — the
+/// cardiovascular resonance frequency that maximises HRV and parasympathetic tone.
+fn breathing(t: f32) -> f32 {
+    lfo(t, BREATH_RATE, 0.0)
 }
 
 /// Static stereo placement for pad voice `i`: the fundamental (0) centred, the
