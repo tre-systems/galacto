@@ -93,22 +93,40 @@ impl Arrangement {
         TAU * 1.1 * (t / self.duration) as f32 + TAU * hash01(self.seed, 19)
     }
 
-    /// Camera pose at time `t` — the galaxy already reads from the opening, drifting
-    /// closer toward the peak and back out to resolve, over a slow orbit and gentle nod.
+    /// Camera pose at time `t`. The arc push-in carries the overall framing, but slow
+    /// layered motion keeps the view evolving across the whole piece so it's never
+    /// static: gentle zoom "breaths" on top of the arc, and a wandering tilt that
+    /// carries the galaxy between face-on, oblique, and near-edge-on (where the disk
+    /// reads as a dramatic thin blade). All cycles are a function of progress, so the
+    /// pacing scales with the piece length and stays slow over a long render.
     pub fn camera(&self, t: f64) -> CameraPose {
-        let a = self.arc(self.progress(t));
+        let ph = self.progress(t);
+        let a = self.arc(ph);
+        // ~3 gentle push/pull breaths over the piece, on top of the arc's push-in.
+        let zoom_breath = 1.0 + 0.18 * (TAU * 3.3 * ph + TAU * hash01(self.seed, 23)).sin();
+        // A slow wander through viewing angles (two decorrelated sweeps), amplitude
+        // well within the ±1.5 rad tilt clamp; passes through face-on (≈0) and out
+        // toward near-edge-on for variety.
+        let tilt = 0.72 * (TAU * 2.2 * ph + TAU * hash01(self.seed, 13)).sin()
+            + 0.45 * (TAU * 1.1 * ph + TAU * hash01(self.seed, 29)).sin();
         CameraPose {
             // Start already framed (0.55) rather than a distant speck, easing in to the
-            // same immersive peak (~1.0).
-            scale: 0.55 * 1.85_f32.powf(a),
-            rot_x: 0.3 * ((t as f32) * 0.045 + TAU * hash01(self.seed, 13)).sin(),
+            // same immersive peak (~1.0), breathing in and out along the way.
+            scale: 0.55 * 1.85_f32.powf(a) * zoom_breath,
+            rot_x: tilt,
             rot_y: self.orbit(t),
         }
     }
 
     /// Normalised live-physics targets at time `t`.
     pub fn physics(&self, t: f64) -> Physics {
-        let a = self.arc(self.progress(t));
+        let ph = self.progress(t);
+        let a = self.arc(ph);
+        // Slow undulations on top of the arc so the brightness and star texture keep
+        // shifting through the piece (the galaxy's glow and sparkle gently breathe),
+        // rather than rising once and holding.
+        let glow_pulse = 0.12 * (TAU * 4.3 * ph + TAU * hash01(self.seed, 31)).sin();
+        let star_pulse = 0.08 * (TAU * 3.1 * ph + TAU * hash01(self.seed, 37)).sin();
         Physics {
             // Gravity rises gently through the build so the galaxy gathers (~1.0×→1.8×
             // once mapped to the sim), and eases through the resolution so it disperses
@@ -118,8 +136,8 @@ impl Arrangement {
             // not a constant floor — which keeps the intro sparse and the peak full.
             halo: 0.35,
             halo_size: 0.5,
-            glow: 0.1 + 0.6 * a, // dim, distant intro → bright peak
-            star_size: 0.4 + 0.3 * a,
+            glow: (0.12 + 0.5 * a + glow_pulse).clamp(0.0, 1.0), // dim intro → bright, pulsing peak
+            star_size: (0.4 + 0.25 * a + star_pulse).clamp(0.0, 1.0),
         }
     }
 
