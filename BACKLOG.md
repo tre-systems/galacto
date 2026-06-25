@@ -50,7 +50,7 @@ The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the vis
 
 ## Production export
 
-A finished YouTube-ready video is one command — `npm run produce` (`scripts/produce.mjs`) builds, captures the cinematic arrangement headlessly, renders the matching mastered audio offline from the same seed/duration, muxes, and adds start/end captions. The local Studio panel also offers the pieces individually (mastered WAV export, composed-piece `generate_piece`, arrangement playback). Remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)):
+A finished YouTube-ready video is one command — `npm run produce` (`scripts/produce.mjs`) builds, captures the cinematic arrangement headlessly, renders the matching mastered audio offline from the same seed/duration, muxes, and adds start/end captions. The audio render (`generate_piece`) and the mastering chain (`src/mastering.rs`) run headlessly in the WASM — there is no in-app export UI. Remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)):
 
 - **Stems + MIDI for a DAW.** Export the pure `MusicEngine`'s note events and automation curves (MIDI/JSON) plus per-layer stems, so a track can be re-synthesised with studio instruments and mastered by ear — a higher quality ceiling than the automatic in-app master, for a deliberate release. **Effort: M.**
 - **Headless video export.** Add a native `wgpu` binary that runs the same arrangement/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg — avoiding the real-time capture (a 10-min piece currently takes ~10 min of wall-clock to record) and any browser-capture compression. **Effort: L.**

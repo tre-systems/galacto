@@ -133,9 +133,8 @@ Useful flags: `--particles` (default 32768), `--width/--height/--fps` (default
 plus a short offline audio render.
 
 The steps are also available individually — `npm run video:capture -- --compose 5
---duration 600` (visuals only, via the `?compose=` URL), the Studio panel's *Compose
-→ Generate WAV* (audio only), and `npm run video:captions` — but `produce` chains
-them with the seed/duration kept in lockstep.
+--duration 600` (visuals only, via the `?compose=` URL) and `npm run video:captions`
+— but `produce` chains them with the seed/duration kept in lockstep.
 
 This is still not the final production architecture. The simulation is still
 running live in Chrome, so a long capture can land a fraction short of the exact
@@ -370,16 +369,15 @@ upload bitrates in the 66-85 Mbps range:
 
 ## Direct Audio Export Design
 
-A self-contained audio export already ships as a **local-only Studio export panel**
-(revealed only when the page is served from localhost, so it stays off the public
-site): **Record** captures the live `GalaxyState` timeline, and **Export** rebuilds
-the same node graph on an
-`OfflineAudioContext`, replays the timeline through it (faster than real time,
-glitch-free), and runs the result through the pure-Rust master in `src/mastering.rs`
-(subsonic high-pass, mono bass, BS.1770 loudness to a target LUFS, a −1 dBTP
-true-peak limiter, fades) to a downloadable 24-bit / 48 kHz WAV with a quality
-report. This is the right path for a quick, release-ready single file with no DAW —
-it renders the actual browser synthesis rather than recording it.
+A self-contained audio render ships in the WASM: `generate_piece(duration, seed, lufs)`
+builds the composed arrangement (`src/arrangement.rs`) and renders it on an
+`OfflineAudioContext` (faster than real time, glitch-free), then runs the result through
+the pure-Rust master in `src/mastering.rs` (subsonic high-pass, mono bass, BS.1770
+loudness to a target LUFS, a −1 dBTP true-peak limiter, fades) to a 24-bit / 48 kHz WAV
+with a quality report. The production pipeline calls it headlessly
+(`window.galacto.renderPieceTo`) — there is no in-app export UI. This is the right path
+for a release-ready single file with no DAW — it renders the actual browser synthesis
+rather than recording it.
 
 The higher-ceiling route, for a deliberately produced release, is **stems + MIDI for
 a DAW**. It builds on the same split:
@@ -465,7 +463,7 @@ This still uses browser capture, but makes the captured result much cleaner.
 
 ### Phase 2: Audio Export
 
-The in-app **Record → Export** path already renders a mastered 24-bit / 48 kHz WAV
+The headless `generate_piece` path already renders a mastered 24-bit / 48 kHz WAV
 of the actual synthesis (offline render + `mastering.rs`), which covers a quick
 release-ready single file. What remains is the DAW route for a produced release:
 
@@ -522,6 +520,7 @@ For the next video, do both in this order:
 5. Build the headless video exporter if the proof cut looks good enough to justify
    a polished YouTube release.
 
-Direct audio and direct video export should produce better final results than a
-screen capture, but the best near-term return is audio export plus a clean
-recording mode. Headless video export is the higher-quality long-term path.
+Direct audio and direct video render produce better final results than a screen
+capture. The one-command `produce` pipeline (headless capture + offline audio +
+captions) already ships; a native, faster-than-real-time frame renderer is the
+higher-quality long-term path.

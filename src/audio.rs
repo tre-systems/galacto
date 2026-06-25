@@ -9,8 +9,8 @@
 //!
 //! The node graph itself ([`Graph`]) is independent of *which* context drives it, so
 //! the same synthesis runs live in an `AudioContext` (the [`AudioEngine`]) and
-//! offline in an `OfflineAudioContext` ([`render_offline`], for the WAV export —
-//! faster than real time and glitch-free).
+//! offline in an `OfflineAudioContext` ([`render_offline`], for the composed-piece
+//! render — faster than real time and glitch-free).
 //!
 //! The graph (sources → master → output):
 //! ```text
@@ -538,10 +538,10 @@ impl AudioEngine {
     }
 }
 
-/// Render a recorded session timeline to stereo `f32` offline — faster than real
-/// time and glitch-free — for the WAV export. The timeline is a sequence of
-/// `(seconds_from_start, GalaxyState)` captured during live playback; this replays
-/// it through the same [`Graph`] at `sample_rate`, scheduling the drone/texture
+/// Render a composed-piece automation timeline to stereo `f32` offline — faster than
+/// real time and glitch-free — for the composed-piece WAV. The timeline is a sequence
+/// of `(seconds_from_start, GalaxyState)` from the arrangement; this replays it
+/// through the same [`Graph`] at `sample_rate`, scheduling the drone/texture
 /// automation and the generative notes across the whole duration up front.
 ///
 /// `render_level` is the fixed master gain to render at (the mix level before the
