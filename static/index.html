@@ -593,6 +593,21 @@
             document.getElementById("export-panel")?.setAttribute("hidden", "");
             mod.start_arrangement(dur, seed);
           }
+          // Headless control surface for the automated production pipeline
+          // (scripts/produce.mjs) — render a piece's audio and drive the arrangement
+          // without the UI. Harmless to expose; it's just the offline engine.
+          window.galacto = {
+            startArrangement: (dur, seed) => mod.start_arrangement(dur, seed),
+            stopArrangement: () => mod.stop_arrangement(),
+            arrangementActive: () => mod.arrangement_active(),
+            // Render a composed piece's audio and POST the WAV bytes to `postUrl`,
+            // so the headless capture run can save it to disk. Returns the report.
+            renderPieceTo: async (postUrl, dur, seed, lufs) => {
+              const res = await mod.generate_piece(dur, seed, lufs);
+              await fetch(postUrl, { method: "POST", body: new Blob([res.wav]) });
+              return res.report;
+            },
+          };
         } catch (error) {
           console.error("Failed to initialize application:", error);
           loadingEl.style.display = "none";

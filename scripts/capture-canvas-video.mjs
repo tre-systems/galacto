@@ -63,10 +63,14 @@ function run(command, commandArgs) {
   return result.stdout;
 }
 
-function startChunkServer(chunkDir) {
+function startChunkServer(chunkDir, audioPath) {
   let doneResolve;
   const done = new Promise((resolveDone) => {
     doneResolve = resolveDone;
+  });
+  let audioResolve;
+  const audioDone = new Promise((resolveAudio) => {
+    audioResolve = resolveAudio;
   });
   let count = 0;
   const server = createServer((req, res) => {
@@ -84,6 +88,22 @@ function startChunkServer(chunkDir) {
       res.writeHead(200);
       res.end("ok");
       doneResolve(count);
+      return;
+    }
+
+    // The composed-piece audio (one POST) goes to its own file.
+    if (parsed.searchParams.get("audio") === "1" && audioPath) {
+      const out = createWriteStream(audioPath);
+      req.pipe(out);
+      out.on("finish", () => {
+        res.writeHead(200);
+        res.end("ok");
+        audioResolve(true);
+      });
+      out.on("error", (err) => {
+        res.writeHead(500);
+        res.end(String(err));
+      });
       return;
     }
 
@@ -105,7 +125,7 @@ function startChunkServer(chunkDir) {
   return new Promise((resolveServer) => {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
-      resolveServer({ server, port, done });
+      resolveServer({ server, port, done, audioDone });
     });
   });
 }
@@ -186,15 +206,29 @@ async function main() {
   const headless = !hasFlag("--no-headless");
   const remux = !hasFlag("--no-remux");
   const bitrate = takeNumber("--bitrate", width * height >= 3840 * 2160 ? 80_000_000 : 28_000_000);
+  // --produce renders the matching audio (generate_piece) and muxes + captions the
+  // capture into a finished YouTube-ready MP4. Requires --compose <seed>.
+  const produce = hasFlag("--produce");
+  const lufs = takeNumber("--lufs", -16);
+  // The arrangement's audio rings out a reverb tail past the arc; capture that long
+  // so the fade-out is in the picture too. Matches EXPORT_TAIL_SEC in audio.rs.
+  const EXPORT_TAIL_SEC = 6;
+  const captureDuration = produce ? durationSec + EXPORT_TAIL_SEC : durationSec;
 
   if (hasFlag("--help")) {
     usage();
     return;
   }
+  if (produce && composeSeed == null) {
+    throw new Error("--produce requires --compose <seed>");
+  }
 
   const chunkDir = join(outDir, `${label}-chunks`);
   const webmPath = join(outDir, `${label}.webm`);
   const remuxPath = join(outDir, `${label}-video.webm`);
+  const audioPath = join(outDir, `${label}.wav`);
+  const muxPath = join(outDir, `${label}-muxed.mkv`);
+  const finalPath = join(outDir, `${label}.mp4`);
   const screenshotPath = join(outDir, `${label}-preview.png`);
   const profileDir = join(outDir, `${label}-chrome-profile`);
   mkdirSync(outDir, { recursive: true });
@@ -202,7 +236,10 @@ async function main() {
   rmSync(profileDir, { recursive: true, force: true });
   mkdirSync(chunkDir, { recursive: true });
 
-  const { server, port: chunkPort, done } = await startChunkServer(chunkDir);
+  const { server, port: chunkPort, done, audioDone } = await startChunkServer(
+    chunkDir,
+    produce ? audioPath : null,
+  );
   const debugPort = 9300 + Math.floor(Math.random() * 500);
   const chromeArgs = [
     `--remote-debugging-port=${debugPort}`,
@@ -304,6 +341,25 @@ async function main() {
     writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
     console.log(`preview: ${screenshotPath}`);
 
+    // Restart the arrangement at t=0 right before recording, so the captured picture
+    // begins exactly where generate_piece's audio does (precise alignment).
+    if (composeSeed != null) {
+      await page.send("Runtime.evaluate", {
+        expression: `
+          (async () => {
+            const started = performance.now();
+            while (!window.galacto && performance.now() - started < 10000) {
+              await new Promise((r) => requestAnimationFrame(r));
+            }
+            window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
+            return true;
+          })()
+        `,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+    }
+
     const postUrl = `http://127.0.0.1:${chunkPort}/chunk`;
     const recorded = await page.send("Runtime.evaluate", {
       expression: `
@@ -338,7 +394,7 @@ async function main() {
             };
           });
           recorder.start(1000);
-          setTimeout(() => recorder.stop(), ${Math.round(durationSec * 1000)});
+          setTimeout(() => recorder.stop(), ${Math.round(captureDuration * 1000)});
           return await stopped;
         })()
       `,
@@ -360,8 +416,47 @@ async function main() {
       console.log(`remuxed video: ${remuxPath}`);
     }
 
+    if (produce) {
+      // Render the matching mastered audio (offline, in the same page) and have the
+      // page POST the WAV bytes to our server, which writes them to audioPath.
+      const audioUrl = `http://127.0.0.1:${chunkPort}/?audio=1`;
+      const rendered = await page.send("Runtime.evaluate", {
+        expression: `window.galacto.renderPieceTo(${JSON.stringify(audioUrl)}, ${durationSec}, ${Number(composeSeed)}, ${lufs})`,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      await audioDone;
+      console.log(`audio: ${audioPath}`);
+      console.log(`master: ${String(rendered.result.value).replace(/\n/g, " | ")}`);
+    }
+
     page.close();
     browser.close();
+
+    if (produce) {
+      // Mux the VP9 video with the WAV (copy video, encode AAC) into an intermediate,
+      // then add the start/end captions (which re-encodes to HEVC + faststart) → MP4.
+      const videoSource = remux ? remuxPath : webmPath;
+      run("ffmpeg", [
+        "-hide_banner", "-y",
+        "-i", videoSource,
+        "-i", audioPath,
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
+        "-shortest", muxPath,
+      ]);
+      console.log(`muxed: ${muxPath}`);
+      run("node", [
+        "scripts/add-video-captions.mjs",
+        "--input", muxPath,
+        "--output", finalPath,
+        ...(take("--start-title") ? ["--start-title", take("--start-title")] : []),
+        ...(take("--start-subtitle") ? ["--start-subtitle", take("--start-subtitle")] : []),
+        ...(take("--end-title") ? ["--end-title", take("--end-title")] : []),
+        ...(take("--end-subtitle") ? ["--end-subtitle", take("--end-subtitle")] : []),
+      ]);
+      console.log(`\n✅ Finished piece: ${finalPath}`);
+    }
   } finally {
     server.close();
     chrome.kill("SIGTERM");

@@ -48,11 +48,10 @@ The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the vis
 
 ## Production export
 
-The local-only Studio export panel covers self-contained delivery: a **mastered WAV export** (records a live `GalaxyState` timeline, replays it through the shared `Graph` on an `OfflineAudioContext`, then `mastering.rs` masters to a target LUFS under a −1 dBTP ceiling) and a **composed-piece** path (`arrangement.rs` — a deterministic cinematic A→B→C arc that drives both the audio (`generate_piece`) and the visuals (`start_arrangement` / the `?compose=` URL), so a captured video and the rendered audio stay locked and mux into a finished video). Remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)):
+A finished YouTube-ready video is one command — `npm run produce` (`scripts/produce.mjs`) builds, captures the cinematic arrangement headlessly, renders the matching mastered audio offline from the same seed/duration, muxes, and adds start/end captions. The local Studio panel also offers the pieces individually (mastered WAV export, composed-piece `generate_piece`, arrangement playback). Remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)):
 
-- **One-command produce.** A single script that runs the arrangement capture, renders the matching audio headlessly (`generate_piece` posted from the capture page), and muxes them — so a finished video is one command rather than capture → Generate WAV → ffmpeg. **Effort: S–M.**
 - **Stems + MIDI for a DAW.** Export the pure `MusicEngine`'s note events and automation curves (MIDI/JSON) plus per-layer stems, so a track can be re-synthesised with studio instruments and mastered by ear — a higher quality ceiling than the automatic in-app master, for a deliberate release. **Effort: M.**
-- **Headless video export.** Add a native `wgpu` binary that runs the same arrangement/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg. This avoids capture compression and frame drops, but is more engineering than the audio export. **Effort: L.**
+- **Headless video export.** Add a native `wgpu` binary that runs the same arrangement/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg — avoiding the real-time capture (a 10-min piece currently takes ~10 min of wall-clock to record) and any browser-capture compression. **Effort: L.**
 
 ## Definition of Done
 

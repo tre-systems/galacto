@@ -102,7 +102,17 @@ A pre-commit hook and CI run the same gate — `fmt` / `clippy` / `test` / wasm 
 
 Running locally (`npm run dev`) reveals a **Studio export** panel, top-right — kept off the public site because it's an authoring tool, not a casual feature. Press **Record**, let the autopilot play while the galaxy evolves, then **Export** to download a **release-ready 24-bit / 48 kHz WAV**. The take is re-rendered **offline** through the same synthesis (faster than real time, glitch-free), then auto-mastered entirely in WebAssembly: stereo-balance correction, a subsonic high-pass, the deep bass summed to mono for translation, **ITU-R BS.1770 loudness normalisation** to a chosen target (−16 LUFS ambient, −14 streaming, −18 dynamic), and a **true-peak limiter to −1 dBTP** so it stays clean through lossy codecs — with a quality report (loudness, true peak, stereo correlation, tonal balance). No DAW needed.
 
-The panel can also **compose a complete arranged piece**: a deterministic cinematic A→B→C arc (sparse intro → gathering build → serene awe peak → dispersing resolution), keyed by a seed + length. **Generate WAV** renders the mastered audio; **Play** drives the *same* arc on screen (the galaxy gathers and disperses, the camera moves through it) so a captured video and the audio line up. This is how a finished audiovisual piece is produced — see [Video production](docs/VIDEO_PRODUCTION.md).
+The panel can also **compose a complete arranged piece**: a deterministic cinematic A→B→C arc (sparse intro → gathering build → serene awe peak → dispersing resolution), keyed by a seed + length. **Generate WAV** renders the mastered audio; **Play** drives the *same* arc on screen (the galaxy gathers and disperses, the camera moves through it) so a captured video and the audio line up.
+
+For a finished, YouTube-ready video in **one command**:
+
+```bash
+npm run produce -- --seed 5 --duration 600
+# → a 10-minute MP4 (HEVC + AAC) with the cinematic arrangement, mastered audio,
+#   and start/end captions — visuals and sound rendered from the same seed, so locked.
+```
+
+It builds, captures the arrangement headlessly, renders the matching mastered audio offline, muxes, and adds captions — no UI needed. The default 10-minute length is the researched sweet spot for a composed ambient piece. See [Video production](docs/VIDEO_PRODUCTION.md).
 
 ## Architecture
 

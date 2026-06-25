@@ -100,35 +100,34 @@ renders/proofs/
 Use the `*-video.webm` file for muxing or editing; it is remuxed by ffmpeg after
 capture. `renders/` is git-ignored because these files are large.
 
-### Composed piece — locked visuals + audio (recommended)
+### Composed piece — one command (recommended)
 
-For a *finished* piece rather than a free-running capture, use the **cinematic
-arrangement** (`src/arrangement.rs`): a deterministic A→B→C arc (sparse intro →
-gathering build → serene awe peak ~two-thirds in → dispersing resolution) keyed by
-a `seed` + `duration`. Because the arc is deterministic, the captured picture and
-the offline-mastered audio — produced from the *same* `seed`/`duration` — line up.
+For a *finished* piece, **`npm run produce`** does the whole thing — no UI, no manual
+steps — and writes a YouTube-ready MP4:
 
-1. **Capture the visuals**, playing the arrangement (the `--compose <seed>`
-   self-drives the camera + galaxy via `?compose=`):
+```bash
+npm run produce -- --seed 5 --duration 600
+# → renders/proofs/galacto-piece-5.mp4  (HEVC + AAC, start/end captions, +faststart)
+```
 
-   ```bash
-   npm run video:capture -- --compose 5 --duration 240 \
-     --width 3840 --height 2160 --fps 60 --label galacto-piece-5
-   ```
+It builds, serves `pkg/`, launches headless Chrome to **capture the cinematic
+arrangement** (`src/arrangement.rs` — a deterministic A→B→C arc: sparse intro →
+gathering build → serene awe peak ~two-thirds in → dispersing resolution), **renders
+the matching mastered audio** offline from the *same* seed + duration (so picture and
+sound are locked), **muxes** them, and adds **start/end captions** (via
+`add-video-captions.mjs`). The default length is **10 minutes** — the researched
+sweet spot for a composed ambient piece (full arc; clears YouTube's 8-min mid-roll
+threshold). Same seed → same piece; change `--seed` for a different one.
 
-2. **Render the matching audio** (mastered): on the local site, open the **Studio
-   export** panel → *Compose* → set the same length (4 min) and seed (5) → **Generate
-   WAV** → `galacto-piece-5.wav`.
+Useful flags: `--width/--height/--fps` (default 3840×2160 / 60), `--lufs` (default
+−16), `--start-title/--start-subtitle/--end-title/--end-subtitle`, `--no-build`,
+`--no-headless`. The capture is real-time, so a 10-minute piece takes ~10 minutes
+plus a short offline audio render.
 
-3. **Mux** the two into the final video:
-
-   ```bash
-   ffmpeg -i renders/proofs/galacto-piece-5-video.webm -i galacto-piece-5.wav \
-     -c:v copy -c:a aac -b:a 320k -shortest galacto-piece-5.mp4
-   ```
-
-Same seed + duration ⇒ the journey (build, peak, resolution, stereo pan) is shared,
-so audio and picture stay together. Different seeds give different pieces.
+The steps are also available individually — `npm run video:capture -- --compose 5
+--duration 600` (visuals only, via the `?compose=` URL), the Studio panel's *Compose
+→ Generate WAV* (audio only), and `npm run video:captions` — but `produce` chains
+them with the seed/duration kept in lockstep.
 
 This is still not the final production architecture. The simulation is still
 running live in Chrome, so a long capture can land a fraction short of the exact

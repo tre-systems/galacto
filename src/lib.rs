@@ -66,8 +66,10 @@ const EXPORT_SAMPLE_RATE: u32 = 48_000;
 /// Capture cadence for the export timeline (~30 Hz is ample for smooth automation,
 /// and keeps the offline scheduling cheap).
 const RECORD_DT: f64 = 1.0 / 30.0;
-/// Maximum recorded length (seconds) for an export — bounds memory and render cost.
-const MAX_RECORD_SEC: f64 = 360.0;
+/// Maximum length (seconds) for a recorded export or a composed piece — bounds the
+/// offline render's memory and time. 15 min covers a full-length ambient piece while
+/// staying within a browser tab's memory for the offline render.
+const MAX_RECORD_SEC: f64 = 900.0;
 
 /// Count-aware per-frame step cap. The gravity cost scales as N², so the catch-up
 /// budget shrinks with the square of the active body-count ratio; at the 10× public
