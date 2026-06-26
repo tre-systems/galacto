@@ -45,17 +45,18 @@ const FLYBY_COMPANION_RADIUS: f32 = 36.0;
 const FLYBY_COMPANION_CENTER: [f32; 3] = [210.0, 150.0, 25.0];
 const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 
-// --- Flyby (composed-video collision): a second, substantial galaxy falls in from
-// the top (+Y) and collides with the main disk around the middle of the piece. It is
-// seeded (near) at rest a long way up the +Y axis — a distance proportional to the
-// piece length — and free-falls under gravity. The composed piece runs the sim at
-// `FLYBY_SIM_SPEED` (see lib.rs), which stretches that infall so the collision lands
-// near the half-way mark and the approach is visible coming in from the top edge.
+// --- Flyby (composed-video collision): a second, substantial galaxy falls in from far
+// behind the disk along the spin axis (the depth, -Z) and collides with the main disk
+// around the middle of the piece. It is seeded (near) at rest a long way out on the -Z
+// axis — a distance proportional to the piece length — and free-falls under gravity. The
+// composed piece runs the sim at `FLYBY_SIM_SPEED` (see lib.rs), which stretches that
+// infall so the collision lands near the half-way mark and the intruder is glimpsed as a
+// distant galaxy growing out of the background through the first half.
 // Tune the timing with `FLYBY_DISTANCE_FACTOR` (larger = collides later).
-const FLYBY_DISTANCE_FACTOR: f32 = 11.0; // start Y = factor × duration_secs
+const FLYBY_DISTANCE_FACTOR: f32 = 11.0; // start distance (on -Z) = factor × duration_secs
 const FLYBY_INTRUDER_MASS: f32 = 180_000.0; // ~0.6× the main core, for a real collision
 const FLYBY_INTRUDER_RADIUS: f32 = 95.0;
-const FLYBY_INTRUDER_X_OFFSET: f32 = 45.0; // slightly off-axis → a graze, not a dead-centre smash
+const FLYBY_INTRUDER_X_OFFSET: f32 = 45.0; // slightly off-axis → not a dead-centre smash
 /// Default piece length (s) used when seeding outside a composed run (tests, the
 /// initial seed). The arrangement passes the real duration via `Reseed`.
 const DEFAULT_PIECE_SECS: f32 = 600.0;
@@ -850,12 +851,15 @@ fn generate_flyby(
         star_mass,
         &mut rng,
     );
-    // Mid-piece collision: a second, substantial galaxy that free-falls from far up +Y.
-    let y0 = FLYBY_DISTANCE_FACTOR * duration_secs.max(1.0);
+    // Mid-piece collision: a second, substantial galaxy that free-falls from far behind
+    // the disk along the spin axis (the depth, -Z), so it reads as a distant galaxy
+    // growing out of the background through the first half, then punches through the disk
+    // plane around the midpoint. A small in-plane offset keeps the approach off-axis.
+    let d0 = FLYBY_DISTANCE_FACTOR * duration_secs.max(1.0);
     seed_galaxy(
         &mut particles,
         &Galaxy {
-            center: [FLYBY_INTRUDER_X_OFFSET, y0, 0.0],
+            center: [FLYBY_INTRUDER_X_OFFSET, 0.0, -d0],
             bulk: [0.0, 0.0, 0.0], // at rest — it free-falls under gravity
             core_mass: FLYBY_INTRUDER_MASS,
             radius: FLYBY_INTRUDER_RADIUS,
