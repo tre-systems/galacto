@@ -3,7 +3,7 @@
 Forward-looking work, ordered by expected value and risk. This is an operating
 list, not a changelog. Keep it short enough that the next useful change is obvious.
 
-## P1 — Product Polish
+## P3 — Product Polish
 
 These improve the experience, but they are not prerequisites for keeping the app
 healthy.
@@ -15,7 +15,7 @@ healthy.
 | **Richer audio core signals** | `reduce_core` has room for one more aggregate lane. Velocity dispersion, net angular momentum, or a coarse radial signal could give the sound another genuinely emergent driver. Keep it aggregate-only, throttled, and one-way. | S |
 | **Subtle audio-reactive visuals** | Let note onsets or pad energy drive a small bloom/exposure pulse so the audio and picture reinforce each other. Keep it tasteful and subordinate to the simulation. | S-M |
 
-## P2 — Larger Research/Production Tracks
+## P4 — Larger Research/Production Tracks
 
 Do these only when the goal explicitly needs them. They are useful directions, not
 near-term cleanup.
