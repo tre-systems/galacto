@@ -1,6 +1,6 @@
 # galacto — Architecture
 
-> Scope: how the code is organized and how one rendered frame is produced. The simulation is small — 11 Rust modules and 4 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
+> Scope: how the code is organized and how one rendered frame is produced. The codebase is compact — 14 Rust modules and 4 WGSL shaders — but it is GPU-first: all physics runs in compute shaders and never touches the CPU.
 
 ![System overview](diagrams/system-overview.png)
 
@@ -8,7 +8,7 @@
 
 | Layer            | Choice                          | Notes                                                          |
 | ---------------- | ------------------------------- | -------------------------------------------------------------- |
-| Language         | Rust (edition 2021)             | ~3,200 lines of Rust (+ 4 WGSL shaders)                        |
+| Language         | Rust (edition 2021)             | ~7k lines of Rust (+ 4 WGSL shaders)                           |
 | GPU access       | `wgpu` 29 (WebGPU)              | Compute + render pipelines; `BROWSER_WEBGPU` backend           |
 | Shaders          | WGSL                            | `update.wgsl` (compute), `render.wgsl` (billboards), `halo.wgsl` (halo overlay), `post.wgsl` (bloom) |
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
@@ -24,9 +24,9 @@ The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no `buil
 
 ```
 src/
-├── lib.rs               # WASM entry: AppState owns graphics/sim/camera/input; rAF loop
+├── lib.rs               # WASM entry: AppState composition root + rAF loop
 ├── graphics.rs          # WebGPU init: instance → adapter → device/queue → surface
-├── simulation.rs        # Buffers, pipelines, bind groups, compute_pass / render_pass, camera uniform
+├── simulation.rs        # Buffers, pipelines, bind groups, compute/render passes, core-stat reduction
 ├── scenarios.rs         # Scenario (spiral disk, multi-galaxy collisions, M51 flyby): initial conditions + shared disk seeding
 ├── camera.rs            # Orbit camera: scale + rotation → view-projection matrix
 ├── input.rs             # Mouse / wheel / touch (pinch) / keyboard → camera; pause + reset
@@ -37,6 +37,7 @@ src/
 ├── utils.rs             # set_panic_hook, console_log! macro
 ├── error.rs             # AppError — the core's domain error (no JsValue)
 ├── postprocess.rs       # HDR scene target + bloom (bright-pass, blur, tonemap composite)
+├── units.rs             # Display-only physical units: kpc, km/s, Myr
 └── shaders/
     ├── update.wgsl      # Compute: tiled all-pairs self-gravity + leapfrog integration
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
@@ -49,23 +50,31 @@ scripts/                 # cache-bust.mjs (build), render-diagrams.mjs, check-di
 
 ## Patterns
 
-galacto is small, but nearly every file is an instance of one of a handful of recurring patterns. Naming them once makes the rest of the code predictable; the detailed sections below are each an elaboration of one of these.
+galacto is small, but nearly every file is an instance of one of a handful of recurring patterns. Naming them once makes the rest of the code predictable; the detailed sections below are each an elaboration of one of these. When adding a feature, first ask which pattern it should fit. If it does not fit any of them, that is a design signal, not just a documentation gap.
 
 **GPU-resident state, near-zero readback.** After the initial upload, every body's position/velocity/mass lives only in a GPU storage buffer (plus a scratch acceleration buffer). The compute passes are the sole writers and the render pass the sole reader; the CPU never reads *per-body* data back. The single exception serves the audio: a throttled `reduce_core` pass collapses all bodies to a few core-statistics scalars (windowed central mass, radial flux) that are copied to a mappable buffer and read back asynchronously — a tiny aggregate, one readback in flight at a time, off the critical path and never fed back into the sim. The CPU's only per-frame writes are the small camera uniform (and, when sliders move, the params uniform).
 
 **Pass-ordered hazards instead of ping-pong.** The all-pairs sum means every body reads every other body's position, so positions must not change mid-sum. Rather than double-buffer the whole particle array (ping-pong), each step runs as separate passes over one buffer: a half-drift moves every body to the step midpoint, `compute_accel` reads those positions and writes a separate `accel` buffer, then the kick + second half-drift reads `accel` and advances each body in place (see Simulation & Physics for the leapfrog). Each body only ever writes its own slot, and every pass boundary makes the previous pass's writes visible to the next read — so a single particle buffer suffices, with the small `accel` buffer as the only extra copy.
 
-**Owning composition root (`AppState`).** One struct (`src/lib.rs`) owns the four subsystems — `Graphics`, `Simulation`, `Camera`, `InputHandler` — and is the only orchestrator. Each frame it calls `update()` then `render()`. Subsystems never reach for each other; they are wired together only through `AppState`.
+**Owning composition root (`AppState`).** One struct (`src/lib.rs`) owns the long-lived subsystems — `Graphics`, `Simulation`, `Camera`, `InputHandler`, `PostProcess`, the optional `AudioEngine`, and the arrangement/autopilot state — and is the only orchestrator. Each frame it calls `update()`, `update_audio()`, then `render()`. Exported setters mutate `AppState` and then delegate narrowly to the owning subsystem. Subsystems never reach for each other; they are wired together only through `AppState`.
 
-**Single `#[wasm_bindgen(start)]` entry + self-scheduling rAF loop.** `start()` is the only WASM export. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer. The loop and the resize handler reach the app through a `thread_local!` `RefCell<Option<Rc<RefCell<AppState>>>>` — the safe single-threaded-WASM global, no `static mut`.
+**Single boot entry + self-scheduling rAF loop.** `#[wasm_bindgen(start)] start()` is the only boot path. It installs the panic hook, spawns async initialization, and arms a `requestAnimationFrame` callback that re-arms itself every frame — the render loop is a tail chain of rAF calls, not a timer. The loop and the resize handler reach the app through a `thread_local!` `RefCell<Option<Rc<RefCell<AppState>>>>` — the safe single-threaded-WASM global, no `static mut`. Other WASM exports form a narrow control/readback surface for `static/index.html` and the production scripts: plain scalars in, plain scalars or byte arrays out, with `AppState` still owning the work.
 
 **POD structs mirrored Rust ↔ WGSL.** `Particle` and `SimulationParams` are `#[repr(C)]` + `bytemuck::Pod`, byte-for-byte identical to their WGSL `struct` counterparts, so they `cast_slice` straight into buffers with no serialization. `Particle` packs position+mass and velocity into two `vec4`s (`pos_mass`, `vel` = 32 bytes; `vel.w` carries a per-body colour tint, see Rendering); using `vec4` rather than `vec3` sidesteps WGSL's 16-byte `vec3` alignment, so the Rust and WGSL layouts are unambiguous. A native unit test asserts both structs are 32 bytes so the contract can't silently drift. Trailing `u32` pads keep `SimulationParams` 16-byte aligned for a uniform. **The Rust definition and the WGSL definition are one contract and must change together.**
 
-**Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `accel` buffer is GPU-only scratch. Both are allocated once at `MAX_PARTICLES` (10× the default), so the body-count slider grows the sim without reallocating buffers or bind groups — only the active `count` (a tile multiple) is ever dispatched, drawn, or read back. Re-seeding (the scenario dropdown, the body-count slider, and the Restart button) regenerates the bodies on the CPU and re-uploads the particle buffer via `Simulation::reseed` — an explicit, occasional event, never per-frame. The small uniforms are written more freely: the camera matrix + star size every frame, and the `SimulationParams` uniform whenever the gravity/halo sliders move (`Simulation::set_physics`, no re-seed). Disk temperature is a seed-time property, so it is *staged* and applied only at the next re-seed.
+**Upload-once, with explicit re-seed.** The particle buffer is seeded at init and then evolved in place on the GPU; the `accel` buffer is GPU-only scratch. Both are allocated once at `MAX_PARTICLES` (10× the default), so the body-count slider grows the sim without reallocating buffers or bind groups — only the active `count` (a tile multiple) is ever dispatched, drawn, or read back. Re-seeding (the scenario dropdown, the body-count slider, and the Restart button) regenerates the bodies on the CPU and re-uploads the particle buffer via `Simulation::reseed` — an explicit, occasional event, never per-frame. The small uniforms are written more freely: the camera matrix + star size every frame, and the `SimulationParams` uniform whenever the gravity/halo sliders move (`Simulation::set_physics`, no re-seed). Seed-time properties such as disk temperature, gas fraction, bulge fraction, and body count are staged while the user drags and committed only on the re-seed/export boundary.
+
+**Stage, preview, commit.** Controls are split by cost and meaning. Cheap live parameters (gravity, halo strength/size, star size, glow, volume) update uniforms or audio targets immediately. Expensive or seed-defining parameters use paired stage/commit exports (`stage_gas_fraction`/`set_gas_fraction`, `stage_bulge_fraction`/`set_bulge_fraction`, `stage_particle_count`/`set_particle_count`) so the UI and sound can preview intent while the GPU buffers are rebuilt only once, at release. New controls should choose one of these two paths deliberately.
 
 **Labeled resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` so it is identifiable in browser GPU debuggers and validation messages.
 
 **Derived visuals in-shader (single source of truth).** Brightness and glow are pure functions of a body's speed and position, computed in the shaders and never stored. Colour is too for the spiral disk (by live galactocentric radius); the merger instead reads a fixed per-body tint from `vel.w` (which galaxy it came from), set once at seed time so the two populations stay distinguishable as they mix — a colour-mode flag in the camera uniform selects which. Position + velocity (+ that static tint) is the only per-body state; the rest of appearance is recomputed each frame, so it can never drift out of sync with the simulation.
+
+**Typed boundary snapshots and targets.** Cross-module communication is packaged as small typed structs rather than broad object access. `Simulation::reseed` takes one `Reseed` intent, the audio layer receives a per-frame `GalaxyState`, `music.rs` emits `DroneTarget`, `TextureTarget`, and `NoteEvent`, and `SimulationParams` is the single Rust/WGSL uniform contract. This keeps ownership local: modules exchange compact facts or targets, not handles to each other's internals.
+
+**Pure core, thin platform adapters.** Decision logic stays native-testable when it can. `scenarios.rs` generates initial conditions with no browser dependency; `music.rs` maps a `GalaxyState` to musical targets and notes; `arrangement.rs` defines the deterministic cinematic timeline; `mastering.rs` performs DSP and WAV encoding; Web APIs stay in `lib.rs`, `graphics.rs`, `input.rs`, and `audio.rs`. New logic should start pure, then add the smallest WebGPU/Web Audio/DOM adapter needed.
+
+**Shared definitions across live and offline paths.** When the same concept is used in two execution modes, the definition is shared rather than duplicated. The audio node graph is factored as `audio::Graph`, so live `AudioContext` playback and `OfflineAudioContext` export use the same synthesis topology. `arrangement.rs` drives both the visible camera/physics performance and the offline audio timeline from the same seed + duration. This is the pattern for future production tooling: share the intent, vary only the adapter.
 
 **Deferred input: accumulate, then drain.** DOM event handlers write into one shared `InputState` behind an `Rc<RefCell>` (`src/input.rs`). The frame loop reads that state once per frame: it acts on *level* state (is-rotating) and **drains** *edge* state — the pause/reset flags and the accumulated zoom delta are reset as they are consumed. This decouples asynchronous, bursty event delivery from the synchronous once-per-frame update.
 
@@ -85,7 +94,11 @@ galacto is small, but nearly every file is an instance of one of a handful of re
 
 **Symplectic leapfrog integration with softening.** The step is a drift–kick–drift leapfrog — half-drift `position += velocity · dt/2`, evaluate the acceleration at that midpoint, then `velocity += a · dt` and a second half-drift `position += velocity · dt/2`. It is symplectic and 2nd-order, conserving energy far better than the 1st-order Euler it replaces, so the cold disk and individual orbits hold their structure over many more rotations. A Plummer softening length (the `ε²` in the force sum — see Simulation & Physics) keeps close encounters finite; it is kept small relative to the disk so self-gravity stays sharp enough to spiral, but large enough to damp two-body scattering noise. There is no velocity clamp and no boundary.
 
-**FFI-free core with a `JsValue` boundary.** The engine modules — `simulation`, `camera`, and `graphics` — carry no `wasm_bindgen::JsValue`. `Graphics::new` (the only fallible one) returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, and `InputHandler` construction is infallible. `JsValue` is confined to the boundary: `lib.rs` converts `AppError` → `JsValue` in `AppState::new`, and the DOM-event wiring (`input.rs`) plus the `#[wasm_bindgen]` `start` / `run` / `render` surface return `Result<_, JsValue>`. The three other exports — `set_speed`, `set_disk_temperature`, and `set_scenario`, called by the page's controls — take a plain scalar and are infallible, as is the per-frame hot path.
+**Eased continuous output.** Discontinuous inputs are allowed at the boundaries, but not at the user-facing outputs. Camera/input deltas feed a frame loop, core audio signals pass through `ease_slew`, and Web Audio parameters move with ramps/time constants rather than jumps. The same rule applies visually and musically: if a value is perceived continuously, it should glide unless a deliberate cut is part of the interaction.
+
+**FFI-free core with a `JsValue` boundary.** The engine modules avoid `wasm_bindgen::JsValue` unless they are actually touching the browser. `Graphics::new` returns a domain `AppError` (`src/error.rs`); `Simulation`, `Camera`, `InputHandler`, `MusicEngine`, `Arrangement`, and mastering helpers keep ordinary Rust contracts. `JsValue` is confined to the boundary: `lib.rs` converts domain/browser errors at the `#[wasm_bindgen]` surface, while most UI exports take plain scalars and are infallible, as is the per-frame hot path.
+
+**Patterns to keep leaning into.** The current code is broadly consistent with this catalogue; the pressure points are future work rather than known violations. If `lib.rs`, `simulation.rs`, `scenarios.rs`, `music.rs`, or `audio.rs` gains another independent concern, split it by the same composition-root, pure-core, or adapter pattern instead of just growing the file. Any new GPU readback should look like `reduce_core`: aggregate-only, throttled, asynchronous, typed, and one-way. Any new UI control should choose live uniform/audio update or staged commit explicitly.
 
 ## How a Frame Is Produced
 
