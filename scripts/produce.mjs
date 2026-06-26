@@ -9,6 +9,7 @@
 import { take, hasFlag, passArg, run } from "./cli.mjs";
 import { ensureChrome, ensureExecutable, findChrome } from "./preflight.mjs";
 import { startStaticServer } from "./serve-static.mjs";
+import { spawn } from "node:child_process";
 
 function usage() {
   console.error(`Usage:
@@ -73,11 +74,27 @@ if (!hasFlag("--no-build")) {
   run("npm", ["run", "build"], { inherit: true });
 }
 
+function runStreaming(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "inherit" });
+    child.on("error", (error) => {
+      reject(new Error(`${command} ${args.join(" ")} failed to start: ${error.message}`));
+    });
+    child.on("close", (status) => {
+      if (status === 0) {
+        resolve();
+      } else {
+        reject(new Error(`${command} ${args.join(" ")} failed (status ${status})`));
+      }
+    });
+  });
+}
+
 console.log("● Serving dist/…");
 const { server, url } = await startStaticServer({ dir: "dist", port, cors: true });
 try {
   console.log(`● Producing a ${duration}s piece (seed ${seed}) at ${width}x${height}…`);
-  run(
+  await runStreaming(
     "node",
     [
       "scripts/capture-canvas-video.mjs",

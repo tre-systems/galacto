@@ -157,12 +157,69 @@ async function waitForJson(url, timeoutMs = 20_000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+// Newer Chrome swaps the page's execution context between Target.createTarget's
+// navigation and our first evaluate, so a bare Runtime.evaluate intermittently
+// rejects with "Cannot find default execution context" or never resolves even
+// though the page is running fine. Retry those transient setup failures until the
+// post-navigation context resolves; rethrow anything else immediately.
+async function evaluate(page, params, tries = 3, timeoutMs = 30_000) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    let timeout;
+    try {
+      const timedOut = new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Runtime.evaluate timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        timeout.unref?.();
+      });
+      return await Promise.race([
+        page.send("Runtime.evaluate", params),
+        timedOut,
+      ]);
+    } catch (e) {
+      lastErr = e;
+      if (!/execution context|timed out/i.test(String(e?.message))) throw e;
+      await sleep(400);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+  throw new Error(`Runtime.evaluate: ${lastErr?.message ?? "no execution context after retries"}`);
+}
+
 // Capture the canvas to a chunked webm via MediaRecorder, POSTing each timeslice to
 // the chunk server. Restarts the arrangement from t=0 first so the picture aligns
 // with the audio, and samples the render frame rate to confirm the capture was smooth.
 async function captureChunks(page, opts) {
   const { screenshotPath, composeSeed, particles, durationSec, fps, bitrate, captureDuration, chunkPort } =
     opts;
+
+  // Restart the arrangement at t=0 right before recording, so the captured picture
+  // begins exactly where generate_piece's audio does (precise alignment).
+  if (composeSeed != null) {
+    await evaluate(page, {
+      expression: `
+        (async () => {
+          const started = performance.now();
+          while (!window.galacto && performance.now() - started < 10000) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          // Wait for the async engine init before driving it (setters no-op until
+          // ready), then apply the body count so the restart re-seeds at it.
+          while (window.galacto?.isReady && !window.galacto.isReady() && performance.now() - started < 30000) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          if (!window.galacto?.isReady?.()) throw new Error("galacto was not ready before capture");
+          ${particles != null ? `window.galacto?.setParticleCount(${Number(particles)});` : ""}
+          window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
+          return true;
+        })()
+      `,
+      awaitPromise: true,
+      returnByValue: true,
+    }, 3, 45_000);
+  }
 
   const screenshot = await page.send("Page.captureScreenshot", {
     format: "png",
@@ -172,31 +229,8 @@ async function captureChunks(page, opts) {
   writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
   console.log(`preview: ${screenshotPath}`);
 
-  // Restart the arrangement at t=0 right before recording, so the captured picture
-  // begins exactly where generate_piece's audio does (precise alignment).
-  if (composeSeed != null) {
-    await page.send("Runtime.evaluate", {
-      expression: `
-        (async () => {
-          const started = performance.now();
-          while (!window.galacto && performance.now() - started < 10000) {
-            await new Promise((r) => requestAnimationFrame(r));
-          }
-          // Wait for the async engine init before driving it (setters no-op until
-          // ready), then apply the body count so the restart re-seeds at it.
-          if (window.galacto?.whenReady) await window.galacto.whenReady();
-          ${particles != null ? `window.galacto?.setParticleCount(${Number(particles)});` : ""}
-          window.galacto?.startArrangement(${durationSec}, ${Number(composeSeed)});
-          return true;
-        })()
-      `,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-  }
-
   const postUrl = `http://127.0.0.1:${chunkPort}/chunk`;
-  const recorded = await page.send("Runtime.evaluate", {
+  const recorded = await evaluate(page, {
     expression: `
       (async () => {
         const canvas = document.getElementById("gpu-canvas");
@@ -247,7 +281,7 @@ async function captureChunks(page, opts) {
     `,
     awaitPromise: true,
     returnByValue: true,
-  });
+  }, 1, Math.ceil(captureDuration * 1000) + 60_000);
   const result = recorded.result.value;
   console.log("recorded:", JSON.stringify(result));
 
@@ -268,18 +302,14 @@ async function main() {
   const durationSec = takeNumber("--duration", 10);
   // --compose <seed> plays the deterministic cinematic arrangement for the capture,
   // so the video matches the audio rendered by generate_piece with the same seed +
-  // duration. It self-drives via the ?compose=&dur= URL params.
+  // duration. The page is loaded normally first; captureChunks starts the
+  // arrangement via window.galacto after WebGPU reports ready.
   const composeSeed = take("--compose");
   // --particles <N> renders the arrangement at a higher body count for a denser
   // galaxy; the sim self-throttles its step rate to keep the frame rate smooth.
   const particles = take("--particles");
   const baseUrl = take("--url", "http://localhost:8000/");
-  const url =
-    composeSeed != null
-      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}compose=${encodeURIComponent(composeSeed)}&dur=${durationSec}${
-          particles != null ? `&particles=${encodeURIComponent(particles)}` : ""
-        }`
-      : baseUrl;
+  const url = baseUrl;
   const width = takeNumber("--width", 1920);
   const height = takeNumber("--height", 1080);
   const fps = takeNumber("--fps", 60);
@@ -380,9 +410,10 @@ async function main() {
     const version = await waitForJson(`http://127.0.0.1:${debugPort}/json/version`);
     const browser = new Cdp(version.webSocketDebuggerUrl);
     await browser.open();
-    const target = await browser.send("Target.createTarget", { url });
+    const target = await browser.send("Target.createTarget", { url: "about:blank" });
+    await browser.send("Target.activateTarget", { targetId: target.targetId });
     const tabs = await waitForJson(`http://127.0.0.1:${debugPort}/json/list`);
-    const tab = tabs.find((item) => item.id === target.targetId) ?? tabs.find((item) => item.url.includes("localhost"));
+    const tab = tabs.find((item) => item.id === target.targetId);
     if (!tab) throw new Error("Could not find the capture tab");
 
     const page = new Cdp(tab.webSocketDebuggerUrl);
@@ -398,8 +429,10 @@ async function main() {
       screenWidth: width,
       screenHeight: height,
     });
+    await page.send("Page.bringToFront");
+    await page.send("Page.navigate", { url });
 
-    const ready = await page.send("Runtime.evaluate", {
+    const ready = await evaluate(page, {
       expression: `
         new Promise((resolve) => {
           const started = performance.now();
@@ -419,7 +452,7 @@ async function main() {
               resolve({ ok: false, reason: "timeout", loading: loading?.innerText, canvas: !!canvas });
               return;
             }
-            requestAnimationFrame(check);
+            setTimeout(check, 50);
           };
           check();
         })
@@ -432,7 +465,7 @@ async function main() {
       throw new Error(`Page did not become ready: ${JSON.stringify(ready.result.value)}`);
     }
 
-    await page.send("Runtime.evaluate", {
+    await evaluate(page, {
       expression: `
         (() => {
           const style = document.createElement("style");
@@ -501,11 +534,11 @@ async function main() {
       // Render the matching mastered audio (offline, in the same page) and have the
       // page POST the WAV bytes to our server, which writes them to audioPath.
       const audioUrl = `http://127.0.0.1:${chunkPort}/?audio=1`;
-      const rendered = await page.send("Runtime.evaluate", {
+      const rendered = await evaluate(page, {
         expression: `window.galacto.renderPieceTo(${JSON.stringify(audioUrl)}, ${durationSec}, ${Number(composeSeed)}, ${lufs})`,
         awaitPromise: true,
         returnByValue: true,
-      });
+      }, 1, Math.max(120_000, Math.ceil(durationSec * 1000) + 60_000));
       await audioDone;
       console.log(`audio: ${audioPath}`);
       console.log(`master: ${String(rendered.result.value).replace(/\n/g, " | ")}`);

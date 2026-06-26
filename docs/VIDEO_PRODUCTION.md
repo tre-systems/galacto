@@ -86,9 +86,9 @@ is supplied.
 
 1. `scripts/produce.mjs` builds `dist/` and serves it locally.
 2. `scripts/capture-canvas-video.mjs --produce --compose <seed>` opens Chrome,
-   loads the page with `?compose=<seed>&dur=<seconds>`, records the WebGPU canvas
-   via `canvas.captureStream()`, and posts MediaRecorder chunks to a local chunk
-   server.
+   loads the normal app URL, waits for WebGPU readiness, starts the arrangement
+   through `window.galacto`, records the canvas via `canvas.captureStream()`, and
+   posts MediaRecorder chunks to a local chunk server.
 3. The same browser session calls `window.galacto.renderPieceTo(...)`, which renders
    the matching audio offline through the shared Web Audio graph and pure-Rust
    mastering chain.
