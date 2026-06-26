@@ -8,6 +8,7 @@ const root = process.cwd();
 const outDir = resolve(root, process.argv[2] || 'dist');
 
 const requiredFiles = [
+  '404.html',
   '_headers',
   '_worker.js',
   'app.js',

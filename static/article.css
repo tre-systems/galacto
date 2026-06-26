@@ -77,8 +77,15 @@ nav.top .brand-mark {
   display: block;
 }
 nav.top .spacer { flex: 1; }
-nav.top a { color: var(--ink-dim); }
+nav.top a { color: var(--ink-dim); white-space: nowrap; }
 nav.top a:hover { color: var(--cyan); text-decoration: none; }
+
+/* Narrow screens: wrap the brand onto its own row so the links stay whole and
+   sit together below, instead of breaking mid-phrase ("Open the / simulator"). */
+@media (max-width: 460px) {
+  nav.top { flex-wrap: wrap; gap: 8px 16px; }
+  nav.top .spacer { flex-basis: 100%; height: 0; }
+}
 
 header.hero {
   position: relative;

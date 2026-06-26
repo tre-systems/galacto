@@ -8,7 +8,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <title>Galacto — N-body galaxy sandbox</title>
+    <title>Galacto - N-body galaxy sandbox</title>
     <meta
       name="description"
       content="A GPU-accelerated self-gravitating N-body galaxy sandbox: a spiral disk and galaxy collisions (merger, head-on, retrograde, minor merger, a galaxy group, a grand-design M51 flyby), with live controls for speed, disk stability (Toomre Q), gas, and the dark-matter halo, plus a generative soundscape driven by the simulation. Built with Rust, WebAssembly, and WebGPU."
@@ -16,10 +16,10 @@
     <link rel="canonical" href="https://galacto.org/" />
 
     <!-- Open Graph / Twitter social card -->
-    <meta property="og:title" content="Galacto — N-body galaxy sandbox" />
+    <meta property="og:title" content="Galacto - N-body galaxy sandbox" />
     <meta
       property="og:description"
-      content="A GPU-accelerated self-gravitating N-body galaxy sandbox — spiral disks and galaxy collisions in Rust, WebAssembly, and WebGPU, with a generative soundscape."
+      content="A GPU-accelerated self-gravitating N-body galaxy sandbox - spiral disks and galaxy collisions in Rust, WebAssembly, and WebGPU, with a generative soundscape."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://galacto.org/" />
@@ -31,7 +31,7 @@
       content="The Galacto wordmark beside its galaxy mark on a deep-space background."
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Galacto — N-body galaxy sandbox" />
+    <meta name="twitter:title" content="Galacto - N-body galaxy sandbox" />
     <meta
       name="twitter:description"
       content="A self-gravitating N-body galaxy sandbox in Rust, WebAssembly, and WebGPU, with a generative soundscape."
@@ -67,13 +67,13 @@
       <h2>WebGPU unavailable</h2>
       <p>
         Galacto runs on WebGPU, which is still rolling out across browsers. It
-        couldn't start here — usually that means your browser, GPU, or graphics
+        couldn't start here - usually that means your browser, GPU, or graphics
         driver doesn't support it yet. Things to try:
       </p>
       <ul>
         <li><strong>Chrome / Edge:</strong> current desktop releases support WebGPU by default.</li>
         <li><strong>Firefox:</strong> current releases support WebGPU on some platforms; older or unsupported builds may need <code>dom.webgpu.enabled</code> in <code>about:config</code>.</li>
-        <li><strong>Safari:</strong> support depends on OS, hardware, and version — update to the latest.</li>
+        <li><strong>Safari:</strong> support depends on OS, hardware, and version - update to the latest.</li>
       </ul>
       <div id="error-details"></div>
     </div>
@@ -140,7 +140,7 @@
             class="switch"
             role="switch"
             checked
-            title="Slowly orbit and glide the camera on its own — a hands-off movie. Dragging or zooming the view turns it off."
+            title="Slowly orbit and glide the camera on its own - a hands-off movie. Dragging or zooming the view turns it off."
           />
           <input
             id="autopilot-speed"
@@ -162,7 +162,7 @@
             max="100"
             value="10"
             step="1"
-            title="Body count — re-seeds the galaxy; the top end is heavy (gravity is all-pairs)"
+            title="Body count - re-seeds the galaxy; the top end is heavy (gravity is all-pairs)"
           />
           <span id="count-readout">16.4k</span>
         </div>
@@ -187,7 +187,7 @@
             max="100"
             value="32"
             step="1"
-            title="Disk stability (Toomre Q): ≲1 clumps, ~1–2 spirals, ≫2 smooth — staged, applied on Restart"
+            title="Disk stability (Toomre Q): ≲1 clumps, ~1–2 spirals, ≫2 smooth - staged, applied on Restart"
           />
           <span id="temp-readout">1.30</span>
         </div>
@@ -257,7 +257,7 @@
                 type="checkbox"
                 class="switch"
                 role="switch"
-                title="Show the rotation curve — disk + bulge + dark-matter halo, in km/s vs kpc"
+                title="Show the rotation curve - disk + bulge + dark-matter halo, in km/s vs kpc"
               />
             </div>
           </div>
@@ -316,7 +316,7 @@
     </div>
 
     <!-- Rotation-curve overlay (toggled from the Dark matter halo group). Shows the
-         circular speed v(r) decomposed into disk + bulge + halo — the flat outer
+         circular speed v(r) decomposed into disk + bulge + halo - the flat outer
          curve is the signature of the dark-matter halo. -->
     <div id="rotcurve" hidden aria-hidden="true">
       <div class="rc-head">

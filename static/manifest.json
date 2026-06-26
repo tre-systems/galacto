@@ -1,7 +1,7 @@
 {
-  "name": "Galacto — N-body galaxy sandbox",
+  "name": "Galacto - N-body galaxy sandbox",
   "short_name": "Galacto",
-  "description": "A GPU-accelerated self-gravitating N-body galaxy sandbox — spiral disks and galaxy collisions in Rust, WebAssembly, and WebGPU, with a generative soundscape.",
+  "description": "A GPU-accelerated self-gravitating N-body galaxy sandbox - spiral disks and galaxy collisions in Rust, WebAssembly, and WebGPU, with a generative soundscape.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

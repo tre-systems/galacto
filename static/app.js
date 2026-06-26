@@ -73,7 +73,7 @@ function safeWasmCall(label, fn, options = {}) {
   }
 }
 
-// Star glow halo extent — reshapes the billboard falloff and colours audio,
+// Star glow halo extent - reshapes the billboard falloff and colours audio,
 // but never touches the simulation.
 function setupGlowControl(mod) {
   const slider = document.getElementById("glow-slider");
@@ -261,7 +261,7 @@ async function init() {
       });
     }
     // Headless control surface for the automated production pipeline
-    // (scripts/produce.mjs) — render a piece's audio and drive the arrangement
+    // (scripts/produce.mjs) - render a piece's audio and drive the arrangement
     // without the UI. Harmless to expose; it's just the offline engine.
     window.galacto = {
       isReady: () => mod.is_ready(),
@@ -305,8 +305,8 @@ function setupScenarioControl(mod, collapse) {
 
 // Body-count slider (0–100) maps linearly to the number of bodies, so the
 // default (16,384) sits at 10% and the top is 10× (163,840). Changing it
-// re-seeds the sim (like a restart) — heavy, and at the top end the all-pairs
-// gravity is ~100× the work — so the sim applies on release ('change'), not
+// re-seeds the sim (like a restart) - heavy, and at the top end the all-pairs
+// gravity is ~100× the work - so the sim applies on release ('change'), not
 // while dragging; the readout and audio preview update live.
 function setupParticleCountControl(mod) {
   const slider = document.getElementById("count-slider");
@@ -335,7 +335,7 @@ function setupHaloProfileControl(mod) {
   });
 }
 
-// Toggle the dark-matter halo overlay — a soft violet cloud, sized to the
+// Toggle the dark-matter halo overlay - a soft violet cloud, sized to the
 // active profile's scale radius, drawn behind the stars. Off by default.
 function setupHaloVisibility(mod) {
   const toggle = document.getElementById("halo-show");
@@ -347,9 +347,9 @@ function setupHaloVisibility(mod) {
 // Rotation-curve overlay: a small chart of circular speed v(r) decomposed into
 // disk + bulge + dark-matter halo (km/s vs kpc), from the WASM in physical
 // units. The flat outer curve held up by the halo is the classic observational
-// clue behind dark matter — drag the Halo/Gravity sliders and watch it respond.
+// clue behind dark matter - drag the Halo/Gravity sliders and watch it respond.
 // Off by default (the toggle lives in the Dark matter halo group); a clock
-// shows the elapsed simulated time. All physics comes from the sim — JS only
+// shows the elapsed simulated time. All physics comes from the sim - JS only
 // draws.
 function setupRotationCurve(mod) {
   const wrap = document.getElementById("rotcurve");
@@ -463,7 +463,7 @@ function setupRotationCurve(mod) {
   toggle.addEventListener("change", () => setShown(toggle.checked));
 
   // The curve depends on the live gravity, halo strength/size/model, and the
-  // bulge fraction — redraw when any of those change (only while on screen).
+  // bulge fraction - redraw when any of those change (only while on screen).
   // (Bulge re-seeds on release, but the staged value drives the curve live.)
   const redraw = () => {
     if (!wrap.hidden) draw();
@@ -581,7 +581,7 @@ function setupControlPanel() {
   window.addEventListener("resize", clampIntoView);
 
   // A press anywhere outside the open panel tucks it away (clicks on the
-  // canvas, etc.). Presses inside — toggle, sliders, links — are ignored.
+  // canvas, etc.). Presses inside - toggle, sliders, links - are ignored.
   document.addEventListener("pointerdown", (e) => {
     if (!panel.classList.contains("collapsed") && !panel.contains(e.target)) {
       setCollapsed(true);
@@ -599,15 +599,15 @@ function setupControlPanel() {
 function setupInfoButtons() {
   const INFO = {
     "scenario-select":
-      "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course — the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
+      "The initial setup. A lone spiral disk, or two-or-more galaxies on a collision course - the merger variants and an M51-style flyby. Switching it re-seeds the simulation.",
     "autopilot-toggle":
-      "Lets the camera fly itself — a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. The slider beside it sets how fast it drifts. Drag, pinch, or scroll the view and it switches off; turn it back on any time.",
+      "Lets the camera fly itself - a slow orbit and a gentle glide in and out, so the simulation plays like a movie with its soundtrack. The slider beside it sets how fast it drifts. Drag, pinch, or scroll the view and it switches off; turn it back on any time.",
     "count-slider":
       "How many stars are simulated (16k–164k). Per-body mass scales as 1/N, so more bodies refine the same galaxy rather than adding mass. Gravity is all-pairs (O(N²)), so high counts cap speed to keep the browser responsive. Re-seeds.",
     "speed-slider":
-      "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics — a fixed timestep keeps it frame-rate independent — and high body counts cap it automatically.",
+      "How fast the simulation runs (0.25×–8×), shown as millions of years of simulated time per real second. It doesn't change the physics - a fixed timestep keeps it frame-rate independent - and high body counts cap it automatically.",
     "gas-slider":
-      "How much of the disk is cold, star-forming gas (0–50%) — the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms and a brighter, airier sound. Re-seeds on release.",
+      "How much of the disk is cold, star-forming gas (0–50%) - the blue component that dissipates its random motion and gathers into the spiral arms. More gas means brighter, better-defined blue arms and a brighter, airier sound. Re-seeds on release.",
     "bulge-slider":
       "The central bulge's share of the galaxy's mass (0–60%). A small bulge is a disk-dominated late-type spiral with a gently-rising rotation curve; a large one is a bulge-dominated early type with a sharp inner peak and fuller sound. Re-seeds on release.",
     "temp-slider":
@@ -617,13 +617,13 @@ function setupInfoButtons() {
     "halo-select":
       "Dark-matter halo profile. Logarithmic gives a flat outer rotation curve and keeps everything bound; NFW (the cold-dark-matter shape) rises then falls and lets fast debris escape. Re-seeds.",
     "halo-slider":
-      "How much dark matter — the characteristic circular speed in km/s (0–2× the default 220). Turn on the Curve and watch the flat outer part rise as you raise this. It holds the disk together and shapes the tidal tails.",
+      "How much dark matter - the characteristic circular speed in km/s (0–2× the default 220). Turn on the Curve and watch the flat outer part rise as you raise this. It holds the disk together and shapes the tidal tails.",
     "halo-size-slider":
-      "The halo's scale radius (in kpc) — how spread-out the dark matter is. Smaller = a concentrated halo with a steeply-rising inner curve; larger = a diffuse halo with a gentler rise. Reshapes the rotation curve live, no re-seed.",
+      "The halo's scale radius (in kpc) - how spread-out the dark matter is. Smaller = a concentrated halo with a steeply-rising inner curve; larger = a diffuse halo with a gentler rise. Reshapes the rotation curve live, no re-seed.",
     "halo-show":
       "Overlays the otherwise-invisible dark-matter halo as a soft violet cloud, sized to the active profile's scale radius.",
     "rc-toggle":
-      "Plots the rotation curve — circular speed vs radius (km/s vs kpc) — split into disk, bulge, and dark-matter halo. The flat outer part is the classic observational clue behind dark matter.",
+      "Plots the rotation curve - circular speed vs radius (km/s vs kpc) - split into disk, bulge, and dark-matter halo. The flat outer part is the classic observational clue behind dark matter.",
     "size-slider":
       "On-screen size of each star. Larger looks brighter and more diffuse, smaller is sharper. It never touches the physics, but it lightly colours the soundscape.",
     "glow-slider":
@@ -772,7 +772,7 @@ function setupHaloControl(mod) {
   const apply = () => {
     const halo = (slider.value / 50) * DEFAULT;
     mod.set_halo(halo);
-    // Characteristic circular speed in km/s (220 km/s at ×1 — the units.rs
+    // Characteristic circular speed in km/s (220 km/s at ×1 - the units.rs
     // anchor): the flat outer rotation speed the halo holds up.
     readout.textContent = Math.round(halo * (220 / DEFAULT)) + " km/s";
   };
@@ -781,7 +781,7 @@ function setupHaloControl(mod) {
 }
 
 // Dark-matter halo concentration: the scale-radius multiplier (0.4 … 2.5×,
-// log). Live — reshapes the halo force and the rotation curve without
+// log). Live - reshapes the halo force and the rotation curve without
 // re-seeding. The readout is the scale radius in kpc, which differs by profile
 // (≈15 kpc for the logarithmic core, ≈7 kpc for NFW), so it also refreshes
 // when the model changes.
@@ -862,11 +862,11 @@ function setupRestartButton(mod) {
 }
 
 // Start the generative soundscape automatically. It's synthesized in the
-// WASM (no audio files) and driven by the visuals — scenario, zoom,
+// WASM (no audio files) and driven by the visuals - scenario, zoom,
 // rotation, and the sim knobs. Browsers block audio until a user gesture,
 // so we arm a one-shot listener for the visitor's first interaction
-// (pointer / key / touch / wheel) — which, with a galaxy there to be
-// dragged and zoomed, happens within moments — and boot the audio engine
+// (pointer / key / touch / wheel) - which, with a galaxy there to be
+// dragged and zoomed, happens within moments - and boot the audio engine
 // inside that gesture so the AudioContext is allowed to start.
 function setupAutoSound(mod) {
   // iOS is fussy: the AudioContext often stays *suspended* after the first
@@ -885,7 +885,7 @@ function setupAutoSound(mod) {
   // iOS routes Web Audio to the silent-switch-respecting "ambient" session by
   // default, so an installed PWA stays silent whenever the ring/silent switch
   // is on. Ask for the "playback" session so the soundscape plays like a media
-  // app — through the silent switch. (Safari/WebKit only; harmless elsewhere.)
+  // app - through the silent switch. (Safari/WebKit only; harmless elsewhere.)
   const claimPlayback = () => {
     try {
       if (navigator.audioSession) navigator.audioSession.type = "playback";
@@ -977,7 +977,7 @@ function showUpdateToast(reg) {
 }
 
 // Register the service worker so the app installs and launches offline, and
-// surface an update prompt when a new version is deployed. Best-effort — the
+// surface an update prompt when a new version is deployed. Best-effort - the
 // sim runs fine without it (and it's a no-op where unsupported). The ?v=
 // keeps the worker fresh per deploy, matching the cache-busted shell.
 if ("serviceWorker" in navigator) {
