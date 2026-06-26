@@ -55,7 +55,7 @@ const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 // out of the background through the first half, then makes its grazing collision near the
 // half-way mark. Tune the timing with `FLYBY_INTRUDER_SPEED` (faster = earlier), the start
 // distance with `FLYBY_DISTANCE_FACTOR`, and how central the hit is with `FLYBY_INTRUDER_IMPACT`.
-const FLYBY_DISTANCE_FACTOR: f32 = 2.5; // start distance = factor × duration_secs (on the diagonal)
+const FLYBY_DISTANCE_FACTOR: f32 = 1.8; // start distance = factor × duration_secs (on the diagonal)
 const FLYBY_INTRUDER_MASS: f32 = 180_000.0; // ~0.6× the main core, for a real collision
 const FLYBY_INTRUDER_RADIUS: f32 = 95.0;
 // Inbound direction (≈unit): from the +X side and behind in depth (-Z), so the intruder
@@ -63,10 +63,10 @@ const FLYBY_INTRUDER_RADIUS: f32 = 95.0;
 const FLYBY_INTRUDER_DIR: [f32; 3] = [0.7, 0.1, -0.7];
 // Inbound speed (sim units): slower than a deep plunge so the grazing pass lingers and
 // disrupts. Sized with FLYBY_DISTANCE_FACTOR for a ~mid-piece collision.
-const FLYBY_INTRUDER_SPEED: f32 = 18.0;
+const FLYBY_INTRUDER_SPEED: f32 = 10.0;
 // Impact parameter: aim a disk-radius off-centre (in the disk plane, +Y) so the intruder
 // grazes and rips a tidal tail instead of a dead-centre punch-through.
-const FLYBY_INTRUDER_IMPACT: f32 = 130.0;
+const FLYBY_INTRUDER_IMPACT: f32 = 110.0;
 /// Default piece length (s) used when seeding outside a composed run (tests, the
 /// initial seed). The arrangement passes the real duration via `Reseed`.
 const DEFAULT_PIECE_SECS: f32 = 600.0;
