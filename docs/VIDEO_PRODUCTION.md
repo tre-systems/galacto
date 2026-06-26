@@ -110,7 +110,7 @@ npm run produce -- --seed 5 --duration 600
 # → renders/proofs/galacto-piece-5.mp4  (HEVC + AAC, start/end captions, +faststart)
 ```
 
-It builds, serves `pkg/`, launches headless Chrome to **capture the cinematic
+It builds, serves the verified `dist/` deploy artifact, launches headless Chrome to **capture the cinematic
 arrangement** (`src/arrangement.rs` — a deterministic A→B→C arc: sparse intro →
 gathering build → serene awe peak ~two-thirds in → dispersing resolution), **renders
 the matching mastered audio** offline from the *same* seed + duration (so picture and

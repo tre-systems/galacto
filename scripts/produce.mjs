@@ -6,23 +6,8 @@
 //
 // Defaults to a 10-minute piece at 4K/60 (the researched sweet spot for a composed
 // ambient track). Same seed + duration always yields the same piece.
-import { spawn } from "node:child_process";
-import { setTimeout as sleep } from "node:timers/promises";
 import { take, hasFlag, passArg, run } from "./cli.mjs";
-
-async function waitForPort(url, timeoutMs = 30000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // server not up yet
-    }
-    await sleep(300);
-  }
-  throw new Error(`Timed out waiting for ${url}`);
-}
+import { startStaticServer } from "./serve-static.mjs";
 
 const seed = take("--seed", "1");
 const duration = take("--duration", "600"); // 10 min — researched length for a piece
@@ -41,12 +26,9 @@ if (!hasFlag("--no-build")) {
   run("npm", ["run", "build"], { inherit: true });
 }
 
-console.log("● Serving pkg/…");
-const serve = spawn("npx", ["-y", "serve", "pkg", "-l", String(port), "--cors"], {
-  stdio: "ignore",
-});
+console.log("● Serving dist/…");
+const { server, url } = await startStaticServer({ dir: "dist", port, cors: true });
 try {
-  await waitForPort(`http://localhost:${port}/`);
   console.log(`● Producing a ${duration}s piece (seed ${seed}) at ${width}x${height}…`);
   run(
     "node",
@@ -55,7 +37,7 @@ try {
       "--produce",
       "--compose", seed,
       "--duration", duration,
-      "--url", `http://localhost:${port}/`,
+      "--url", url,
       "--width", width,
       "--height", height,
       "--fps", fps,
@@ -70,5 +52,5 @@ try {
     { inherit: true },
   );
 } finally {
-  serve.kill("SIGTERM");
+  server.close();
 }

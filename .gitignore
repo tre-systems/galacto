@@ -4,6 +4,7 @@
 
 # WebAssembly
 /pkg/
+/dist/
 
 # Local production renders
 /renders/

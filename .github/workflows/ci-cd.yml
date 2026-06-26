@@ -35,9 +35,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-wasm-pack-0.15.0-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-wasm-pack-0.15.0-
 
       - name: Check formatting
         run: cargo fmt --check
@@ -48,17 +48,33 @@ jobs:
       - name: Run tests
         run: cargo test
 
+      - name: Audit Rust dependencies
+        run: |
+          if ! command -v cargo-audit >/dev/null 2>&1 || ! cargo audit --version | grep -q '0.22.2'; then
+            cargo install cargo-audit --locked --version 0.22.2 --force
+          fi
+          cargo audit
+
       - name: Check WASM build
         run: cargo check --target wasm32-unknown-unknown
 
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Check JavaScript syntax
+        run: npm run check:js
+
+      - name: Audit npm dependencies
+        run: npm run audit:npm
+
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.13.1
+        run: cargo install wasm-pack --locked --version 0.15.0 --force
 
       - name: Build web package
         run: npm run build
+
+      - name: Smoke-test built site
+        run: npm run smoke -- --require-browser
 
   deploy:
     name: Deploy
@@ -72,7 +88,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.13.1
+        run: cargo install wasm-pack --locked --version 0.15.0 --force
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -99,4 +115,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy pkg --project-name=galacto
+          command: pages deploy dist --project-name=galacto

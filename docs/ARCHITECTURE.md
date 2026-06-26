@@ -14,8 +14,8 @@
 | Math             | `cgmath`                        | Perspective + look-at for the orbit camera                     |
 | WASM bindings    | `wasm-bindgen` + `web-sys`      | Canvas, events, `requestAnimationFrame`, console               |
 | Audio            | Web Audio (`web-sys`)           | Synthesized layered soundscape — drone pad, sub-bass, twinkling starfield, octave-up shimmer, procedural reverb/delay, compressor (no sample files); offline render + pure-Rust mastering to a 24-bit WAV export |
-| Build            | `wasm-pack` (`--target web`)    | Emits `pkg/galacto.js` + `galacto_bg.wasm`                     |
-| Host             | Cloudflare Pages                | Serves the static `pkg/` directory                             |
+| Build            | `wasm-pack` (`--target web`)    | Emits raw WASM output in `pkg/`; deploy artifact assembled in `dist/` |
+| Host             | Cloudflare Pages                | Serves the verified static `dist/` directory                    |
 | Scale            | 16,384 self-gravitating bodies (default; adjustable up to 10× = 163,840) | Three compute passes per step (leapfrog: half-drift, all-pairs gravity, kick + half-drift) + one instanced draw |
 
 The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no `build-std`, no threads.
@@ -44,8 +44,9 @@ src/
     ├── halo.wgsl        # Dark-matter halo overlay billboard
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
 static/                  # Frontend: index.html (WebGPU check + bootstrap + controls), styles.css, favicon.svg, _headers
-pkg/                     # wasm-pack output + copied static assets — the deploy root (git-ignored)
-scripts/                 # cache-bust.mjs (build), render-diagrams.mjs, check-diagrams.mjs
+pkg/                     # raw wasm-pack output (git-ignored)
+dist/                    # verified deploy root assembled from static/ + pkg/ (git-ignored)
+scripts/                 # build assembly/checks, smoke test, diagrams, production capture
 ```
 
 ## Patterns
@@ -198,9 +199,9 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 
 ## Build & Deploy
 
-- `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then copies `static/` into `pkg/` and runs `scripts/cache-bust.mjs`, which stamps the `galacto.js` import in `index.html` with `?v=<git-sha>` so a new deploy always loads fresh glue. Output is `pkg/` (git-ignored, regenerated).
-- `npm run dev` serves `pkg/` locally and `npm run deploy` ships it to Cloudflare Pages — see [README § Key Commands](../README.md#key-commands) for the full command table.
-- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR and deploys `pkg/` to Cloudflare Pages on push to `main`. The Pages project name lives only in the deploy command; there is no `wrangler.toml`.
+- `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then `scripts/assemble-dist.mjs` creates a clean `dist/` from `static/` plus `pkg/galacto.js` and `pkg/galacto_bg.wasm`. `scripts/cache-bust.mjs` stamps the JS/CSS/WASM/service-worker URLs with `?v=<git-sha>`, and `scripts/verify-build.mjs` fails the build if the deploy root is missing required files, still has placeholders, or contains raw `wasm-pack` package artifacts.
+- `npm run dev` serves `dist/` locally with `scripts/serve-static.mjs`, and `npm run deploy` ships `dist/` to Cloudflare Pages — see [README § Key Commands](../README.md#key-commands) for the full command table.
+- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR, including WGSL validation through `cargo test`, JavaScript syntax checks, npm/Rust advisory checks, verified web build, and a headless browser smoke test. Pushes to `main` deploy `dist/` to Cloudflare Pages. The Pages project/output directory is captured in `wrangler.jsonc`, and the same smoke script can verify production with `npm run smoke:live`.
 
 ## What This Architecture Deliberately Does Not Include
 

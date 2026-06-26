@@ -74,6 +74,9 @@ console_error_panic_hook = ["dep:console_error_panic_hook"]
 pollster = "0.3"
 env_logger = "0.10"
 
+[dev-dependencies]
+naga = { version = "29.0.3", features = ["wgsl-in"] }
+
 [profile.release]
 opt-level = 3
 lto = true

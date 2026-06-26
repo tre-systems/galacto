@@ -490,21 +490,25 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
       <section>
         <h2><span class="num">09</span>Build &amp; ship</h2>
         <p>
-          The build is two steps: compile the crate to wasm and copy the static shell alongside it.
+          The build keeps the raw wasm output separate from the deploy artifact: compile the crate to
+          <code>pkg/</code>, assemble a clean <code>dist/</code>, stamp deploy-specific URLs, then verify it.
         </p>
         <figure class="code">
           <figcaption><span class="lang">bash</span><span class="path">the build</span></figcaption>
           <pre><code><span class="c"># Rust + shaders -&gt; WebAssembly + JS glue, into pkg/</span>
 wasm-pack build --target web --release --out-dir pkg --out-name galacto
 
-<span class="c"># Copy the HTML/CSS shell next to it, then stamp ?v=&lt;git-sha&gt; URLs</span>
-cp -r static/* pkg/ &amp;&amp; node scripts/cache-bust.mjs</code></pre>
+<span class="c"># Assemble the deploy root, stamp ?v=&lt;git-sha&gt; URLs, then verify it</span>
+node scripts/assemble-dist.mjs dist
+node scripts/cache-bust.mjs dist
+node scripts/verify-build.mjs dist</code></pre>
         </figure>
         <p>
-          The output in <code>pkg/</code> is a plain static site — no server, no backend — so it deploys to any
-          static host (Galacto runs on Cloudflare Pages). The build stamps the JS and CSS URLs with the git
-          SHA and gives the service worker a per-deploy cache name, so repeat visits are quick, offline launch
-          works, and the next navigation can still see a fresh deploy.
+          The output in <code>dist/</code> is a plain static site — no server, no backend — so it deploys to
+          any static host (Galacto runs on Cloudflare Pages). The build stamps the JS, WASM, CSS, and
+          service-worker URLs with the git SHA, gives the service worker a per-deploy cache name, and
+          fails if required app-shell files or cache-bust placeholders are wrong. Repeat visits stay quick,
+          offline launch works, and the next navigation can still see a fresh deploy.
         </p>
       </section>
 

@@ -51,13 +51,13 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>HOST</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Cloudflare Pages serves the static pkg/ directory.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Cloudflare Pages serves the verified static dist/ directory.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    H1 [label=<<B>Cloudflare Pages</B><BR/><FONT POINT-SIZE="15">pkg/: galacto.js + _bg.wasm + index.html</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+    H1 [label=<<B>Cloudflare Pages</B><BR/><FONT POINT-SIZE="15">dist/: galacto.js + _bg.wasm + index.html</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
   }
 
   // ---- Browser ----

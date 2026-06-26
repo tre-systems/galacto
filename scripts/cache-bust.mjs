@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// Replace the __CACHE_BUST__ placeholders in pkg/index.html with a per-deploy
+// Replace the __CACHE_BUST__ placeholders in the deploy root with a per-deploy
 // version, so the galacto.js import AND the styles.css link are fresh URLs on
 // every deploy. Cloudflare Pages force-caches static assets (.js, .css) with a
 // max-age that _headers can't override, so a stable filename serves stale glue or
 // styles after a deploy; the ?v= query sidesteps that. index.html itself
 // revalidates each load (see _headers), so the new ?v= is always picked up.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
-const indexPath = join(process.cwd(), 'pkg', 'index.html');
-const sentryConfigPath = join(process.cwd(), 'pkg', 'sentry-config.js');
+const outDir = resolve(process.cwd(), process.argv[2] || 'dist');
+const indexPath = join(outDir, 'index.html');
+const sentryConfigPath = join(outDir, 'sentry-config.js');
+const swPath = join(outDir, 'sw.js');
 
 let version;
 try {
@@ -20,27 +22,13 @@ try {
   version = String(Date.now());
 }
 
-const html = readFileSync(indexPath, 'utf8');
-const busted = html.replaceAll('__CACHE_BUST__', version);
-
-if (busted === html) {
-  console.warn('cache-bust: no __CACHE_BUST__ placeholder found in pkg/index.html');
-} else {
-  writeFileSync(indexPath, busted);
-  console.log(`cache-bust: pinned galacto.js + styles.css to ?v=${version}`);
-}
+replaceRequired(indexPath, 'index.html', version);
+console.log(`cache-bust: pinned HTML asset URLs to ?v=${version}`);
 
 // Stamp the same version into the service worker, so each deploy gets its own
 // cache (galacto-<version>) and its precache URLs match index.html's ?v=.
-const swPath = join(process.cwd(), 'pkg', 'sw.js');
-const sw = readFileSync(swPath, 'utf8');
-const swBusted = sw.replaceAll('__CACHE_BUST__', version);
-if (swBusted === sw) {
-  console.warn('cache-bust: no __CACHE_BUST__ placeholder found in pkg/sw.js');
-} else {
-  writeFileSync(swPath, swBusted);
-  console.log(`cache-bust: pinned service worker cache to galacto-${version}`);
-}
+replaceRequired(swPath, 'sw.js', version);
+console.log(`cache-bust: pinned service worker cache to galacto-${version}`);
 
 writeFileSync(
   sentryConfigPath,
@@ -60,4 +48,15 @@ writeFileSync(
 function parseTracesSampleRate(value) {
   const rate = Number(value || 0.05);
   return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0.05;
+}
+
+function replaceRequired(path, label, version) {
+  if (!existsSync(path)) {
+    throw new Error(`cache-bust: missing ${label} at ${path}`);
+  }
+  const source = readFileSync(path, 'utf8');
+  if (!source.includes('__CACHE_BUST__')) {
+    throw new Error(`cache-bust: no __CACHE_BUST__ placeholder found in ${label}`);
+  }
+  writeFileSync(path, source.replaceAll('__CACHE_BUST__', version));
 }

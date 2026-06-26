@@ -79,8 +79,9 @@ npm run dev     # builds, then serves on http://localhost:8000
 - `src/` — Rust engine modules, with the WGSL shaders in `src/shaders/`
 - `static/` — frontend assets (`index.html`, `styles.css`, `favicon.svg`, `_headers`)
 - `docs/` — architecture writeup and diagrams
-- `scripts/` — build cache-busting and diagram render/check
-- `pkg/` — wasm-pack output, the deploy root (generated, git-ignored)
+- `scripts/` — build assembly/checks, local serving, smoke testing, diagrams, and production capture
+- `pkg/` — raw wasm-pack output (generated, git-ignored)
+- `dist/` — verified deploy root assembled from `static/` + `pkg/` (generated, git-ignored)
 
 See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-module breakdown.
 
@@ -89,15 +90,20 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | Command                 | Description                                      |
 | ----------------------- | ------------------------------------------------ |
 | `npm run setup`         | Install dependencies, wasm-pack, and the WASM target |
-| `npm run build`         | Build the WASM module and copy assets into `pkg/`|
+| `npm run build`         | Build WASM, assemble `dist/`, cache-bust, and verify the deploy artifact |
 | `npm run dev`           | Build and serve on port 8000                     |
 | `npm run deploy`        | Build, then deploy to Cloudflare Pages           |
 | `npm run test`          | Run Rust tests                                   |
 | `npm run lint`          | Run Clippy                                       |
 | `npm run format`        | Format with rustfmt                              |
+| `npm run check:js`      | Syntax-check repo-owned JavaScript scripts       |
+| `npm run verify:build`  | Check the generated `dist/` deploy artifact      |
+| `npm run smoke`         | Browser-smoke the built site from `dist/`        |
+| `npm run smoke:live`    | Browser-smoke the deployed site                  |
+| `npm run audit`         | Run npm and RustSec dependency advisory checks   |
 | `npm run diagrams`      | Render the architecture diagrams (needs Graphviz)|
 
-A pre-commit hook and CI run the same gate — `fmt` / `clippy` / `test` / wasm `check` — and CI deploys on push to `main`. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
+A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `check` — and CI adds JavaScript syntax, dependency advisory, verified-build, and browser-smoke checks before deploying on push to `main`. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
 
 ### Audio & video production
 
