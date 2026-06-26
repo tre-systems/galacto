@@ -5,8 +5,11 @@
 // locally on demand; it needs librsvg's `rsvg-convert` on PATH
 // (`brew install librsvg`). Re-run after editing the SVGs: `npm run icons`.
 //
-// In `--check` mode it renders into a temporary directory and compares the
-// result with the committed files, so CI can catch stale generated assets.
+// In `--check` mode it renders the font-independent icon outputs into a
+// temporary directory and compares them with the committed files, so CI can catch
+// stale launcher assets. The OG card contains text, so its exact pixels depend on
+// the OS font rasterizer; check mode verifies its committed PNG dimensions rather
+// than treating those platform-specific pixels as reproducible.
 import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
@@ -30,12 +33,16 @@ if (!existsSync(iconSvg)) {
 }
 
 // [source svg, output png, width, height]
-const targets = [
+const iconTargets = [
   ['icons/icon.svg', 'icons/icon-192.png', 192, 192],
   ['icons/icon.svg', 'icons/icon-512.png', 512, 512],
   ['icons/icon.svg', 'icons/apple-touch-icon.png', 180, 180],
   ['icons/icon-maskable.svg', 'icons/icon-maskable-512.png', 512, 512],
-  ['og-card.svg', 'og-card.png', 1200, 630],
+];
+const ogTarget = ['og-card.svg', 'og-card.png', 1200, 630];
+const targets = [
+  ...iconTargets,
+  ogTarget,
 ];
 
 try {
@@ -51,9 +58,9 @@ if (checkMode) {
     const tempStatic = join(tempRoot, 'static');
     const tempIconSvgOut = join(tempStatic, 'icons', 'icon.svg');
     copyIconSvg(tempIconSvgOut);
-    renderPngTargets(tempStatic, { quiet: true });
+    renderPngTargets(tempStatic, { quiet: true, targetList: iconTargets });
 
-    const files = ['icons/icon.svg', ...targets.map(([, output]) => output)];
+    const files = ['icons/icon.svg', ...iconTargets.map(([, output]) => output)];
     const drifted = files.filter((file) => !sameFile(join(tempStatic, file), join(root, 'static', file)));
     if (drifted.length) {
       console.error('gen-icons: committed generated assets are stale:');
@@ -61,7 +68,9 @@ if (checkMode) {
       console.error('gen-icons: run `npm run icons` and commit the updated outputs.');
       process.exit(1);
     }
-    console.log(`gen-icons: ${files.length} generated assets match committed outputs`);
+    verifyPngDimensions(join(root, 'static', ogTarget[1]), ogTarget[2], ogTarget[3]);
+    console.log(`gen-icons: ${files.length} generated icon assets match committed outputs`);
+    console.log(`gen-icons: static/${ogTarget[1]} has expected ${ogTarget[2]}×${ogTarget[3]} dimensions`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -76,8 +85,8 @@ function copyIconSvg(output) {
   copyFileSync(iconSvg, output);
 }
 
-function renderPngTargets(staticRoot, { quiet = false } = {}) {
-  for (const [svg, png, w, h] of targets) {
+function renderPngTargets(staticRoot, { quiet = false, targetList = targets } = {}) {
+  for (const [svg, png, w, h] of targetList) {
     const input = join(root, 'assets', svg);
     if (!existsSync(input)) {
       console.error(`gen-icons: missing source ${input}`);
@@ -101,4 +110,25 @@ function sameFile(expected, actual) {
   const expectedBytes = readFileSync(expected);
   const actualBytes = readFileSync(actual);
   return expectedBytes.equals(actualBytes);
+}
+
+function verifyPngDimensions(path, expectedWidth, expectedHeight) {
+  if (!existsSync(path)) {
+    console.error(`gen-icons: missing output ${path}`);
+    process.exit(1);
+  }
+  const bytes = readFileSync(path);
+  const pngSignature = '89504e470d0a1a0a';
+  if (bytes.subarray(0, 8).toString('hex') !== pngSignature) {
+    console.error(`gen-icons: ${path} is not a PNG`);
+    process.exit(1);
+  }
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width !== expectedWidth || height !== expectedHeight) {
+    console.error(
+      `gen-icons: ${path} is ${width}×${height}, expected ${expectedWidth}×${expectedHeight}`,
+    );
+    process.exit(1);
+  }
 }

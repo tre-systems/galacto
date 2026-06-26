@@ -93,6 +93,7 @@ if (index && app && sw) verifyVersioning(index, app, sw);
 if (headers) verifyHeaders(headers);
 if (manifest) verifyManifest(manifest);
 if (manifest && legacyManifest) verifyManifestIdentity(manifest, legacyManifest);
+verifyPngDimensions('og-card.png', 1200, 630);
 
 if (errors.length) {
   console.error('verify-build failed:');
@@ -167,6 +168,21 @@ function verifyManifest(manifestText) {
 function verifyManifestIdentity(canonical, compatibility) {
   if (canonical !== compatibility) {
     errors.push('site.webmanifest and manifest.json must be byte-identical');
+  }
+}
+
+function verifyPngDimensions(file, expectedWidth, expectedHeight) {
+  const path = join(outDir, file);
+  if (!existsSync(path)) return;
+  const bytes = readFileSync(path);
+  if (bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+    errors.push(`${file} is not a PNG`);
+    return;
+  }
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width !== expectedWidth || height !== expectedHeight) {
+    errors.push(`${file} is ${width}×${height}, expected ${expectedWidth}×${expectedHeight}`);
   }
 }
 

@@ -60,7 +60,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 - **Rust** — install from [rustup.rs](https://rustup.rs/)
 - **Node.js** 22+ — for the build scripts and Cloudflare Wrangler
-- **librsvg** — for regenerating or checking committed PWA icons and the Open Graph card (`brew install librsvg`)
+- **librsvg** — for regenerating committed PWA icons and the Open Graph card (`brew install librsvg`)
 - **A WebGPU browser** — see [Browser Support](#browser-support)
 
 ### Installation
@@ -98,7 +98,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | `npm run lint`          | Run Clippy                                       |
 | `npm run format`        | Format with rustfmt                              |
 | `npm run check:js`      | Syntax-check repo-owned JavaScript scripts       |
-| `npm run check:deploy-metadata` | Verify manifest identity and committed icon/OG-card outputs |
+| `npm run check:deploy-metadata` | Verify manifest identity, icon drift, and OG-card dimensions |
 | `npm run verify:build`  | Check the generated `dist/` deploy artifact      |
 | `npm run smoke`         | Browser-smoke the built site from `dist/`        |
 | `npm run smoke:live`    | Browser-smoke the deployed site                  |
@@ -107,7 +107,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 
 A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `check` — and CI adds JavaScript syntax, dependency advisory, verified-build, and browser-smoke checks before deploying on push to `main`. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
 
-Deploy metadata is intentionally reproducible: `static/site.webmanifest` is the canonical PWA manifest, `static/manifest.json` is a byte-identical compatibility copy, and the committed PWA icons / Open Graph card are generated from `assets/` by `npm run icons`. `npm run check:deploy-metadata` enforces both invariants.
+Deploy metadata is intentionally checked: `static/site.webmanifest` is the canonical PWA manifest, `static/manifest.json` is a byte-identical compatibility copy, and the committed PWA icons / Open Graph card are generated from `assets/` by `npm run icons`. `npm run check:deploy-metadata` enforces manifest identity, byte-for-byte icon drift, and the OG card's required 1200×630 PNG dimensions. The card contains text, so exact pixels are not compared across operating systems.
 
 ### Audio & video production
 
