@@ -47,22 +47,26 @@ const FLYBY_COMPANION_BULK: [f32; 3] = [-30.0, 12.0, -4.0];
 
 // --- Flyby (composed-video collision): a second, substantial galaxy approaches on a
 // diagonal from the side and behind (the depth), seeded a long way out — a distance
-// proportional to the piece length — on an aimed inbound trajectory straight at the disk
-// centre. Unlike a free-fall from rest (which the weak gravity at that range may never
-// pull in), the real inbound velocity GUARANTEES the collision, and gravity only adds to
-// the closing speed. The composed piece runs the sim at `FLYBY_SIM_SPEED` (see lib.rs),
-// which stretches the approach so the intruder is glimpsed as a distant galaxy growing
-// out of the background through the first half, then collides near the half-way mark.
-// Tune the timing with `FLYBY_INTRUDER_SPEED` (faster = collides earlier) and the start
-// distance with `FLYBY_DISTANCE_FACTOR`.
-const FLYBY_DISTANCE_FACTOR: f32 = 6.0; // start distance = factor × duration_secs (on the diagonal)
+// proportional to the piece length — and aimed NOT at the core but at a point a disk-radius
+// off-centre (the impact parameter). That makes it a grazing pass that tears a tidal tail
+// and tangles with the disk, rather than a dead-centre plunge that punches through too fast
+// to read as a collision. The composed piece runs the sim at `FLYBY_SIM_SPEED` (see
+// lib.rs), stretching the approach so the intruder is glimpsed as a distant galaxy growing
+// out of the background through the first half, then makes its grazing collision near the
+// half-way mark. Tune the timing with `FLYBY_INTRUDER_SPEED` (faster = earlier), the start
+// distance with `FLYBY_DISTANCE_FACTOR`, and how central the hit is with `FLYBY_INTRUDER_IMPACT`.
+const FLYBY_DISTANCE_FACTOR: f32 = 2.5; // start distance = factor × duration_secs (on the diagonal)
 const FLYBY_INTRUDER_MASS: f32 = 180_000.0; // ~0.6× the main core, for a real collision
 const FLYBY_INTRUDER_RADIUS: f32 = 95.0;
 // Inbound direction (≈unit): from the +X side and behind in depth (-Z), so the intruder
 // is visible approaching off to the side rather than hidden straight behind the disk.
 const FLYBY_INTRUDER_DIR: [f32; 3] = [0.7, 0.1, -0.7];
-// Aimed inbound speed (sim units) toward the disk centre; sized for a ~mid-piece hit.
-const FLYBY_INTRUDER_SPEED: f32 = 40.0;
+// Inbound speed (sim units): slower than a deep plunge so the grazing pass lingers and
+// disrupts. Sized with FLYBY_DISTANCE_FACTOR for a ~mid-piece collision.
+const FLYBY_INTRUDER_SPEED: f32 = 18.0;
+// Impact parameter: aim a disk-radius off-centre (in the disk plane, +Y) so the intruder
+// grazes and rips a tidal tail instead of a dead-centre punch-through.
+const FLYBY_INTRUDER_IMPACT: f32 = 130.0;
 /// Default piece length (s) used when seeding outside a composed run (tests, the
 /// initial seed). The arrangement passes the real duration via `Reseed`.
 const DEFAULT_PIECE_SECS: f32 = 600.0;
@@ -858,21 +862,29 @@ fn generate_flyby(
         &mut rng,
     );
     // Mid-piece collision: a second, substantial galaxy seeded far out on the diagonal
-    // (off to the side and behind in depth) on an aimed inbound course straight at the
-    // disk centre, so it reads as a distant galaxy growing through the first half and is
-    // guaranteed to collide around the midpoint.
+    // (off to the side and behind in depth), aimed at a point a disk-radius off the core so
+    // it makes a grazing pass that tears a tidal tail — a collision you can actually see —
+    // around the midpoint, rather than a dead-centre punch-through that flashes by.
     let d0 = FLYBY_DISTANCE_FACTOR * duration_secs.max(1.0);
     let dir = FLYBY_INTRUDER_DIR;
+    let start = [dir[0] * d0, dir[1] * d0, dir[2] * d0];
+    // Velocity points at the offset target (impact parameter to the +Y side, in the disk
+    // plane), unit-scaled to the inbound speed.
+    let target = [0.0, FLYBY_INTRUDER_IMPACT, 0.0];
+    let to = [
+        target[0] - start[0],
+        target[1] - start[1],
+        target[2] - start[2],
+    ];
+    let inv = FLYBY_INTRUDER_SPEED
+        / (to[0] * to[0] + to[1] * to[1] + to[2] * to[2])
+            .sqrt()
+            .max(1e-3);
     seed_galaxy(
         &mut particles,
         &Galaxy {
-            center: [dir[0] * d0, dir[1] * d0, dir[2] * d0],
-            // Aimed straight back at the disk centre (-dir × speed); gravity adds to it.
-            bulk: [
-                -dir[0] * FLYBY_INTRUDER_SPEED,
-                -dir[1] * FLYBY_INTRUDER_SPEED,
-                -dir[2] * FLYBY_INTRUDER_SPEED,
-            ],
+            center: start,
+            bulk: [to[0] * inv, to[1] * inv, to[2] * inv],
             core_mass: FLYBY_INTRUDER_MASS,
             radius: FLYBY_INTRUDER_RADIUS,
             count: intruder,
