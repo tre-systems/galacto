@@ -110,38 +110,7 @@ try {
   await page.send('Runtime.enable');
   await page.send('Log.enable');
 
-  const result = await page.send('Runtime.evaluate', {
-    expression: `
-      new Promise((resolve) => {
-        const started = performance.now();
-        const poll = () => {
-          const loading = document.getElementById("loading");
-          const error = document.getElementById("error");
-          const errorText = document.getElementById("error-details")?.innerText || "";
-          const canvas = document.getElementById("gpu-canvas");
-          const ready = Boolean(window.galacto?.isReady?.());
-          const loadingDone = !loading || getComputedStyle(loading).display === "none";
-          const errorVisible = error && getComputedStyle(error).display !== "none";
-          if (ready && loadingDone && canvas?.width > 0 && canvas?.height > 0) {
-            resolve({ status: "ready", width: canvas.width, height: canvas.height, title: document.title });
-            return;
-          }
-          if (errorVisible) {
-            resolve({ status: "error", errorText, title: document.title });
-            return;
-          }
-          if (performance.now() - started > ${timeoutMs}) {
-            resolve({ status: "timeout", loading: loading?.innerText || "", title: document.title });
-            return;
-          }
-          requestAnimationFrame(poll);
-        };
-        poll();
-      })
-    `,
-    awaitPromise: true,
-    returnByValue: true,
-  });
+  const result = await evaluatePageState(page, timeoutMs);
 
   const value = result.result.value;
   const hardErrors = page.exceptions.concat(
@@ -182,6 +151,53 @@ async function waitForJson(url, timeoutMs) {
     await sleep(200);
   }
   throw new Error(`smoke: timed out waiting for ${url}`);
+}
+
+async function evaluatePageState(page, timeoutMs) {
+  const expression = `
+    new Promise((resolve) => {
+      const started = performance.now();
+      const poll = () => {
+        const loading = document.getElementById("loading");
+        const error = document.getElementById("error");
+        const errorText = document.getElementById("error-details")?.innerText || "";
+        const canvas = document.getElementById("gpu-canvas");
+        const ready = Boolean(window.galacto?.isReady?.());
+        const loadingDone = !loading || getComputedStyle(loading).display === "none";
+        const errorVisible = error && getComputedStyle(error).display !== "none";
+        if (ready && loadingDone && canvas?.width > 0 && canvas?.height > 0) {
+          resolve({ status: "ready", width: canvas.width, height: canvas.height, title: document.title });
+          return;
+        }
+        if (errorVisible) {
+          resolve({ status: "error", errorText, title: document.title });
+          return;
+        }
+        if (performance.now() - started > ${timeoutMs}) {
+          resolve({ status: "timeout", loading: loading?.innerText || "", title: document.title });
+          return;
+        }
+        requestAnimationFrame(poll);
+      };
+      poll();
+    })
+  `;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await page.send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+    } catch (error) {
+      if (!/Execution context was destroyed|Cannot find context/i.test(error.message) || attempt === 3) {
+        throw error;
+      }
+      await sleep(1_000);
+    }
+  }
+  throw new Error('smoke: page evaluation failed');
 }
 
 function findChrome() {
