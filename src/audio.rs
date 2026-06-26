@@ -19,7 +19,7 @@
 //!   star oscs ─▶ voice gains ─▶ star LP ─▶ star gain ───┘ (field pan) │
 //!   sub osc ─▶ sub LP ─▶ sub gain ──────────────────────────────────┐│
 //!   noise src ─▶ noise LPs ─▶ noise gain ───────────────────────────┤│
-//!   note osc ─▶ env ─▶ panner ───────────────────────────────────────┼─▶ master gain ─▶ saturator ─▶ master LP ─▶ comp ─▶ breath ─▶ out
+//!   note osc ─▶ env ─▶ panner ───────────────────────────────────────┼─▶ master gain ─▶ subsonic HP ─▶ saturator ─▶ master LP ─▶ comp ─▶ breath ─▶ out
 //!                          ├─▶ reverb in ─▶ convolver ─▶ reverb LP ─▶ reverb wet ─┤
 //!                          └─▶ delay in ─▶ delay ⇄ feedback ─▶ delay wet ─────────┘
 //! ```
@@ -114,9 +114,12 @@ impl Graph {
     /// Build the full node graph on `ctx` (real-time or offline). The master gain
     /// starts silent; the caller ramps or sets it.
     fn build(ctx: &BaseAudioContext) -> Option<Self> {
-        // Master chain: gain → tape saturation → low-pass (brightness) → compressor →
-        // breath → output.
+        // Master chain: gain → subsonic high-pass → tape saturation → low-pass
+        // (brightness) → compressor → breath → output.
         let master_gain = gain(ctx, 0.0)?;
+        // Live low-end safety: trim sub-audio rumble before it spends compressor
+        // headroom. Offline mastering repeats this kind of protection at file level.
+        let master_hp = highpass(ctx, 28.0, 0.707)?;
         // Gentle tape/console saturation for analog warmth — placed before the
         // brightness low-pass so its harmonics are tamed and never turn shrill.
         let saturator = tape_saturator(ctx)?;
@@ -126,7 +129,8 @@ impl Graph {
         // the breathing cue is coherent across the entire mix (placed after the
         // compressor so the swell isn't squashed). Starts at unity.
         let breath_gain = gain(ctx, 1.0)?;
-        connect(&master_gain, &saturator);
+        connect(&master_gain, &master_hp);
+        connect(&master_hp, &saturator);
         connect(&saturator, &master_lp);
         connect(&master_lp, &comp);
         connect(&comp, &breath_gain);
@@ -210,9 +214,9 @@ impl Graph {
         // frequency doubler (the `2x²−1` waveshaper turns a sine into its octave) and a
         // band-pass that keeps only the high sheen, sent into the reverb.
         let shimmer_shaper = octave_up_shaper(ctx)?;
-        // Sit the sheen up in the "air" band rather than the forward 2–3 kHz presence
-        // region, so it shimmers without the fatigue that tires the ear over time.
-        let shimmer_bp = bandpass(ctx, 2600.0, 0.5)?;
+        // Sit the sheen below the forward presence band, so it glows without the
+        // low-kHz fatigue that tires the ear over time.
+        let shimmer_bp = bandpass(ctx, 1800.0, 0.45)?;
         let shimmer_gain = gain(ctx, 0.0)?;
         connect(&drone_lp, &shimmer_shaper);
         connect(&shimmer_shaper, &shimmer_bp);
@@ -234,7 +238,7 @@ impl Graph {
         // Starfield: high voices tuned to the pad's upper harmonics, each twinkling on
         // its own slow LFO (a sine into its gain), through a shared brightness filter
         // and level into the field bus.
-        let star_lp = lowpass(ctx, 2400.0, 0.5)?;
+        let star_lp = lowpass(ctx, 2200.0, 0.5)?;
         let star_gain = gain(ctx, 0.0)?;
         connect(&star_lp, &star_gain);
         connect(&star_gain, &field_pan);
@@ -662,6 +666,15 @@ fn gain(ctx: &BaseAudioContext, value: f32) -> Option<GainNode> {
 fn lowpass(ctx: &BaseAudioContext, freq: f32, q: f32) -> Option<BiquadFilterNode> {
     let f = BiquadFilterNode::new(ctx).ok()?;
     f.set_type(BiquadFilterType::Lowpass);
+    f.frequency().set_value(freq);
+    f.q().set_value(q);
+    Some(f)
+}
+
+/// A high-pass biquad for fixed low-end safety.
+fn highpass(ctx: &BaseAudioContext, freq: f32, q: f32) -> Option<BiquadFilterNode> {
+    let f = BiquadFilterNode::new(ctx).ok()?;
+    f.set_type(BiquadFilterType::Highpass);
     f.frequency().set_value(freq);
     f.q().set_value(q);
     Some(f)

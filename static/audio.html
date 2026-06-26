@@ -279,11 +279,12 @@
           The bed is a small ensemble of synth voices feeding one master chain, with three parallel
           <em>sends</em> that paint the surrounding space. The pad and the starfield share a stereo
           <strong>field pan</strong> that swings with the camera's orbit. The sub-bass stays centred; the noise
-          bed is a very quiet, low-passed stereo wash, and the offline master sums the deep bass to mono so
-          exported pieces translate cleanly.
+          bed is a very quiet, low-passed stereo wash. A fixed subsonic high-pass protects the live mix from
+          inaudible rumble, and the offline master also sums the deep bass to mono so exported pieces translate
+          cleanly.
         </p>
         <figure class="diagram">
-          <svg viewBox="0 0 910 300" role="img" aria-label="Signal flow: synth sources feed a master gain, tape saturator, low-pass, compressor and breath gain to the output, with reverb, delay and shimmer as parallel sends.">
+          <svg viewBox="0 0 910 300" role="img" aria-label="Signal flow: synth sources feed a master gain, subsonic high-pass, tape saturator, low-pass, compressor and breath gain to the output, with reverb, delay and shimmer as parallel sends.">
             <defs>
               <marker id="ar1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--blue)" opacity="0.75" /></marker>
               <marker id="ar1v" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--violet)" opacity="0.85" /></marker>
@@ -307,7 +308,7 @@
             <text x="208" y="26" class="d-note">pad + stars: field pan (orbit) · sub centred · noise: low stereo wash</text>
             <!-- master chain -->
             <path class="d-edge" d="M203,117 H226" marker-end="url(#ar1)" />
-            <rect class="d-box master" x="228" y="95" width="104" height="44" rx="8" /><text class="d-t" x="280" y="116" text-anchor="middle">Master</text><text class="d-s" x="280" y="131" text-anchor="middle">level</text>
+            <rect class="d-box master" x="228" y="95" width="104" height="44" rx="8" /><text class="d-t" x="280" y="116" text-anchor="middle">Master</text><text class="d-s" x="280" y="131" text-anchor="middle">level + HP</text>
             <path class="d-edge" d="M332,117 H356" marker-end="url(#ar1)" />
             <rect class="d-box master" x="358" y="95" width="104" height="44" rx="8" /><text class="d-t" x="410" y="116" text-anchor="middle">Warmth</text><text class="d-s" x="410" y="131" text-anchor="middle">saturator</text>
             <path class="d-edge" d="M462,117 H486" marker-end="url(#ar1)" />
@@ -327,13 +328,13 @@
             <text x="312" y="200" class="d-s">send</text>
             <text x="634" y="200" class="d-s">wet return</text>
           </svg>
-          <figcaption>The synthesis graph: five synth sources mix into a master gain → tape saturator → brightness low-pass → compressor → breath gain → output, with reverb, delay and shimmer as parallel sends.</figcaption>
+          <figcaption>The synthesis graph: five synth sources mix into a master gain → subsonic high-pass → tape saturator → brightness low-pass → compressor → breath gain → output, with reverb, delay and shimmer as parallel sends.</figcaption>
         </figure>
         <p>
           The <strong>shimmer</strong> send is a small trick worth showing. Tapping the pad through a
           <code>2x² − 1</code> transfer curve turns a sine into its octave — a clean frequency doubler — which
-          is then band-passed up into the "air" band and fed to the reverb, for a cosmic sheen that floats
-          over the pad without adding harshness:
+          is then band-passed into a softer upper-glow band and fed to the reverb, for a cosmic sheen that floats
+          over the pad without pushing into harshness:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/audio.rs — the octave-up shimmer shaper, abridged</span></figcaption>
@@ -463,7 +464,7 @@
         <p>
           Second, each star <em>twinkles</em> — every voice rides its own slow LFO and dips to silence rather
           than holding a steady tone, because a sustained pure tone is far more wearing than an intermittent
-          one. The shimmer sheen is allowed up into the "air" (a band-pass near 2.6 kHz), but as a brief,
+          one. The shimmer sheen sits lower now (a gentle band-pass near 1.8 kHz), and it is kept as a quiet,
           reverberant glint rather than a continuous presence, so it reads as space, not stridency.
         </p>
       </section>
@@ -540,8 +541,8 @@
           consonant modes (a major pentatonic, or Lydian held calm over the drama), while the violent
           collisions shift to darker, busier modes (Dorian, Phrygian) with more tension in the pad. And the
           <strong>tempo</strong> follows the research directly — faster tempo tends to raise arousal
-          <a href="#r10">[10]</a><a href="#r11">[11]</a>, so the grid stays slow (~50–85 events per minute) and never turns frantic,
-          even at full simulation speed:
+          <a href="#r10">[10]</a><a href="#r11">[11]</a>, so the grid stays slow (~50–85 steps per minute) and
+          each step emits at most one note or sparkle; it never turns frantic, even at full simulation speed:
         </p>
         <figure class="code">
           <figcaption><span class="lang">rust</span><span class="path">src/music.rs — the note grid stays calm</span></figcaption>
@@ -627,8 +628,8 @@
         </figure>
         <p>
           Around that, the chain sums the very low end to mono (so the sub is solid on any system), trims sub-30 Hz
-          rumble, applies raised-cosine fades, and writes a 24-bit WAV. The result is a finished audiovisual
-          piece — the same arc on screen and in the speakers, rendered from a single seed.
+          rumble again at the file level, applies raised-cosine fades, and writes a 24-bit WAV. The result is a
+          finished audiovisual piece — the same arc on screen and in the speakers, rendered from a single seed.
         </p>
       </section>
 

@@ -284,17 +284,17 @@ impl MusicEngine {
         // star size, gas, core churn, disk instability, and an extra lift while the
         // core collapses inward. These slider paths are intentionally broad enough
         // to be audible on phone speakers.
-        let octaves = c.brightness * 1.1
-            + state.zoom * 1.2
-            + state.glow * 0.9
-            + state.star_size * 0.3
-            + state.gas * 0.7
-            + state.core_activity * 0.85
-            + (1.0 - state.stability) * 0.25
-            + inflow * 0.6;
-        // Ceiling held to 6 kHz so the whole mix keeps a gentle downward (brown-ish)
-        // tilt and never goes bright-flat on top.
-        let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 6000.0);
+        let octaves = c.brightness
+            + state.zoom
+            + state.glow * 0.65
+            + state.star_size * 0.22
+            + state.gas * 0.50
+            + state.core_activity * 0.65
+            + (1.0 - state.stability) * 0.18
+            + inflow * 0.45;
+        // Ceiling held below the presence-band danger zone so the whole mix keeps a
+        // gentle downward (brown-ish) tilt and never goes bright-flat on top.
+        let cutoff_hz = (200.0 * 2.0_f32.powf(octaves)).clamp(150.0, 5000.0);
         // Its body swells with central mass, halo fullness, bulge, and star size.
         let gain = if state.paused {
             0.12
@@ -353,30 +353,30 @@ impl MusicEngine {
         let star_gain = if silent {
             0.0
         } else {
-            (0.01
-                + 0.08 * state.richness
-                + 0.05 * state.glow
-                + 0.04 * state.zoom
-                + 0.03 * state.gas
-                + 0.02 * lfo_a)
-                .clamp(0.0, 0.18)
+            (0.008
+                + 0.07 * state.richness
+                + 0.035 * state.glow
+                + 0.025 * state.zoom
+                + 0.02 * state.gas
+                + 0.015 * lfo_a)
+                .clamp(0.0, 0.14)
         };
         // Warm low-pass kept well below the fatiguing presence band, so the starfield
         // stays a soft, rounded sparkle rather than a sharp, sustained tone.
         let star_cutoff_hz = (900.0
             * 2.0_f32.powf(0.8 * state.zoom + 0.5 * state.glow + 0.4 * state.gas))
-        .clamp(600.0, 2400.0);
+        .clamp(550.0, 2200.0);
 
         // Octave-up shimmer into the reverb — the cosmic sheen. Reverb-diffused (never
         // a dry tone) and kept gentle so it adds air without sharpness. Opens with glow
         // and gas (the bright blue arms), a close view, and a collapsing core.
-        let shimmer_gain = (0.03
-            + 0.12 * state.glow
-            + 0.08 * state.gas
-            + 0.07 * state.zoom
-            + 0.08 * inflow
-            + 0.03 * lfo_b)
-            .clamp(0.0, 0.24);
+        let shimmer_gain = (0.015
+            + 0.105 * state.glow
+            + 0.045 * state.gas
+            + 0.035 * state.zoom
+            + 0.045 * inflow
+            + 0.015 * lfo_b)
+            .clamp(0.0, 0.17);
 
         // The whole pad + starfield image swings with the camera orbit.
         let field_pan = (state.camera_pan * 0.6).clamp(-0.85, 0.85);
@@ -384,31 +384,31 @@ impl MusicEngine {
         // Cavernous, washy reverb: wet by default so the space feels vast even when
         // the galaxy is still, deeper when pulled back, opening with core churn, halo
         // strength/size, and slowly swelling and ebbing on its own LFO.
-        let reverb_wet = (0.52
-            + 0.32 * (1.0 - state.zoom)
-            + 0.22 * state.core_activity
-            + 0.24 * lfo_b
-            + 0.08 * state.motion
-            + 0.55 * state.halo_size
-            + 0.14 * state.halo)
-            .clamp(0.0, 1.85);
+        let reverb_wet = (0.48
+            + 0.26 * (1.0 - state.zoom)
+            + 0.18 * state.core_activity
+            + 0.18 * lfo_b
+            + 0.06 * state.motion
+            + 0.42 * state.halo_size
+            + 0.10 * state.halo)
+            .clamp(0.0, 1.45);
         // Long, present echo with sustained, trailing repeats.
         let delay_wet =
-            (0.18 + 0.28 * state.motion + 0.16 * state.speed + 0.10 * state.glow + 0.08 * lfo_a)
-                .clamp(0.0, 0.78);
+            (0.15 + 0.22 * state.motion + 0.12 * state.speed + 0.07 * state.glow + 0.06 * lfo_a)
+                .clamp(0.0, 0.62);
         let delay_feedback =
-            (0.42 + 0.28 * state.motion + 0.10 * state.halo + 0.07 * state.speed).clamp(0.0, 0.86);
+            (0.38 + 0.22 * state.motion + 0.08 * state.halo + 0.05 * state.speed).clamp(0.0, 0.74);
 
         // Brown-noise rumble bed: a warm, low background presence that breathes with
-        // the core's churn and its own LFO, lifted by the gas fraction. A touch more
-        // present than before, for the focus-friendly smoothed-brown character.
-        let noise_gain = (0.035
-            + 0.05 * state.core_activity
-            + 0.018 * lfo_b
-            + 0.09 * state.gas
-            + 0.03 * state.glow
-            + 0.015 * state.star_size)
-            .clamp(0.0, 0.20);
+        // the core's churn and its own LFO, lifted by the gas fraction but capped so
+        // it supports the pad without becoming room rumble.
+        let noise_gain = (0.028
+            + 0.04 * state.core_activity
+            + 0.014 * lfo_b
+            + 0.07 * state.gas
+            + 0.024 * state.glow
+            + 0.012 * state.star_size)
+            .clamp(0.0, 0.16);
 
         // Resonant pad filter: breathes on the LFO, lifts as the core collapses
         // inward, and widens with gas-rich / low-Q (unstable) disks.
@@ -451,18 +451,18 @@ impl MusicEngine {
         // richness, speed, motion, gas, glow, disk instability, and halo strength.
         // Kept sparse on purpose — space and silence between sparse "starlight" notes
         // (over the continuous pad) read as calm; a wall of notes does not.
-        let energy = (0.05
-            + 0.34 * state.core_activity
-            + 0.14 * state.core_mass
-            + 0.14 * state.richness
-            + 0.11 * state.intensity
-            + 0.07 * state.motion
-            + 0.07 * state.gas
-            + 0.06 * state.glow
-            + 0.06 * (1.0 - state.stability)
-            + 0.04 * state.halo)
+        let energy = (0.04
+            + 0.30 * state.core_activity
+            + 0.12 * state.core_mass
+            + 0.11 * state.richness
+            + 0.08 * state.intensity
+            + 0.05 * state.motion
+            + 0.05 * state.gas
+            + 0.04 * state.glow
+            + 0.04 * (1.0 - state.stability)
+            + 0.03 * state.halo)
             * c.activity;
-        if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.72) {
+        if self.rng.random_range(0.0_f32..1.0) >= energy.clamp(0.0, 0.58) {
             return;
         }
 
@@ -477,10 +477,10 @@ impl MusicEngine {
         // stars/glow nudge the bells higher.
         let register =
             (24.0 * state.zoom - 8.0 + 4.0 * state.glow + 3.0 * state.star_size).round() as i32;
-        let midi = (c.root_midi + (c.scale[within] + 12 * octave + register) as f32)
+        let mut midi = (c.root_midi + (c.scale[within] + 12 * octave + register) as f32)
             .clamp(c.root_midi - 18.0, c.root_midi + 42.0);
 
-        let velocity = (0.12
+        let mut velocity = (0.12
             + 0.38 * state.core_activity
             + 0.16 * state.core_mass
             + 0.09 * state.glow
@@ -490,14 +490,25 @@ impl MusicEngine {
         .clamp(0.05, 0.85);
         // Long, sustained notes that fade in and out gently — soft, legato tones are
         // calming; short plucks are not. Slower sims breathe with even longer notes.
-        let duration = 2.6 + 3.2 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.6);
-        let pan =
+        let mut duration = 2.6 + 3.2 * (1.0 - state.speed) + self.rng.random_range(0.0_f32..1.6);
+        let mut pan =
             (self.rng.random_range(-1.0_f32..1.0) * (0.35 + 0.5 * state.motion)).clamp(-0.9, 0.9);
         let waveform = if self.step.is_multiple_of(4) {
             Waveform::Triangle
         } else {
             Waveform::Sine
         };
+
+        // An occasional high, quiet sparkle replaces the main note rather than adding
+        // a second event, so the actual density stays capped by the slow grid.
+        let sparkle =
+            (0.04 + 0.24 * state.glow + 0.16 * state.gas + 0.07 * state.star_size).clamp(0.0, 0.48);
+        if self.rng.random_range(0.0_f32..1.0) < sparkle {
+            midi = (midi + 12.0).min(c.root_midi + 48.0);
+            velocity *= 0.55;
+            duration *= 0.65;
+            pan = -pan;
+        }
 
         out.push(NoteEvent {
             freq: midi_to_hz(midi),
@@ -506,20 +517,6 @@ impl MusicEngine {
             waveform,
             pan,
         });
-
-        // An occasional high, quiet sparkle — more likely with brighter, glowier
-        // stars and gas-rich disks — panned opposite the main note for width.
-        let sparkle =
-            (0.08 + 0.34 * state.glow + 0.22 * state.gas + 0.10 * state.star_size).clamp(0.0, 0.85);
-        if self.rng.random_range(0.0_f32..1.0) < sparkle {
-            out.push(NoteEvent {
-                freq: midi_to_hz((midi + 12.0).min(c.root_midi + 48.0)),
-                velocity: velocity * 0.5,
-                duration: duration * 0.6,
-                waveform: Waveform::Sine,
-                pan: -pan,
-            });
-        }
     }
 }
 
@@ -615,6 +612,30 @@ mod tests {
                 (-1.0..=1.0).contains(&ev.pan),
                 "pan {} out of range",
                 ev.pan
+            );
+        }
+    }
+
+    #[test]
+    fn each_grid_step_emits_at_most_one_note() {
+        let mut eng = MusicEngine::new(11);
+        let mut hot = state(1.0, 1.0, false);
+        hot.scenario = Scenario::HeadOn;
+        hot.speed = 1.0;
+        hot.core_mass = 1.0;
+        hot.richness = 1.0;
+        hot.gas = 1.0;
+        hot.glow = 1.0;
+        hot.stability = 0.0;
+        hot.halo = 1.0;
+        hot.star_size = 1.0;
+
+        for _ in 0..1_000 {
+            let mut out = Vec::new();
+            eng.generate_step(&hot, &mut out);
+            assert!(
+                out.len() <= 1,
+                "a slow grid step should never stack multiple note events"
             );
         }
     }
@@ -797,7 +818,7 @@ mod tests {
     fn step_seconds_stays_in_a_calm_tempo_range() {
         let eng = MusicEngine::new(0);
         // Across the whole speed range the note grid stays in the relaxing
-        // ~50–85 BPM band (0.7–1.3 s) — never frantic, even at full sim speed.
+        // ~50–85 steps/min band (0.7–1.3 s) — never frantic, even at full sim speed.
         for speed in [0.0_f32, 0.5, 1.0] {
             let mut s = state(0.5, 0.0, false);
             s.speed = speed;
