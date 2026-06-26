@@ -70,7 +70,6 @@ A finished YouTube-ready video is one command — `npm run produce` (`scripts/pr
 - **Headless video export.** Add a native `wgpu` binary that runs the same arrangement/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg — avoiding the real-time capture (a 10-min piece currently takes ~10 min of wall-clock to record) and any browser-capture compression. **Effort: L.**
 - **Harden the current browser-capture scripts.** Pick free Chrome debug ports, or retry on collision, in `smoke.mjs` and `capture-canvas-video.mjs`; make `serve-static` surface `EADDRINUSE` with a clear retry path; split `capture-canvas-video.mjs` into CDP, chunk-server, audio-export, mux, and caption helpers; add preflight checks for Chrome/ffmpeg/rsvg-convert and fail fast on zero recorded chunks. **Effort: M.**
 - **Make captions portable.** `add-video-captions.mjs` currently targets macOS VideoToolbox HEVC. Add a `--video-codec` option or fallback path, and remove the unused caption-overlay parameter while touching the script. **Effort: S.**
-- **Separate the video docs.** `docs/VIDEO_PRODUCTION.md` mixes the current one-command workflow, proof-cut notes, DAW/stem ideas, and future native-export design. Split it into a current runbook plus future-design notes so the operational path stays short. **Effort: S.**
 
 ## Definition of Done
 

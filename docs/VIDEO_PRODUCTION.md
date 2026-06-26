@@ -1,526 +1,188 @@
 # Galacto Video Production
 
-This document sketches a production workflow for a high-quality YouTube video with
-sound, plus the engineering path for direct video and audio export.
+Current operational runbook for producing a composed Galacto video. Longer-term
+native frame export and DAW/stem workflows live in the [backlog](../BACKLOG.md);
+this file stays focused on what works today.
 
-## Goals
+## Output Shape
 
-- Produce a clean 16:9 video, ideally 3840x2160 at 60 fps.
-- Keep the image free of browser chrome, UI, dropped frames, notifications, and
-screen-capture compression.
-- Get audio into Logic as high-quality, editable material rather than a browser
-capture.
-- Keep the final piece focused on the galaxy visuals, with only minimal branding.
+`npm run produce` creates a finished MP4:
 
-## Recommended Creative Shape
+- deterministic cinematic arrangement from one seed and duration;
+- browser-captured WebGPU canvas, with controls hidden;
+- matching offline-rendered, mastered audio from the same seed and duration;
+- burned-in start/end captions;
+- HEVC video + AAC audio, with `+faststart`.
 
-Open on the simulation, not on a title card. The first frame should already be
-Galacto doing what makes it interesting.
+Defaults:
 
-Use a short fade in:
+| Setting | Default |
+| --- | --- |
+| Duration | `600` seconds |
+| Resolution | `3840x2160` |
+| Frame rate | `60` fps |
+| Bodies | `32768` |
+| Audio target | `-16` LUFS |
+| Output directory | `renders/proofs/` |
 
-- Visual fade in: 1-2 seconds.
-- Audio fade in: 3-5 seconds, slower than the picture.
-- Optional title overlay: small, 2-3 seconds, over the visuals.
+The 32,768-body default is 2x the interactive body count. Particle size scales as
+`1/sqrt(count)`, so glow fill-rate stays roughly stable; gravity is still `O(N^2)`,
+so higher counts can drop frames.
 
-End with a longer, calmer fade:
-
-- Hold a strong final composition for a few seconds.
-- Audio fade out: 8-12 seconds.
-- Visual fade or fade-to-black: 3-5 seconds.
-- Optional end credits: 5-8 seconds.
-
-Credits fit better at the end than the start. A simple end card is enough:
-
-```text
-Galacto
-Self-gravitating N-body galaxy simulation
-galacto.org
-```
-
-If the video uses post-produced audio, add a short music/sound credit there too.
-The public creator credit for Galacto videos is **Multivibrator**.
-
-## Fast Workflow: Browser Capture
-
-This is the lowest-effort route and is good enough for test cuts:
-
-1. Run the local production build fullscreen.
-2. Hide controls and overlays.
-3. Record at 3840x2160, 60 fps using OBS, Screen Studio, or a similar local
-   recorder.
-4. Capture system audio separately if possible.
-5. Import the audio into Logic, process it, and lay the final mix back against
-   the picture in Final Cut, Resolve, or Premiere.
-
-This route is practical, but it is not ideal. It records the browser's real-time
-presentation, so dropped frames, browser scheduling, display refresh, and capture
-compression can all get baked into the master. It also gives Logic a mixed stereo
-track rather than clean musical stems.
-
-## Improved Proof Workflow: Direct Canvas Capture
-
-For the six-minute proof render, the practical near-term workflow was better than
-screen recording but lighter than the full native exporter: capture the WebGPU
-canvas directly with `canvas.captureStream()` in Chrome, then mux it with offline
-WAV audio. This avoids browser chrome, notifications, mouse cursors, and screen
-recorder compression.
-
-The repo now has a repeatable helper for this proof workflow:
-
-```bash
-npm run build
-npm run serve
-```
-
-In another terminal:
-
-```bash
-npm run video:capture -- \
-  --url http://localhost:8000/ \
-  --duration 360 \
-  --width 3840 \
-  --height 2160 \
-  --fps 60 \
-  --label galacto-six-minute \
-  --out-dir renders/proofs
-```
-
-Outputs:
-
-```text
-renders/proofs/
-├── galacto-six-minute-preview.png
-├── galacto-six-minute.webm
-├── galacto-six-minute-video.webm
-├── galacto-six-minute-chunks/
-└── galacto-six-minute-chrome-profile/
-```
-
-Use the `*-video.webm` file for muxing or editing; it is remuxed by ffmpeg after
-capture. `renders/` is git-ignored because these files are large.
-
-### Composed piece — one command (recommended)
-
-For a *finished* piece, **`npm run produce`** does the whole thing — no UI, no manual
-steps — and writes a YouTube-ready MP4:
+## One-Command Render
 
 ```bash
 npm run produce -- --seed 5 --duration 600
-# → renders/proofs/galacto-piece-5.mp4  (HEVC + AAC, start/end captions, +faststart)
 ```
 
-It builds, serves the verified `dist/` deploy artifact, launches headless Chrome to **capture the cinematic
-arrangement** (`src/arrangement.rs` — a deterministic A→B→C arc: sparse intro →
-gathering build → serene awe peak ~two-thirds in → dispersing resolution), **renders
-the matching mastered audio** offline from the *same* seed + duration (so picture and
-sound are locked), **muxes** them, and adds **start/end captions** (via
-`add-video-captions.mjs`). The default length is **10 minutes** — the researched
-sweet spot for a composed ambient piece (full arc; clears YouTube's 8-min mid-roll
-threshold). Same seed → same piece; change `--seed` for a different one.
-
-It renders at **32,768 bodies** by default (2× the interactive default) for a denser,
-finer galaxy. Per-particle billboard size scales as `1/√count`, so the glow's 4K
-fill-rate cost stays flat and the capture holds a rock-steady 60+ fps — the run prints
-the measured frame rate (avg / min) and warns if it ever drops. Higher `--particles`
-(e.g. `49152`) look richer still but become gravity-bound (`O(N²)`) and can dip below
-60 at 4K; the run's frame-rate warning tells you if a chosen count was too heavy.
-
-Useful flags: `--particles` (default 32768), `--width/--height/--fps` (default
-3840×2160 / 60), `--lufs` (default −16),
-`--start-title/--start-subtitle/--end-title/--end-subtitle`, `--no-build`,
-`--no-headless`. The capture is real-time, so a 10-minute piece takes ~10 minutes
-plus a short offline audio render.
-
-The steps are also available individually — `npm run video:capture -- --compose 5
---duration 600` (visuals only, via the `?compose=` URL) and `npm run video:captions`
-— but `produce` chains them with the seed/duration kept in lockstep.
-
-This is still not the final production architecture. The simulation is still
-running live in Chrome, so a long capture can land a fraction short of the exact
-requested duration and may still inherit browser timing behaviour. For the
-six-minute proof, the video stream landed at about `5:59.72`; the offline audio
-stems were exactly `6:00.00`.
-
-Recommended proof-render post steps:
-
-```bash
-# Remove DC offset/subsonic energy from each stem before Logic or muxing.
-ffmpeg -y -i master.wav \
-  -af highpass=f=20 \
-  -ar 48000 -c:a pcm_f32le master-clean.wav
-
-# Make a YouTube/reference master from the cleaned mix.
-ffmpeg -y -i master-clean.wav \
-  -af loudnorm=I=-14:TP=-1.5:LRA=11 \
-  -ar 48000 -c:a pcm_f32le master-clean-youtube.wav
-
-# Mux without re-encoding the captured VP9 picture.
-ffmpeg -y \
-  -i renders/proofs/galacto-six-minute-video.webm \
-  -i master-clean-youtube.wav \
-  -map 0:v:0 -map 1:a:0 \
-  -c:v copy -c:a libopus -b:a 320k -shortest \
-  renders/proofs/galacto-six-minute-youtube.webm
-```
-
-For a smaller MP4 delivery/reference file, encode the picture to HEVC and keep
-the audio at 48 kHz AAC:
-
-```bash
-ffmpeg -y \
-  -i renders/proofs/galacto-six-minute-video.webm \
-  -i master-clean-youtube.wav \
-  -map 0:v:0 -map 1:a:0 \
-  -vf "fade=t=in:st=0:d=1.5,fade=t=out:st=354.7:d=5" \
-  -c:v hevc_videotoolbox -b:v 55M -maxrate 70M -bufsize 110M -tag:v hvc1 \
-  -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 -colorspace bt709 \
-  -c:a aac -b:a 384k -movflags +faststart -shortest \
-  renders/proofs/galacto-six-minute-youtube-faded.mp4
-```
-
-For a final YouTube upload, prefer the least-compressed source that is convenient
-to upload. In this workflow that is usually the VP9/Opus WebM; the HEVC MP4 is a
-good smaller reference and still acceptable for upload.
-
-## Title And End Captions
-
-For Galacto, keep captions minimal and burn them into the picture rather than
-starting with a separate title card. The visuals should be visible from the first
-frame.
-
-Recommended opening caption:
+Typical output:
 
 ```text
-Galacto
-Self-gravitating N-body galaxy simulation
+renders/proofs/galacto-piece-5.mp4
+renders/proofs/galacto-piece-5.wav
+renders/proofs/galacto-piece-5-preview.png
+renders/proofs/galacto-piece-5-chunks/
 ```
 
-Recommended end caption:
+Useful flags:
 
-```text
-Galacto
-galacto.org
-Simulation and sound: Multivibrator
+```bash
+npm run produce -- \
+  --seed 7 \
+  --duration 600 \
+  --particles 32768 \
+  --width 3840 \
+  --height 2160 \
+  --fps 60 \
+  --lufs -16 \
+  --label galacto-piece-7 \
+  --out-dir renders/proofs
 ```
 
-Add them to an existing MP4 with:
+Caption flags are passed through:
+
+```bash
+--start-title "Galacto"
+--start-subtitle "Self-gravitating N-body galaxy simulation"
+--end-title "Galacto"
+--end-subtitle "galacto.org\nSimulation and sound: Multivibrator"
+```
+
+Use `--no-build` only when `dist/` is already a freshly verified build. Use
+`--no-headless` when debugging the capture browser.
+
+## Required Tools
+
+- Node.js 22+ and npm dependencies (`npm run setup`).
+- Rust + the wasm target and `wasm-pack` (`npm run setup` installs these).
+- Chrome/Chromium for canvas capture.
+- `ffmpeg` and `ffprobe` on `PATH`.
+- `rsvg-convert` from librsvg for caption plates (`brew install librsvg`).
+
+The script builds and serves the local `dist/` artifact itself unless `--no-build`
+is supplied.
+
+## What The Pipeline Does
+
+1. `scripts/produce.mjs` builds `dist/` and serves it locally.
+2. `scripts/capture-canvas-video.mjs --produce --compose <seed>` opens Chrome,
+   loads the page with `?compose=<seed>&dur=<seconds>`, records the WebGPU canvas
+   via `canvas.captureStream()`, and posts MediaRecorder chunks to a local chunk
+   server.
+3. The same browser session calls `window.galacto.renderPieceTo(...)`, which renders
+   the matching audio offline through the shared Web Audio graph and pure-Rust
+   mastering chain.
+4. `ffmpeg` muxes the captured picture and mastered WAV.
+5. `scripts/add-video-captions.mjs` burns in start/end captions and writes the MP4.
+
+The capture step prints average/min FPS. Treat a low-FPS warning as a failed render
+for production purposes; lower `--particles`, resolution, or frame rate and rerun.
+
+## Resuming A Failed Run
+
+If capture finished but muxing, audio, or captions failed, reuse the existing chunks:
+
+```bash
+npm run video:capture -- \
+  --produce \
+  --reuse-chunks \
+  --compose 5 \
+  --duration 600 \
+  --label galacto-piece-5 \
+  --out-dir renders/proofs
+```
+
+Keep the same seed, duration, label, and output directory so the chunk directory
+matches.
+
+## Captions Only
+
+Add captions to an existing MP4:
 
 ```bash
 npm run video:captions -- \
-  --input renders/proofs/galacto-six-minute-youtube-faded.mp4 \
-  --output renders/proofs/galacto-six-minute-youtube-captioned.mp4 \
+  --input renders/proofs/input.mp4 \
+  --output renders/proofs/output-captioned.mp4 \
   --start-title "Galacto" \
   --start-subtitle "Self-gravitating N-body galaxy simulation" \
   --end-title "Galacto" \
   --end-subtitle "galacto.org\nSimulation and sound: Multivibrator"
 ```
 
-The helper overlays the opening caption near the lower third and the end caption
-near the centre during the final seconds. It re-encodes the video because burned
-text changes the picture, but copies the audio track unchanged. It renders
-transparent SVG caption plates with `rsvg-convert`, so install librsvg first if
-needed:
+These are visual title/credit overlays, not accessibility subtitles. For actual
+subtitles, upload an `.srt` separately in YouTube Studio.
 
-```bash
-brew install librsvg
-```
+## Upload Notes
 
-If "captions" means actual accessibility subtitles rather than visual title
-text, create an `.srt` file instead and upload it in YouTube Studio. For this
-piece, an `.srt` would likely only contain a short opening and end credit:
+YouTube re-encodes uploads, so provide the cleanest source that is practical. The
+current MP4 is a convenient upload/reference file; keep the WAV next to it as the
+audio master.
 
-```text
-1
-00:00:01,700 --> 00:00:05,700
-Galacto
-Self-gravitating N-body galaxy simulation
+YouTube's published upload guidance currently recommends MP4, fast-start metadata,
+AAC-LC or Opus audio at 48 kHz, BT.709 for SDR, and 53-68 Mbps for 2160p/60 SDR
+H.264 uploads. The Galacto helper emits HEVC rather than H.264; YouTube accepts and
+re-encodes common upload formats, but use a short private upload before a final
+release when changing codec, bitrate, duration, or colour settings.
 
-2
-00:05:52,700 --> 00:05:59,500
-Galacto
-galacto.org
-Simulation and sound: Multivibrator
-```
-
-Do not use YouTube subtitles for the primary title/credit treatment if the text
-is part of the visual composition; subtitles can be turned off, styled
-differently by the viewer, or hidden by platform UI.
-
-## Logic Audio Workflow
-
-Use Logic as the final sound-design and mastering stage. Start from the cleaned
-48 kHz WAV stems rather than the AAC/Opus audio inside a video file.
-
-Session setup:
-
-- Create a 48 kHz project.
-- Import all stems at bar 1 / timecode 00:00:00:00.
-- Keep the stems as 32-bit float or 24-bit PCM. Do not normalize them on import.
-- Disable Flex/time-stretching unless deliberately editing timing.
-- Keep the picture locked and replace only the final audio when exporting.
-
-Suggested stem treatment:
-
-- **Drone** — high-pass around 20-30 Hz, gentle low-shelf cleanup if the master
-  gets cloudy, slow modulation or chorus only if it stays subtle.
-- **Notes** — small plate or shimmer send, light transient control, avoid making
-  the notes much louder than the bed.
-- **Texture** — high-pass higher, often 80-150 Hz, then tuck it under the drone;
-  automate this stem instead of leaving it static.
-- **Reverb returns** — use sends rather than inserting a huge reverb on every
-  track. Try ChromaVerb or Space Designer with 6-12 s decay, 20-60 ms predelay,
-  high-pass the return, and low-pass the top end if it gets glassy.
-- **Bit/crushed reverb** — if using Bitcrusher or a degraded reverb colour, use
-  it as a parallel aux at a low level. Put the bit effect before the reverb, then
-  high-pass and low-pass the return so it adds texture without turning the whole
-  mix gritty.
-
-Master bus:
-
-- Correct DC/subsonic energy first if the imported files have not already been
-  cleaned.
-- Use broad EQ moves only; the video wants space, not a loud pop master.
-- Use gentle compression or Multipressor with modest gain reduction.
-- Add saturation/exciter carefully, mainly to help small speakers.
-- Put the limiter last. Aim for around `-14 LUFS` integrated and true peak no
-  higher than `-1.5 dBTP` for the YouTube upload reference.
-
-Export a final 48 kHz WAV from Logic, then replace the video's audio without
-re-encoding the picture:
-
-```bash
-ffmpeg -y \
-  -i renders/proofs/galacto-six-minute-youtube-captioned.mp4 \
-  -i logic-master.wav \
-  -map 0:v:0 -map 1:a:0 \
-  -c:v copy -c:a aac -b:a 384k -shortest -movflags +faststart \
-  renders/proofs/galacto-six-minute-youtube-final.mp4
-```
-
-Keep the Logic project and the exported WAV alongside the video. The WAV is the
-audio master; the AAC/Opus in the upload file is just a delivery encoding.
-
-## Best Workflow: Direct Export
-
-The best result is a deterministic offline exporter:
-
-1. Define a production timeline: scenario, seed, duration, speed, camera path,
-   slider automation, fade timings, and resolution.
-2. Step the simulation from that timeline without relying on `requestAnimationFrame`.
-3. Render each video frame to an offscreen texture.
-4. Save a lossless or near-lossless image sequence.
-5. Render audio directly to WAV stems from the same timeline.
-6. Mix/master the stems in Logic.
-7. Combine the mastered audio with the rendered picture.
-
-This should produce better results than browser capture because the output is
-frame-exact, uncompressed before the final encode, repeatable on the same renderer,
-and free from UI/capture artifacts.
-
-There is one caveat: WebGPU floating-point reductions are not guaranteed to be
-bit-identical across all GPU hardware. A direct renderer gives deterministic
-timeline control and exact frame output, but long-run particle trajectories may
-still diverge slightly between different GPUs. For video production, render the
-final master on one chosen machine/GPU and treat that render as the source of
-truth.
-
-## Direct Video Export Design
-
-The current architecture is close to supporting this because the simulation and
-renderer are mostly `wgpu` code, with browser-specific setup isolated near the
-WASM entry and canvas surface.
-
-A production exporter should be a native Rust binary, for example:
-
-```text
-cargo run --release --bin render_video -- \
-  --timeline timelines/youtube-hero.toml \
-  --out renders/youtube-hero/frames \
-  --width 3840 \
-  --height 2160 \
-  --fps 60
-```
-
-Implementation outline:
-
-- Add a `Timeline` format for scenario, camera keyframes, speed, controls, and
-  duration.
-- Add a headless `wgpu` setup path that creates a device/queue without a browser
-  canvas.
-- Render into an offscreen texture rather than a swapchain surface.
-- Copy the final tonemapped frame texture into a CPU-readable buffer.
-- Save numbered frames, for example `frame_000001.png`.
-- Use `ffmpeg` to make a high-quality intermediate or YouTube upload file.
-
-Recommended visual intermediates:
-
-- Image sequence: PNG or TIFF at 3840x2160.
-- Editing intermediate: ProRes 422 HQ or DNxHR HQX.
-- YouTube upload: 4K 60 fps H.265 or H.264 at a high bitrate, or upload the
-  ProRes/DNxHR master if file size is acceptable.
-
-YouTube re-encodes uploads, so the source should be as clean as possible. Their
-published guidance recommends high-quality source uploads and lists 4K 60 fps SDR
-upload bitrates in the 66-85 Mbps range:
+References:
 
 - <https://support.google.com/youtube/answer/1722171>
 - <https://support.google.com/youtube/answer/4603579>
 
-## Direct Audio Export Design
+## Known Limits
 
-A self-contained audio render ships in the WASM: `generate_piece(duration, seed, lufs)`
-builds the composed arrangement (`src/arrangement.rs`) and renders it on an
-`OfflineAudioContext` (faster than real time, glitch-free), then runs the result through
-the pure-Rust master in `src/mastering.rs` (subsonic high-pass, mono bass, BS.1770
-loudness to a target LUFS, a −1 dBTP true-peak limiter, fades) to a 24-bit / 48 kHz WAV
-with a quality report. The production pipeline calls it headlessly
-(`window.galacto.renderPieceTo`) — there is no in-app export UI. This is the right path
-for a release-ready single file with no DAW — it renders the actual browser synthesis
-rather than recording it.
+- Capture is real-time. A 10-minute piece takes about 10 minutes plus build/audio/
+  mux/caption time.
+- The browser is still driving WebGPU presentation, so a capture can inherit browser
+  timing behaviour. The offline audio is sample-exact for the requested duration.
+- WebGPU floating-point work is not guaranteed bit-identical across hardware. Use
+  one render machine/GPU for final masters.
+- The caption helper currently targets macOS VideoToolbox HEVC. Portability and a
+  codec flag are tracked in the [backlog](../BACKLOG.md#production-export).
 
-The higher-ceiling route, for a deliberately produced release, is **stems + MIDI for
-a DAW**. It builds on the same split:
+## Lower-Level Commands
 
-- `src/music.rs` is pure Rust and already produces `DroneTarget`, `TextureTarget`,
-  and `NoteEvent` values; `src/mastering.rs` is the pure render-side DSP.
-- `src/audio.rs` holds the Web Audio rendering (live and the offline export).
+Visual capture only:
 
-A native audio renderer would consume the same `GalaxyState` timeline as the video
-export and write separate WAV stems plus a MIDI/automation sidecar:
-
-```text
-cargo run --release --bin render_audio -- \
-  --timeline timelines/youtube-hero.toml \
-  --out renders/youtube-hero/audio \
-  --sample-rate 48000 \
-  --stems
+```bash
+npm run build
+npm run serve
 ```
 
-Recommended output:
+Then, in another terminal:
 
-- `drone.wav`
-- `notes.wav`
-- `noise.wav`
-- `delay_return.wav`
-- `reverb_return.wav`
-- `master_reference.wav`
-- `events.mid` or `events.json`, optional, for Logic editing
-- `automation.json`, optional, for cutoff, reverb, delay, core activity, and other
-  useful control curves
-
-Use 48 kHz WAV. For Logic, 24-bit PCM is fine; 32-bit float is better for stems
-because it preserves headroom and avoids accidental clipping during later
-processing.
-
-This will lead to better results than browser capture because:
-
-- Logic receives editable stems rather than one mixed browser track.
-- There is no browser resampling, device output processing, or screen-recorder
-  audio compression.
-- The audio can be rendered exactly to the video duration and sample rate.
-- A sync marker or shared timeline can make picture/audio alignment exact.
-
-The first implementation does not need a perfect clone of every Web Audio detail.
-A useful MVP is:
-
-1. Export note events as MIDI/JSON.
-2. Export drone/effect automation curves.
-3. Render a rough reference WAV.
-4. Finish the actual sound design in Logic.
-
-The full implementation can later add a Rust DSP renderer for oscillators,
-envelopes, panning, delay, procedural reverb, noise bed, filters, and compression
-to match the in-browser sound more closely.
-
-## Sync
-
-The video and audio exporters should use the same timeline file and duration.
-Avoid free-running wall-clock time.
-
-Useful production details:
-
-- Start timecode at `00:00:00:00`.
-- Add an optional one-frame visual flash and short click/beep before the creative
-  start, then trim it out after sync.
-- Store render metadata with the output: git commit, timeline file hash,
-  resolution, fps, sample rate, scenario, seed, and render machine/GPU.
-- Render a short 10-second preview before committing to a full-length 4K render.
-
-## Suggested Implementation Phases
-
-### Phase 1: Recording Mode
-
-Add a browser-facing production mode:
-
-- hide controls and feedback UI;
-- disable idle UI;
-- lock camera path/autopilot;
-- expose deterministic timeline presets;
-- add a clean start/end fade.
-
-This still uses browser capture, but makes the captured result much cleaner.
-
-### Phase 2: Audio Export
-
-The headless `generate_piece` path already renders a mastered 24-bit / 48 kHz WAV
-of the actual synthesis (offline render + `mastering.rs`), which covers a quick
-release-ready single file. What remains is the DAW route for a produced release:
-
-- render note events and drone/texture automation from a timeline;
-- write 48 kHz WAV stems and MIDI/JSON events;
-- import stems into Logic for sound design and mastering.
-
-This gives the biggest audio quality and workflow improvement for the least
-engineering risk.
-
-### Phase 3: Headless Video Export
-
-Add a native `wgpu` renderer:
-
-- offscreen texture target;
-- fixed timeline stepping;
-- frame readback;
-- PNG/TIFF sequence output;
-- `ffmpeg` assembly into ProRes/DNxHR/H.265.
-
-This gives the best visual master, but is more engineering work than audio export.
-
-### Phase 4: One-Command Production Render
-
-Wrap the pipeline:
-
-```text
-npm run render:youtube -- timelines/youtube-hero.toml
+```bash
+npm run video:capture -- \
+  --url http://localhost:8000/ \
+  --compose 5 \
+  --duration 600 \
+  --width 3840 \
+  --height 2160 \
+  --fps 60 \
+  --particles 32768 \
+  --label galacto-piece-5 \
+  --out-dir renders/proofs
 ```
 
-Expected outputs:
-
-```text
-renders/youtube-hero/
-├── frames/
-├── audio/
-├── galacto-youtube-hero-master.mov
-├── galacto-youtube-hero-upload.mp4
-└── render-metadata.json
-```
-
-## Current Recommendation
-
-For the next video, do both in this order:
-
-1. Use `npm run video:capture` for a short proof cut to settle duration, camera
-   path, and title/credit treatment.
-2. Add opening/end text with `npm run video:captions` and check the result on a
-   few representative frames.
-3. Bring cleaned 48 kHz stems into Logic and master there; replace the video's
-   delivery audio only after the Logic export is final.
-4. Build the native audio exporter next, so future renders produce stems and
-   events from the same timeline without a temporary proof-render script.
-5. Build the headless video exporter if the proof cut looks good enough to justify
-   a polished YouTube release.
-
-Direct audio and direct video render produce better final results than a screen
-capture. The one-command `produce` pipeline (headless capture + offline audio +
-captions) already ships; a native, faster-than-real-time frame renderer is the
-higher-quality long-term path.
+Use the one-command pipeline for normal production; the lower-level commands are
+for debugging or resuming parts of a render.

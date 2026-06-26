@@ -1,6 +1,6 @@
 # Galacto
 
-A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10×) where every star pulls on every other. Switch between scenarios — a cold rotating disk that spontaneously grows **spiral arms**, or two galaxies that **merge** into one spinning remnant — and dial the disk's stability (Toomre Q), speed, gravity, and dark-matter halo. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
+A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by default (adjustable up to 10×) where every body pulls on every other. Switch between spiral disks, galaxy collisions, and an M51-style flyby; tune Toomre Q, gas, bulge mass, speed, gravity, and the dark-matter halo; and hear a synthesized soundscape driven by the simulation. Written in **Rust**, compiled to **WebAssembly**, and rendered with **WebGPU** — it runs entirely in the browser.
 
 **Live:** [galacto.org](https://galacto.org/) — needs a [WebGPU-capable browser](#browser-support).
 
@@ -18,7 +18,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 - **Live rotation curve** — an optional overlay plots the circular speed _v(r)_ in physical units (km/s vs kpc), decomposed into disk + bulge + dark-matter halo. The flat outer curve held up by the halo is the classic observational clue behind dark matter — drag the **Halo** or **Gravity** sliders and watch it respond. A clock shows the elapsed simulated time (the run is calibrated so one length unit ≈ 0.1 kpc and the default halo flattens at ~220 km/s).
 - **Toomre Q (disk stability)** — the disk slider is the actual **Toomre stability parameter**: the radial velocity dispersion is set per-radius from Q (σ_R = Q·3.36GΣ/κ). Q≲1 fragments into clumps, Q≈1–2 swing-amplifies into spiral arms, Q≫2 stays a smooth smear — the textbook stability sequence, live. It's a seed-time property, so it's *staged* and applied on **Restart**.
 - **Rust → WebAssembly** — the core compiles to WASM for near-native speed.
-- **Generative soundscape** — a vast, layered cosmic-ambient space that starts on your first interaction (browsers block audio until then), entirely synthesized in the browser (Web Audio oscillators, a code-generated reverb and feedback delay, an octave-up shimmer — no sample files). A deep **drone pad** over a **sub-bass** foundation, a high **twinkling starfield**, and a shimmering reverb give it the scale of deep space, with a live subsonic high-pass keeping rumble out of the mix. It's driven by the galaxy itself: a tiny GPU readback tracks how much **mass has gathered at the centre**, how fast it's **moving in or out**, and whether that motion is an **organized collapse or random churn**, so the pad swells, brightens, and focuses into tension as the core collapses and settles back as it disperses. Every control takes its own clear voice — **scenario** sets the scale and mood (serene for the lone disks, tense for the collisions), **zoom** moves you through the space (close = bright and dry, far = dark and cavernous), **orbiting** swings the whole soundscape across the stereo field, and the physics knobs each colour it (gravity leans the pitch, gas and glow open the air and shimmer, the halo deepens the space, the body count sets the starfield density). Everything is slew-limited, so the sound always glides — cinematic, never abrupt. It's tuned for **calm and a sense of scale**, following the relaxation research where it applies: a slow, sparse note grid (~50–85 steps/minute, at most one note or sparkle per step), soft note onsets, consonant scales and no repeating melody, plus a gentle **~0.1 Hz swell** on the bed near the common voluntary HRV-breathing resonance. The article is explicit about what is evidence-backed and what is an aesthetic hypothesis.
+- **Generative soundscape** — starts on the first interaction and is fully synthesized with Web Audio (no samples). A pure Rust music engine maps camera state, controls, and a tiny GPU core-statistics readback into a calm cosmic-ambient bed: drone, sub-bass, starfield, reverb, delay, shimmer, and sparse notes. See [The Sound of Galacto](https://galacto.org/audio) for the research and design line.
 - **Interactive 3D camera** — orbit, zoom, pause, and reset, with mouse, keyboard, and touch.
 - **Adjustable speed** — an on-screen slider scales the simulation from slow-motion up to 8× so the structure develops in seconds, with the fixed timestep keeping the physics frame-rate-independent; very high body counts cap the effective speed for stability.
 - **Collapsible controls** — the control panel folds away to a small ⚙ button so it stays out of the view.
@@ -107,23 +107,22 @@ A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `
 
 ### Audio & video production
 
-A finished piece is rendered **headlessly** — there's no in-app export UI. The composed audio is a deterministic cinematic A→B→C arc (sparse intro → gathering build → serene awe peak → dispersing resolution), keyed by a seed + length, synthesised and mastered **entirely in WebAssembly**: rendered **offline** (faster than real time, glitch-free), then auto-mastered — stereo-balance correction, a subsonic high-pass, the deep bass summed to mono for translation, **ITU-R BS.1770 loudness normalisation** to a target (−16 LUFS by default), and a **true-peak limiter to −1 dBTP** so it stays clean through lossy codecs — with a quality report (loudness, true peak, stereo correlation, tonal balance). No DAW needed.
-
-For a finished, YouTube-ready video in **one command**:
+Finished pieces are rendered headlessly from a deterministic seed and duration:
+the arrangement drives both the browser-captured visuals and the offline-rendered,
+WASM-mastered audio. There is no in-app export UI.
 
 ```bash
 npm run produce -- --seed 5 --duration 600
-# → a 10-minute MP4 (HEVC + AAC) with the cinematic arrangement, mastered audio,
-#   and start/end captions — visuals and sound rendered from the same seed, so locked.
+# -> a 10-minute MP4 (HEVC + AAC) with mastered audio and start/end captions
 ```
 
-It builds, captures the arrangement headlessly, renders the matching mastered audio offline, muxes, and adds captions — no UI needed. The default 10-minute length is the researched sweet spot for a composed ambient piece, rendered at 2× the interactive body count for a denser galaxy (per-particle size scales as `1/√count`, so the frame rate stays smooth at 4K). See [Video production](docs/VIDEO_PRODUCTION.md).
+The default render uses 2x the interactive body count for a denser galaxy; per-particle size scales as `1/sqrt(count)`, so glow fill-rate stays roughly stable at 4K. See [Video production](docs/VIDEO_PRODUCTION.md).
 
 ## Architecture
 
 ![System overview](docs/diagrams/system-overview.png)
 
-One `requestAnimationFrame` callback updates the camera, then per fixed step runs three GPU **compute** passes — a half-drift, an all-pairs gravity pass that sums each body's acceleration at the midpoint, then a kick + half-drift that advances it (a leapfrog step) — and issues one instanced **billboard** draw that reads the same buffer. Body state lives only in GPU memory — there is no CPU readback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
+One `requestAnimationFrame` callback updates the camera, then per fixed step runs three GPU **compute** passes — a half-drift, an all-pairs gravity pass that sums each body's acceleration at the midpoint, then a kick + half-drift that advances it (a leapfrog step) — and issues one instanced **billboard** draw that reads the same buffer. Body state lives on the GPU; the only CPU readback is a tiny throttled aggregate used for audio. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 
 ## Physics
 
@@ -134,23 +133,24 @@ The model is a full **N-body** system: every body has mass and attracts every ot
 - **Dark-matter halo** — a static halo adds an inward pull, in one of two selectable profiles: a **logarithmic** halo (the default — an unbounded potential that keeps the system bound, with a flat outer rotation curve) or an **NFW** halo (the cold-dark-matter profile — a rotation curve that rises then falls, with a finite potential that lets fast debris escape). The spiral disk is seeded in equilibrium with whichever is active.
 - **Symplectic leapfrog (drift–kick–drift)** — computed in three passes per step (half-drift, gravity at the midpoint, then kick + half-drift): `x += v·dt/2; v += a·dt; x += v·dt/2`. It is 2nd-order and conserves energy far better than plain Euler, so the cold disk and orbits hold their structure over many more rotations.
 - **Spiral disk** — a compact central bulge plus an exponential disk on near-circular prograde orbits. The radial velocity dispersion is set per-radius from the **Toomre Q** slider (σ_R = Q·3.36GΣ/κ, with a softening/thickness correction for this finite, softened disk). Q≲1 fragments into clumps, Q≫2 stays a smooth smear, and **spiral arms** (swing-amplified density waves) live in between.
-- **Gas + star formation** — about a quarter of the disk is a **dissipative gas** component: unlike the collisionless stars, it sheds its random (radial and vertical) motion each step (a sticky-gas stand-in for shock cooling), so it stays a thin cold layer that piles up in the spiral arms. It's drawn a bright blue — the cold, star-forming gas that traces the arms of real spirals and keeps them sharp as the stellar disk heats and blurs.
+- **Cold gas** — about a quarter of the disk is a **dissipative gas** component: unlike the collisionless stars, it sheds random radial and vertical motion each step (a sticky-gas stand-in for shock cooling), so it stays a thin cold layer that piles up in the spiral arms. It is drawn bright blue, echoing the star-forming gas that traces real spiral arms; actual star formation is not simulated.
 - **Galaxy merger** — two such disks, each anchored by a heavy core, on a bound prograde approach. Self-gravity and dynamical friction pull them together into one spinning remnant.
 
 Initial conditions derive from a fixed RNG seed, so a given scenario and temperature start repeatably. Long-run paths are not promised bit-for-bit across GPUs. See [ARCHITECTURE § Simulation & Physics](docs/ARCHITECTURE.md#simulation--physics) for the kernels, the exact formulas, and the tuning constants.
 
 ## Documentation
 
-Two illustrated pages for readers, live on the site:
+Three illustrated pages for readers, live on the site:
 
 - [**The Physics of Galacto**](https://galacto.org/physics) — the science: self-gravity, the leapfrog, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction — plus an honest account of what's real vs. illustrative
 - [**Building Galacto**](https://galacto.org/engineering) — the engineering: a real-time GPU N-body in Rust + WebGPU, from the tiled all-pairs gravity kernel to the leapfrog compute passes and instanced rendering
+- [**The Sound of Galacto**](https://galacto.org/audio) — the synthesized soundscape, how the galaxy drives it, and which design choices are evidence-backed vs. aesthetic
 
 For contributors:
 
 - [Architecture](docs/ARCHITECTURE.md) — how the code is organized and how one frame is produced
 - [Diagrams](docs/diagrams/README.md) — Graphviz system-overview, frame-loop, and GPU-buffer diagrams
-- [Video production](docs/VIDEO_PRODUCTION.md) — YouTube workflow and direct video/audio export plan
+- [Video production](docs/VIDEO_PRODUCTION.md) — current one-command render workflow
 - [Backlog](BACKLOG.md) — ordered next work and known constraints
 - [Agent Notes](AGENTS.md) — workflow, verification, and architecture rules for agents
 

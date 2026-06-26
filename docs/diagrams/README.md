@@ -1,19 +1,19 @@
 # Diagrams
 
-Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of truth; the PNGs are committed for in-browser viewing on GitHub. Graphviz is for standalone architecture and flow diagrams; Mermaid is used only for small inline diagrams inside Markdown.
+Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of truth; the PNGs are committed so the diagrams render in repository browsers. Graphviz is for standalone architecture and flow diagrams; Mermaid is used only for small inline diagrams inside Markdown.
 
 ## Files
 
 | Diagram                              | Source                | Rendered              |
 | ------------------------------------ | --------------------- | --------------------- |
 | System overview                      | `system-overview.dot` | `system-overview.png` |
-| Frame loop (update → render)         | `frame-loop.dot`      | `frame-loop.png`      |
+| Frame loop (update → audio → render) | `frame-loop.dot`      | `frame-loop.png`      |
 | GPU buffers (data layout)            | `gpu-buffers.dot`     | `gpu-buffers.png`     |
 
 ## Reading Order
 
 1. **System overview** for the whole shape: Cloudflare Pages → the browser page → the Rust/WASM app core → the GPU (where particle state lives and both physics and drawing happen) → the canvas.
-2. **Frame loop** for what one `requestAnimationFrame` does: `update` (input, pause, params) then `render` (the compute dispatch, the instanced draw, present).
+2. **Frame loop** for what one `requestAnimationFrame` does: `update` (input, pause, params), `update_audio` (the synthesized soundscape), then `render` (compute dispatches, readback reduction, instanced draw, bloom, present).
 3. **GPU buffers** for the on-GPU data model: the Particle/Accel storage buffers and Params/Camera uniforms, their exact field packing (the Rust↔WGSL contract), and which passes read and write each.
 
 ## Conventions

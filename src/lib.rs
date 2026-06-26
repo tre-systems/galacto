@@ -948,8 +948,9 @@ pub fn set_bulge_fraction(fraction: f32) {
     });
 }
 
-/// Switch the initial-condition scenario (0 = spiral disk, 1–7 = the collision/flyby
-/// setups), re-seeding from its initial conditions. Called by the scenario dropdown.
+/// Switch the initial-condition scenario (0 = spiral disk; 1–6 = public
+/// collision/flyby setups; 7 = the composed-piece flyby), re-seeding from its
+/// initial conditions. Called by the scenario dropdown and production scripts.
 #[wasm_bindgen]
 pub fn set_scenario(id: u32) {
     APP_STATE.with(|cell| {

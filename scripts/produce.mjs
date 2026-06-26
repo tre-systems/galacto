@@ -4,13 +4,13 @@
 //
 //   npm run produce -- --seed 7 --duration 600
 //
-// Defaults to a 10-minute piece at 4K/60 (the researched sweet spot for a composed
-// ambient track). Same seed + duration always yields the same piece.
+// Defaults to a 10-minute piece at 4K/60. Same seed + duration always yields the
+// same arrangement.
 import { take, hasFlag, passArg, run } from "./cli.mjs";
 import { startStaticServer } from "./serve-static.mjs";
 
 const seed = take("--seed", "1");
-const duration = take("--duration", "600"); // 10 min — researched length for a piece
+const duration = take("--duration", "600"); // 10 min default composed piece
 const width = take("--width", "3840");
 const height = take("--height", "2160");
 const fps = take("--fps", "60");

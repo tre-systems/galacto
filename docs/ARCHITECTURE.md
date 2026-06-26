@@ -120,14 +120,14 @@ Then it schedules the next frame. The simulation state lives only in GPU memory 
 
 ## GPU Data Model
 
-`Simulation::new` (`src/simulation.rs`) creates four buffers and four pipelines (three compute, one render):
+`Simulation::new` (`src/simulation.rs`) creates the simulation buffers, uniforms, readback staging, and pipelines listed here:
 
 | Resource          | Contents                                          | Usage                                  |
 | ----------------- | ------------------------------------------------- | -------------------------------------- |
 | Particle buffer   | `MAX_PARTICLES × Particle` (`pos_mass: vec4`, `vel: vec4` — 32 B each; ~5 MB at the 10× max, of which `count` are active) | `STORAGE \| COPY_DST` |
 | Accel buffer      | `MAX_PARTICLES × vec4<f32>` scratch accelerations  | `STORAGE` |
-| Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², halo_kind, _pad }` | `UNIFORM \| COPY_DST` |
-| Camera buffer     | view-projection matrix + billboard size / aspect / colour-mode (+1 spare) (80 B) | `UNIFORM \| COPY_DST`              |
+| Params buffer     | `SimulationParams { dt, g, softening, particle_count, halo_v0², halo_rc², halo_kind, has_gas }` | `UNIFORM \| COPY_DST` |
+| Camera buffer     | view-projection matrix + billboard size / aspect / colour-mode / glow (80 B) | `UNIFORM \| COPY_DST`              |
 | Halo viz buffer   | dark-matter halo overlay uniform — camera right/up, colour+intensity, radius (64 B) | `UNIFORM \| COPY_DST` |
 | Reductions buffer | `MAX_WORKGROUPS × vec4<f32>` core-statistics partials (one per workgroup), for the audio | `STORAGE \| COPY_SRC` |
 | Reduction staging | mappable copy of the reductions buffer, the active `count`'s prefix read back asynchronously | `COPY_DST \| MAP_READ` |
@@ -201,7 +201,7 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 
 - `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then `scripts/assemble-dist.mjs` creates a clean `dist/` from `static/` plus `pkg/galacto.js` and `pkg/galacto_bg.wasm`. `scripts/cache-bust.mjs` stamps the JS/CSS/WASM/service-worker URLs with `?v=<git-sha>`, and `scripts/verify-build.mjs` fails the build if the deploy root is missing required files, still has placeholders, or contains raw `wasm-pack` package artifacts.
 - `npm run dev` serves `dist/` locally with `scripts/serve-static.mjs`, and `npm run deploy` ships `dist/` to Cloudflare Pages — see [README § Key Commands](../README.md#key-commands) for the full command table.
-- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR, including WGSL validation through `cargo test`, JavaScript syntax checks, npm/Rust advisory checks, verified web build, and a headless browser smoke test. Pushes to `main` deploy `dist/` to Cloudflare Pages. The Pages project/output directory is captured in `wrangler.jsonc`, and the same smoke script can verify production with `npm run smoke:live`.
+- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR, including Naga WGSL parse/validation through `cargo test` (`tests/shaders.rs`), JavaScript syntax checks, npm/Rust advisory checks, a verified web build, and a headless browser smoke test. Pushes to `main` deploy `dist/` to Cloudflare Pages. The Pages project/output directory is captured in `wrangler.jsonc`, and the same smoke script can verify production with `npm run smoke:live`.
 
 ## What This Architecture Deliberately Does Not Include
 
