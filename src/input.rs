@@ -20,9 +20,7 @@ struct InputState {
 
 fn get_pinch_distance(event: &TouchEvent) -> f32 {
     let touches = event.touches();
-    if touches.length() >= 2 {
-        let t1 = touches.get(0).unwrap();
-        let t2 = touches.get(1).unwrap();
+    if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
         let dx = t2.client_x() as f32 - t1.client_x() as f32;
         let dy = t2.client_y() as f32 - t1.client_y() as f32;
         (dx * dx + dy * dy).sqrt()
@@ -60,14 +58,18 @@ impl InputHandler {
     }
 
     pub fn setup_event_listeners(&mut self, canvas: HtmlCanvasElement) -> Result<(), JsValue> {
-        let window = web_sys::window().unwrap();
-        let document = window.document().unwrap();
+        let window = web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+        let document = window
+            .document()
+            .ok_or_else(|| JsValue::from_str("document is unavailable"))?;
         let closures = &mut self._closures;
 
         // Left-drag orbits: arm on press, track on move, release anywhere.
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "mousedown", move |event| {
-            let me = event.dyn_into::<MouseEvent>().unwrap();
+            let Ok(me) = event.dyn_into::<MouseEvent>() else {
+                return;
+            };
             if me.button() == 0 {
                 let mut state = s.borrow_mut();
                 state.is_rotating = true;
@@ -78,7 +80,9 @@ impl InputHandler {
 
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "mousemove", move |event| {
-            let me = event.dyn_into::<MouseEvent>().unwrap();
+            let Ok(me) = event.dyn_into::<MouseEvent>() else {
+                return;
+            };
             s.borrow_mut().mouse_pos = (me.client_x() as f32, me.client_y() as f32);
         })?;
 
@@ -89,7 +93,9 @@ impl InputHandler {
 
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "wheel", move |event| {
-            let we = event.dyn_into::<WheelEvent>().unwrap();
+            let Ok(we) = event.dyn_into::<WheelEvent>() else {
+                return;
+            };
             we.prevent_default();
             s.borrow_mut().zoom_delta = -we.delta_y() as f32;
         })?;
@@ -98,7 +104,9 @@ impl InputHandler {
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "touchstart", move |event| {
             event.prevent_default();
-            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let Ok(te) = event.dyn_into::<TouchEvent>() else {
+                return;
+            };
             let mut state = s.borrow_mut();
             let touches = te.touches();
             state.touch_count = touches.length();
@@ -115,7 +123,9 @@ impl InputHandler {
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "touchmove", move |event| {
             event.prevent_default();
-            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let Ok(te) = event.dyn_into::<TouchEvent>() else {
+                return;
+            };
             let mut state = s.borrow_mut();
             let touches = te.touches();
             if touches.length() == 1 {
@@ -134,7 +144,9 @@ impl InputHandler {
         let s = self.state.clone();
         register(closures, canvas.as_ref(), "touchend", move |event| {
             event.prevent_default();
-            let te = event.dyn_into::<TouchEvent>().unwrap();
+            let Ok(te) = event.dyn_into::<TouchEvent>() else {
+                return;
+            };
             let mut state = s.borrow_mut();
             state.touch_count = te.touches().length();
             if state.touch_count == 0 {
@@ -147,7 +159,9 @@ impl InputHandler {
         // held key doesn't queue repeated toggles.
         let s = self.state.clone();
         register(closures, document.as_ref(), "keydown", move |event| {
-            let ke = event.dyn_into::<KeyboardEvent>().unwrap();
+            let Ok(ke) = event.dyn_into::<KeyboardEvent>() else {
+                return;
+            };
             if ke.repeat() {
                 return;
             }

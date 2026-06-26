@@ -290,9 +290,9 @@
           <!-- Row 1: quiet links to the illustrated docs. Same-window navigation keeps
                them inside the installed iOS PWA instead of opening a Done-sheet browser. -->
           <div class="footer-row">
-            <a class="doclink" href="physics.html">Physics</a>
-            <a class="doclink" href="engineering.html">Engineering</a>
-            <a class="doclink" href="audio.html">Sound</a>
+            <a class="doclink" href="/physics">Physics</a>
+            <a class="doclink" href="/engineering">Engineering</a>
+            <a class="doclink" href="/audio">Sound</a>
           </div>
           <!-- Row 2: actions. The feedback button opens the Sentry form; it stays
                hidden until sentry.js wires it up (so it never shows a dead button). -->
@@ -834,7 +834,7 @@
 
       // The control panel: a discreet ⚙ button opens it, and the whole panel is
       // draggable by that handle (mouse or touch) so it never has to cover the
-      // visuals — the position persists across reloads. A press that doesn't move
+      // visuals. A press that doesn't move
       // toggles it; a press that moves drags it.
       function setupControlPanel() {
         const panel = document.getElementById("controls");

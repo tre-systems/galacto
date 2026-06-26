@@ -47,7 +47,8 @@ impl Graphics {
             .iter()
             .find(|f| !f.is_srgb())
             .copied()
-            .unwrap_or(surface_caps.formats[0]);
+            .or_else(|| surface_caps.formats.first().copied())
+            .ok_or_else(|| AppError::Graphics("surface reported no supported formats".into()))?;
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

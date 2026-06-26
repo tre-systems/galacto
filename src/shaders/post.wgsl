@@ -48,7 +48,7 @@ fn bright_pass(in: VsOut) -> @location(0) vec4<f32> {
 // 9-tap Gaussian along `dir` (one texel step per sample), reading `src`.
 fn gaussian(uv: vec2<f32>, dir: vec2<f32>) -> vec3<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(src));
-    var weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+    let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
     var result = textureSample(src, samp, uv).rgb * weights[0];
     for (var i = 1; i < 5; i = i + 1) {
         let offset = dir * texel * f32(i);

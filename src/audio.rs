@@ -697,9 +697,6 @@ fn bandpass(ctx: &BaseAudioContext, freq: f32, q: f32) -> Option<BiquadFilterNod
     Some(f)
 }
 
-/// A waveshaper whose transfer curve is `y = 2x² − 1`: feeding it a sine doubles the
-/// frequency (−cos 2θ), so a near-sinusoidal pad gains a clean octave above. 4×
-/// oversampled so the doubling doesn't alias.
 /// A gentle "tape / console" soft-saturation curve: `tanh(drive·x)/drive` — unity for
 /// small signals, softly rounding louder peaks and adding the low-order harmonic
 /// warmth (and subtle glue) that makes a clean digital mix read as analog. Oversampled
@@ -718,6 +715,9 @@ fn tape_saturator(ctx: &BaseAudioContext) -> Option<WaveShaperNode> {
     Some(shaper)
 }
 
+/// A waveshaper whose transfer curve is `y = 2x² − 1`: feeding it a sine doubles the
+/// frequency (−cos 2θ), so a near-sinusoidal pad gains a clean octave above. 4×
+/// oversampled so the doubling doesn't alias.
 fn octave_up_shaper(ctx: &BaseAudioContext) -> Option<WaveShaperNode> {
     let shaper = WaveShaperNode::new(ctx).ok()?;
     let n = 1024usize;

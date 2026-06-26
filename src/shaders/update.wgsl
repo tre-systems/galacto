@@ -45,6 +45,9 @@ var<workgroup> shared_pm: array<vec4<f32>, 256>;
 
 // Coulomb logarithm for dynamical friction (galaxy-merger scale).
 const LN_LAMBDA: f32 = 3.0;
+const NFW_G_MAX: f32 = 0.2162;
+const PI: f32 = 3.14159265;
+const SQRT_PI: f32 = 1.7724539;
 
 // Halo circular velocity squared at radius r — same profiles as the halo force
 // below, used to estimate the local halo density for dynamical friction.
@@ -53,11 +56,11 @@ fn halo_vc_sq(r: f32) -> f32 {
         // Logarithmic: v_c² = v0² r² / (r² + rc²).
         return params.halo_v0_sq * r * r / (r * r + params.halo_rc2);
     }
-    // NFW: v_c² = v0² [ln(1+x) − x/(1+x)] / (x · 0.2162), x = r/rs.
+    // NFW: v_c² = v0² [ln(1+x) − x/(1+x)] / (x · NFW_G_MAX), x = r/rs.
     let rs = sqrt(params.halo_rc2);
     let x = max(r / rs, 1e-4);
     let mass_factor = log(1.0 + x) - x / (1.0 + x);
-    return params.halo_v0_sq * mass_factor / (x * 0.2162);
+    return params.halo_v0_sq * mass_factor / (x * NFW_G_MAX);
 }
 
 // Error function (Abramowitz & Stegun 7.1.26) for the dynamical-friction velocity
@@ -111,7 +114,7 @@ fn compute_accel(
     } else {
         // NFW (cold dark matter): the enclosed-mass pull of a rho ~ 1/(r(1+r/rs)^2)
         // halo. With x = r/rs and rs = sqrt(rc2), the circular-velocity shape
-        // [ln(1+x) - x/(1+x)]/x is normalised by its peak (0.2162 = NFW_G_MAX) so
+        // [ln(1+x) - x/(1+x)]/x is normalised by its peak (NFW_G_MAX) so
         // v0 is the *peak* speed. Unlike the log halo, its potential is finite, so
         // fast debris can escape. The mass factor ~ x^2/2 near the centre cancels
         // the r^3, so |a| stays finite at the origin (the cusp is in density only);
@@ -120,7 +123,7 @@ fn compute_accel(
         let x = length(pi) / rs;
         let mass_factor = log(1.0 + x) - x / (1.0 + x);
         let r3 = max(dot(pi, pi) * length(pi), 1e-3);
-        a = a - params.halo_v0_sq * rs * mass_factor / (0.2162 * r3) * pi;
+        a = a - params.halo_v0_sq * rs * mass_factor / (NFW_G_MAX * r3) * pi;
     }
 
     // Chandrasekhar dynamical friction against the halo: a drag on a body moving
@@ -136,14 +139,14 @@ fn compute_accel(
         let r_in = max(r - d, 0.1);
         let rho = max(
             ((r + d) * halo_vc_sq(r + d) - r_in * halo_vc_sq(r_in))
-                / (params.g * 8.0 * 3.14159265 * r * r * d),
+                / (params.g * 8.0 * PI * r * r * d),
             0.0,
         );
         // X = v / (√2 σ); with σ² = v0²/2, √2 σ = v0 = sqrt(halo_v0_sq).
         let x = speed / max(sqrt(params.halo_v0_sq), 1e-3);
-        let f_x = max(erf_approx(x) - 2.0 * x / 1.7724539 * exp(-x * x), 0.0);
+        let f_x = max(erf_approx(x) - 2.0 * x / SQRT_PI * exp(-x * x), 0.0);
         let m_self = particles[i].pos_mass.w;
-        let coeff = 4.0 * 3.14159265 * LN_LAMBDA * params.g * params.g * rho * m_self * f_x
+        let coeff = 4.0 * PI * LN_LAMBDA * params.g * params.g * rho * m_self * f_x
             / (speed * speed * speed);
         a = a - coeff * v_vec;
     }
@@ -209,8 +212,8 @@ var<workgroup> sh_act: array<f32, 256>;
 // signed radial flux, and radial speed into shared memory, then write the
 // workgroup's partial sums to `reductions[workgroup]`. The CPU sums the (few)
 // partials after an async readback and maps them to sound — how much mass sits at
-// the centre and how fast it is moving in or out. Read-only on the bodies, so it
-// is safe to run alongside the render pass.
+// the centre and how fast it is moving in or out. It runs after simulation writes
+// and reads bodies only, so there is no particle-write hazard.
 @compute @workgroup_size(256)
 fn reduce_core(
     @builtin(global_invocation_id) gid: vec3<u32>,

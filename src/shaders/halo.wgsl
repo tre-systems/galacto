@@ -5,10 +5,10 @@
 
 struct Camera {
     transform: mat4x4<f32>,
-    size: f32,
+    size: f32,        // shared camera-uniform slot; unused by halo
     aspect: f32,
-    color_mode: f32,
-    _spare1: f32,
+    color_mode: f32,  // shared camera-uniform slot; unused by halo
+    _spare1: f32,     // shared camera-uniform slot; unused by halo
 }
 
 struct HaloViz {

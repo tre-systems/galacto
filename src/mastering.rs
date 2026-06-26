@@ -288,7 +288,8 @@ fn limit(left: &mut [f32], right: &mut [f32], sr: f32, ceiling: f32) -> bool {
     }
     let la = ((0.005 * sr) as usize).max(1); // 5 ms lookahead
     let rel = (-1.0 / (0.120 * sr)).exp(); // ~120 ms release
-                                           // Instantaneous gain needed to keep each sample under the ceiling.
+
+    // Instantaneous gain needed to keep each sample under the ceiling.
     let mut need = vec![1.0_f32; n];
     for i in 0..n {
         let p = left[i].abs().max(right[i].abs());

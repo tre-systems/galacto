@@ -20,6 +20,9 @@ const TYPES = new Map([
 ]);
 
 export async function startStaticServer({ dir = 'dist', host = '127.0.0.1', port = 8000, cors = false } = {}) {
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`serve-static: invalid port ${port}`);
+  }
   const root = resolve(process.cwd(), dir);
 
   const server = createServer(async (req, res) => {
@@ -53,7 +56,13 @@ export async function startStaticServer({ dir = 'dist', host = '127.0.0.1', port
     }
   });
 
-  await new Promise((resolveListen) => server.listen(port, host, resolveListen));
+  await new Promise((resolveListen, rejectListen) => {
+    server.once('error', rejectListen);
+    server.listen(port, host, () => {
+      server.off('error', rejectListen);
+      resolveListen();
+    });
+  });
   const address = server.address();
   return { server, root, url: `http://${address.address}:${address.port}/` };
 }
@@ -68,7 +77,19 @@ async function resolveRequest(root, rawUrl) {
     throw Object.assign(new Error('Path traversal rejected'), { code: 'BAD_PATH' });
   }
 
-  let info = await stat(candidate);
+  let info;
+  try {
+    info = await stat(candidate);
+  } catch (error) {
+    if (error.code === 'ENOENT' && !extname(candidate)) {
+      const htmlCandidate = `${candidate}.html`;
+      if (htmlCandidate.startsWith(root + sep)) {
+        const html = await stat(htmlCandidate).catch(() => null);
+        if (html?.isFile()) return htmlCandidate;
+      }
+    }
+    throw error;
+  }
   if (info.isDirectory()) {
     const index = join(candidate, 'index.html');
     await access(index);

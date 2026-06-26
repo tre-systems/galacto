@@ -13,7 +13,7 @@ digraph FrameLoop {
     label=<
       <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
         <TR><TD><FONT POINT-SIZE="34"><B>Frame Loop</B></FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">One requestAnimationFrame: update, then render.</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">One requestAnimationFrame: update, update audio, then render.</FONT></TD></TR>
       </TABLE>
     >,
     labelloc=t,
@@ -47,12 +47,13 @@ digraph FrameLoop {
   START [label=<<B>animation_frame(time)</B><BR/><FONT POINT-SIZE="14">browser invokes the rAF callback</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
   // update phase (green)
-  U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply rotate · pan · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply orbit · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
   U2 [shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=2.4, height=1.05, label=<<B>Space<BR/>pressed?</B>>];
   U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt × speed → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase
-  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step (leapfrog): drift_half → compute_accel → kick_drift_half<BR/>tiled all-pairs self-gravity · 64 groups × 256</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step (leapfrog): drift_half → compute_accel → kick_drift_half<BR/>tiled all-pairs self-gravity · count / 256 groups</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  AUD [label=<<B>update_audio()</B><BR/><FONT POINT-SIZE="14">camera + controls + throttled reduce_core readback<BR/>schedule calm synthesized soundscape</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
   RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">one billboard quad per body (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
@@ -63,7 +64,8 @@ digraph FrameLoop {
   U1 -> U2;
   U2 -> U3 [label="toggle pause, then continue"];
   U3 -> CP [label="render(): run N steps"];
-  CP -> RP [label="updated buffer"];
+  CP -> AUD [label="updated buffer + core stats"];
+  AUD -> RP [label="same frame"];
   RP -> BLOOM [label="HDR scene"];
   BLOOM -> PRES;
   PRES -> CANVAS [label="draw"];

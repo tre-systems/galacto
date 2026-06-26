@@ -73,7 +73,7 @@ digraph SystemOverview {
       color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
     ];
     B1 [label=<<B>index.html bootstrap</B><BR/><FONT POINT-SIZE="15">checks navigator.gpu, imports galacto.js</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    B2 [label=<<B>requestAnimationFrame loop</B><BR/><FONT POINT-SIZE="15">update() then render(), every frame</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B2 [label=<<B>requestAnimationFrame loop</B><BR/><FONT POINT-SIZE="15">update() · update_audio() · render()</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
     B3 [label=<<B>InputHandler</B><BR/><FONT POINT-SIZE="15">mouse · wheel · touch · keys</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
     B1 -> B2 [style=invis];
     B2 -> B3 [style=invis];
@@ -85,13 +85,13 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1e6b43"><B>WASM APP CORE (RUST)</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, input, and post-processing.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, input, audio, arrangement, and post-processing.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    C1 [label=<<B>AppState</B><BR/><FONT POINT-SIZE="15">#[wasm_bindgen] entry · update / render</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C1 [label=<<B>AppState</B><BR/><FONT POINT-SIZE="15">#[wasm_bindgen] entry · update / update_audio / render</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
     C2 [label=<<B>Camera</B><BR/><FONT POINT-SIZE="15">orbit → view-projection matrix</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
     C3 [label=<<B>Simulation</B><BR/><FONT POINT-SIZE="15">buffers · pipelines · dispatch</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
     C1 -> C2 [style=invis];
@@ -122,8 +122,8 @@ digraph SystemOverview {
   H1 -> B1 [lhead=cluster_browser, label="serves SPA + WASM"];
 
   B1 -> C1 [lhead=cluster_core, label="init AppState"];
-  B2 -> C1 [label="update() · render()"];
-  B3 -> C2 [label="rotate · pan · zoom", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  B2 -> C1 [label="update · update_audio · render"];
+  B3 -> C2 [label="orbit · zoom", color="#6b7280", fontcolor="#6b7280", style=dashed];
 
   C1 -> C3 [label="owns / drives"];
   C3 -> G1 [lhead=cluster_gpu, label="dispatch: drift · accel · kick"];

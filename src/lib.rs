@@ -948,7 +948,7 @@ pub fn set_bulge_fraction(fraction: f32) {
     });
 }
 
-/// Switch the initial-condition scenario (0 = spiral disk, 1–5 = the multi-galaxy
+/// Switch the initial-condition scenario (0 = spiral disk, 1–7 = the collision/flyby
 /// setups), re-seeding from its initial conditions. Called by the scenario dropdown.
 #[wasm_bindgen]
 pub fn set_scenario(id: u32) {

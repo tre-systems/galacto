@@ -127,7 +127,7 @@ One `requestAnimationFrame` callback updates the camera, then per fixed step run
 
 ## Physics
 
-The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). The same solver drives both scenarios — only the initial conditions differ.
+The model is a full **N-body** system: every body has mass and attracts every other (all-pairs gravity, O(N²)). The same solver drives all scenarios — only the initial conditions differ.
 
 - **All-pairs gravity** — each body's acceleration is the Plummer-softened sum of the pull of every other body.
 - **Dynamical friction** — a Chandrasekhar drag against the dark-matter halo, scaled by each body's mass. It's negligible for the light disk stars but visibly decays the orbits of the heavy galaxy cores, so colliding galaxies lose orbital energy and **sink together into one remnant** instead of sailing past. It is one real mechanism that helps mergers finish instead of remaining long-lived flybys.

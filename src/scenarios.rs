@@ -472,9 +472,8 @@ fn seed_bulge(
 /// spheroid (`seed_bulge`) plus disk stars on near-circular prograde (+z) orbits,
 /// balanced against the global halo (`circular_velocity`), with a random thermal
 /// dispersion scaled by `temp`. Centred at the origin, at rest — shared by the
-/// spiral scenario
-/// and the M51 flyby's main galaxy. The render shader colours it by live
-/// galactocentric radius (warm core → blue arms).
+/// spiral scenario and the M51 flyby's main galaxy. The render shader colours it
+/// by live galactocentric radius (warm core → blue arms).
 // Eight genuinely-distinct seeding inputs; bundling them into a single-use struct
 // would add indirection without clarity.
 #[allow(clippy::too_many_arguments)]

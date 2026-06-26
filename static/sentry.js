@@ -1,5 +1,5 @@
 (() => {
-  const config = window.TRE_STATIC_SENTRY_CONFIG;
+  const config = window.GALACTO_SENTRY_CONFIG;
   if (!config?.dsn) return;
 
   const loadSentry = () => {

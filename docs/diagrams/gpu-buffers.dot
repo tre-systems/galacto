@@ -39,7 +39,9 @@ digraph GpuBuffers {
   accel_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>compute_accel</B><BR/><FONT POINT-SIZE="13">tiled all-pairs gravity + halo</FONT>>];
   drift_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>drift_half</B><BR/><FONT POINT-SIZE="13">½-step position drift</FONT>>];
   kick_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>kick_drift_half</B><BR/><FONT POINT-SIZE="13">velocity kick + ½-step drift</FONT>>];
+  reduce_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>reduce_core</B><BR/><FONT POINT-SIZE="13">audio core-stat partial sums</FONT>>];
   render_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#7c3aed", fillcolor="#f5f3ff:#ffffff", gradientangle=270, label=<<B>render · vertex</B><BR/><FONT POINT-SIZE="13">instanced billboard draw</FONT>>];
+  cpu_audio [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#0f766e", fillcolor="#e6fffb:#ffffff", gradientangle=270, label=<<B>Audio state</B><BR/><FONT POINT-SIZE="13">async readback · no sim feedback</FONT>>];
 
   // ---- Buffers (teal = storage, blue = uniform) ----
   subgraph cluster_buffers {
@@ -83,7 +85,7 @@ digraph GpuBuffers {
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">dt · g · softening</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">particle_count</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_v0_sq · halo_rc2</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — dark-matter halo</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_kind · _pad1</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32 — halo profile, pad</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">halo_kind · has_gas</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">u32 — halo profile, gas flag</FONT></TD></TR>
       </TABLE>
     >];
 
@@ -94,7 +96,22 @@ digraph GpuBuffers {
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>transform</B></FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">mat4x4 — view-projection (64 B)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">size · aspect</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — billboard size, viewport ratio</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">color_mode</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — 0 radius, 1 vel.w</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">_spare</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 padding</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">glow</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">f32 — halo reach control</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    reductions [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
+        <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Reduction buffer</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">storage · one vec4 per workgroup</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14">core stats</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="13" COLOR="#5b6b80">mass · flux · churn partials</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    staging [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7" BGCOLOR="#ffffff" COLOR="#0f766e">
+        <TR><TD COLSPAN="2" BGCOLOR="#0f766e"><FONT COLOR="#ffffff" POINT-SIZE="17"><B>Staging buffer</B></FONT></TD></TR>
+        <TR><TD COLSPAN="2" ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#5b6b80">map_read · tiny async CPU readback</FONT></TD></TR>
       </TABLE>
     >];
   }
@@ -114,8 +131,14 @@ digraph GpuBuffers {
   particle -> render_pass [label="read state", style=dashed, color="#6b7280", fontcolor="#6b7280"];
   camera -> render_pass [style=dashed, color="#6b7280"];
 
+  particle -> reduce_pass [label="read state", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  reduce_pass -> reductions [label="write partials"];
+  reductions -> staging [label="copy active prefix"];
+  staging -> cpu_audio [label="map after submit", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+
   // Keep the three compute passes stacked in leapfrog execution order so the
   // buffer read/write edges stay short and parallel instead of crossing.
   drift_pass -> accel_pass [style=invis];
   accel_pass -> kick_pass [style=invis];
+  kick_pass -> reduce_pass [style=invis];
 }

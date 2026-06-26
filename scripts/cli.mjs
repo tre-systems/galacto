@@ -44,6 +44,9 @@ export function run(command, commandArgs, { inherit = false } = {}) {
     commandArgs,
     inherit ? { stdio: "inherit" } : { stdio: "pipe", encoding: "utf8" },
   );
+  if (result.error) {
+    throw new Error(`${command} ${commandArgs.join(" ")} failed to start: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     if (!inherit) {
       process.stderr.write(result.stdout ?? "");

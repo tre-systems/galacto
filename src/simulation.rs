@@ -189,8 +189,7 @@ pub struct Simulation {
     // Written at init and re-uploaded on reseed (scenario softening changes).
     params_buffer: wgpu::Buffer,
     accel_pipeline: wgpu::ComputePipeline,
-    // Leapfrog is two integrate kernels: a half-drift before gravity, then the
-    // kick + second half-drift after it (`compute_pass`).
+    // Leapfrog integration is split into two position passes around gravity.
     drift_pipeline: wgpu::ComputePipeline,
     kick_pipeline: wgpu::ComputePipeline,
     render_pipeline: wgpu::RenderPipeline,
@@ -282,7 +281,7 @@ impl Simulation {
             mapped_at_creation: false,
         });
 
-        // Compute shader holds both the accel and integrate kernels.
+        // Compute shader holds the drift, gravity, kick, and audio-reduction kernels.
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/update.wgsl").into()),
@@ -330,7 +329,7 @@ impl Simulation {
                         count: None,
                     },
                     // Binding 3: core-statistics partials, written only by
-                    // `reduce_core`; the gravity/integrate kernels ignore it.
+                    // `reduce_core`; the simulation kernels ignore it.
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -756,8 +755,9 @@ impl Simulation {
     /// Record the core-statistics reduction for the audio: a compute pass that
     /// writes per-workgroup partials, then a copy into the mappable staging buffer.
     /// Skipped (returns `false`) while a previous readback is still mapped, which
-    /// throttles it to roughly the GPU round-trip rate. Reads bodies only, so it is
-    /// safe alongside the render pass. Pair with [`map_core_readback`] after submit.
+    /// throttles it to roughly the GPU round-trip rate. It runs after simulation
+    /// writes and reads bodies only, so there is no particle-write hazard. Pair
+    /// with [`map_core_readback`] after submit.
     pub fn record_core_reduction(&self, encoder: &mut wgpu::CommandEncoder) -> bool {
         if self.reduce_state.borrow().in_flight {
             return false;
@@ -903,8 +903,6 @@ impl Simulation {
     ) {
         let matrix = camera.build_view_projection_matrix();
         let matrix_array: &[f32; 16] = matrix.as_ref();
-        // Spiral colours by live galactocentric radius; every multi-galaxy
-        // scenario colours by each body's vel.w (galaxy of origin).
         let color_mode = match scenario {
             // The spiral and the M51 flyby colour by live galactocentric radius
             // (warm core → cool arms); the multi-galaxy collisions colour by vel.w

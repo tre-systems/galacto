@@ -32,7 +32,7 @@ console.log(`cache-bust: pinned service worker cache to galacto-${version}`);
 
 writeFileSync(
   sentryConfigPath,
-  `window.TRE_STATIC_SENTRY_CONFIG = ${JSON.stringify(
+  `window.GALACTO_SENTRY_CONFIG = ${JSON.stringify(
     {
       app: 'galacto',
       dsn: process.env.SENTRY_DSN || '',

@@ -1,4 +1,4 @@
-window.TRE_STATIC_SENTRY_CONFIG = {
+window.GALACTO_SENTRY_CONFIG = {
   app: "galacto",
   dsn: "",
   environment: "production",

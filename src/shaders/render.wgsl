@@ -26,7 +26,7 @@ struct VertexOutput {
 
 // Appearance tuning (render-only; not mirrored from Rust).
 const TINT_RADIUS: f32 = 90.0;    // disk radius mapped to the cool end of the ramp
-const SPEED_REF: f32 = 260.0;     // speed at which the brightness boost saturates
+const SPEED_REF: f32 = 260.0;     // speed scale for the brightness boost
 const SPEED_BOOST_MAX: f32 = 0.5; // peak extra brightness from speed
 const GLOW_GAIN: f32 = 0.45;      // per-particle additive glow gain
 // Glow shaping, driven by the Glow slider via `camera.glow` (0..1). The quad grows

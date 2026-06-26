@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'docs/diagrams/**'
+      - 'scripts/render-diagrams.mjs'
       - 'scripts/check-diagrams.mjs'
       - 'package.json'
   push:
@@ -11,6 +12,7 @@ on:
       - main
     paths:
       - 'docs/diagrams/**'
+      - 'scripts/render-diagrams.mjs'
       - 'scripts/check-diagrams.mjs'
       - 'package.json'
   workflow_dispatch:
