@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>The Sound of Galacto - a galaxy played as generative music</title>
+    <title>Galacto - a galaxy sound sculpture</title>
     <meta
       name="description"
-      content="How Galacto turns a live N-body galaxy into a generative ambient soundscape: the synthesis graph, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-music mapping, offline mastering, and the research on calm, consonance and awe behind the design."
+      content="How Galacto turns a live N-body galaxy into a generative ambient soundscape: the synthesis graph, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-sound mapping, offline mastering, and the research on calm, consonance and awe behind the design."
     />
     <link rel="canonical" href="https://galacto.org/audio" />
-    <meta property="og:title" content="The Sound of Galacto - a galaxy played as generative music" />
+    <meta property="og:title" content="Galacto - a galaxy sound sculpture" />
     <meta
       property="og:description"
-      content="The synthesis graph, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-music mapping, and the studies on calm and awe behind Galacto's soundscape."
+      content="The synthesis graph, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-sound mapping, and the studies on calm and awe behind Galacto's soundscape."
     />
     <meta property="og:type" content="article" />
     <meta property="og:url" content="https://galacto.org/audio" />
@@ -21,10 +21,10 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="The Sound of Galacto - a galaxy played as generative music" />
+    <meta name="twitter:title" content="Galacto - a galaxy sound sculpture" />
     <meta
       name="twitter:description"
-      content="Generative synthesis, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-music mapping, and the research on calm and awe."
+      content="Generative synthesis, a 0.1 Hz breathing cue, careful spectral balance, galaxy-to-sound mapping, and the research on calm and awe."
     />
     <meta name="twitter:image" content="https://galacto.org/og-card.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -112,17 +112,18 @@
 
     <header class="hero">
       <p class="eyebrow">The sound</p>
-      <h1>A galaxy, played as music</h1>
+      <h1>A galaxy sound sculpture</h1>
       <p class="lede">
         Galacto's soundscape isn't a backing track - it's generated in real time from the simulation you're
-        watching. The gathering mass, the inward collapse, the camera's drift all become sound. Here's how the
-        physics becomes music, and the research on calm and awe behind it.
+        watching: less a piece of music than a slowly shifting sound sculpture. The gathering mass, the inward
+        collapse, the camera's drift all become sound. Here's how it works, and the research on calm and awe
+        behind it.
       </p>
     </header>
 
     <main>
       <section>
-        <h2><span class="num">01</span>A soundscape, not a soundtrack</h2>
+        <h2><span class="num">01</span>How the sound is made</h2>
         <p>
           Every sound you hear is <strong>synthesized on the fly</strong> - oscillators, a noise bed, a
           code-generated reverb, a feedback delay, a compressor. There are no audio files. Nothing is
@@ -139,7 +140,7 @@
           pure function - the same discipline the <a href="/physics">physics</a> uses.
         </p>
         <div class="note key">
-          <span class="tag">The shape of it</span>
+          <span class="tag">In short</span>
           <p>
             Visuals → <code>GalaxyState</code> → <em>what to play</em> (pure, testable) → <em>how to play it</em>
             (Web Audio). The generative seed is fixed, so a given run of the galaxy sounds reproducible - and
@@ -178,7 +179,7 @@
       </section>
 
       <section>
-        <h2><span class="num">03</span>The instrument: layers and signal flow</h2>
+        <h2><span class="num">03</span>The layers and signal flow</h2>
         <p>
           The bed is a small ensemble of synth voices feeding one master chain, with three parallel
           <em>sends</em> that paint the surrounding space. The pad and the starfield share a stereo
@@ -374,7 +375,7 @@
       </section>
 
       <section>
-        <h2><span class="num">06</span>How the galaxy plays the instrument</h2>
+        <h2><span class="num">06</span>How the galaxy drives the sound</h2>
         <p>
           What makes it feel <em>alive</em> is that the controls of the instrument are the galaxy's own
           numbers. A small, throttled GPU read-back (the same one the <a href="/engineering">engineering</a>
@@ -459,7 +460,7 @@
       </section>
 
       <section>
-        <h2><span class="num">07</span>Vastness, and the feeling of awe</h2>
+        <h2><span class="num">07</span>Vastness and awe</h2>
         <p>
           Calm is only half of it; the other goal is a sense of <em>awe</em>. Awe, in Keltner &amp; Haidt's
           account, is the response to perceived <strong>vastness</strong> - something large enough that the
@@ -505,7 +506,7 @@
       </section>
 
       <section>
-        <h2><span class="num">08</span>Recording it properly</h2>
+        <h2><span class="num">08</span>Recording and mastering</h2>
         <p>
           The same graph that plays live can render a finished piece <strong>offline</strong>, faster than real
           time and free of any frame-rate glitches, by replaying a recorded timeline of the galaxy through an
@@ -568,7 +569,7 @@
       </section>
 
       <section>
-        <h2><span class="num">10</span>Sources</h2>
+        <h2><span class="num">10</span>References</h2>
         <ol class="refs">
           <li id="r1"><cite>Plomp, R. &amp; Levelt, W. J. M.</cite> (1965). <a href="https://doi.org/10.1121/1.1909741">“Tonal Consonance and Critical Bandwidth.”</a> <em>Journal of the Acoustical Society of America</em> 38(4), 548–560.</li>
           <li id="r2"><cite>McDermott, J. H., Lehr, A. J. &amp; Oxenham, A. J.</cite> (2010). <a href="https://doi.org/10.1016/j.cub.2010.04.019">“Individual Differences Reveal the Basis of Consonance.”</a> <em>Current Biology</em> 20(11), 1035–1041.</li>

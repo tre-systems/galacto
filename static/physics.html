@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>The Physics of Galacto - real gravity in a browser-sized galaxy</title>
+    <title>Galacto - the physics of a self-gravitating galaxy</title>
     <meta
       name="description"
       content="How Galacto works as physics: self-gravity, leapfrog integration, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction in galaxy mergers - with a clear split between the real dynamics and the deliberate approximations."
     />
     <link rel="canonical" href="https://galacto.org/physics" />
-    <meta property="og:title" content="The Physics of Galacto - real gravity in a browser-sized galaxy" />
+    <meta property="og:title" content="Galacto - the physics of a self-gravitating galaxy" />
     <meta
       property="og:description"
       content="How Galacto models self-gravity, leapfrog integration, dark-matter halos, Toomre Q, cold gas, and dynamical friction, with a clear split between real dynamics and deliberate approximations."
@@ -21,7 +21,7 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="The Physics of Galacto - real gravity in a browser-sized galaxy" />
+    <meta name="twitter:title" content="Galacto - the physics of a self-gravitating galaxy" />
     <meta
       name="twitter:description"
       content="Self-gravity, leapfrog integration, dark-matter halos, Toomre Q, cold gas, and dynamical friction in Galacto."
@@ -100,7 +100,7 @@
 
     <header class="hero">
       <p class="eyebrow">The science</p>
-      <h1>Real gravity, browser-sized galaxy</h1>
+      <h1>The physics of a self-gravitating galaxy</h1>
       <p class="lede">
         Tens of thousands of stars, each pulling on every other with Newtonian gravity - the same force real
         galaxy simulations use, scaled to a browser. Nothing is scripted: the arms, bars, tidal bridges and
@@ -110,7 +110,7 @@
 
     <main>
       <section>
-        <h2><span class="num">01</span>Gravity, all of it</h2>
+        <h2><span class="num">01</span>All-pairs gravity</h2>
         <p>
           Every body feels the pull of <em>every</em> other - the full <strong>all-pairs</strong> sum, with no
           tree code or particle-mesh shortcut. The acceleration of body <var>i</var> is Newtonian gravity summed
@@ -164,7 +164,7 @@
       </section>
 
       <section>
-        <h2><span class="num">03</span>Putting numbers on it</h2>
+        <h2><span class="num">03</span>Physical units</h2>
         <p>
           The solver runs in arbitrary units with <var>G</var> = 1. Two anchors turn those into galaxy scales
           for the on-screen readouts:
@@ -180,7 +180,7 @@
           rotation-curve clock shows elapsed Myr.
         </p>
         <div class="note honesty">
-          <span class="tag">Worth knowing</span>
+          <span class="tag">Note</span>
           <p>
             These factors are display-only; the solver never sees them. They re-label the visuals in physical
             units without touching the dynamics.
@@ -222,7 +222,7 @@
       </section>
 
       <section>
-        <h2><span class="num">05</span>Why spiral arms form: the Toomre <var>Q</var></h2>
+        <h2><span class="num">05</span>Spiral arms and the Toomre <var>Q</var></h2>
         <p>
           A cold, rotating, self-gravitating disk sits on a knife-edge. Too cold and its own gravity collapses it
           into clumps; too hot and random motions smear out any structure. Between them, small disturbances
@@ -285,10 +285,10 @@
       </section>
 
       <section>
-        <h2><span class="num">07</span>Mergers, and why galaxies fall together</h2>
+        <h2><span class="num">07</span>Mergers and dynamical friction</h2>
         <p>
-          When two galaxies pass close, why merge rather than swing past? One mechanism is <strong>dynamical
-          friction</strong>. A massive body ploughing through lighter ones - here, the halo - gathers an
+          Two galaxies that pass close can merge instead of swinging past. One mechanism is <strong>dynamical
+          friction</strong>: a massive body ploughing through lighter ones - here, the halo - gathers an
           over-dense <em>wake</em> behind it, and the wake pulls back, draining its orbital energy. Chandrasekhar's
           result gives the drag <a href="#r5">[5]</a>:
         </p>

@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Building Galacto - a GPU N-body galaxy in Rust and WebGPU</title>
+    <title>Galacto - how it's built in Rust and WebGPU</title>
     <meta
       name="description"
       content="A technical walkthrough of a real-time, self-gravitating N-body galaxy simulation in the browser with Rust, WebAssembly and WebGPU: GPU-resident state, the tiled all-pairs gravity kernel, a symplectic leapfrog as three compute passes, and instanced billboard rendering."
     />
     <link rel="canonical" href="https://galacto.org/engineering" />
-    <meta property="og:title" content="Building Galacto - a GPU N-body galaxy in Rust and WebGPU" />
+    <meta property="og:title" content="Galacto - how it's built in Rust and WebGPU" />
     <meta
       property="og:description"
       content="How Galacto keeps a self-gravitating N-body galaxy on the GPU with Rust, WebAssembly, WebGPU compute shaders, tiled all-pairs gravity, leapfrog integration, and instanced rendering."
@@ -21,7 +21,7 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Building Galacto - a GPU N-body galaxy in Rust and WebGPU" />
+    <meta name="twitter:title" content="Galacto - how it's built in Rust and WebGPU" />
     <meta
       name="twitter:description"
       content="Rust, WebAssembly, WebGPU compute shaders, tiled all-pairs gravity, leapfrog integration, and instanced rendering."
@@ -77,7 +77,7 @@
 
     <header class="hero">
       <p class="eyebrow">The engineering</p>
-      <h1>Building a galaxy in Rust &amp; WebGPU</h1>
+      <h1>How it's built in Rust and WebGPU</h1>
       <p class="lede">
         How Galacto runs a self-gravitating galaxy entirely on the GPU - inside a browser tab.
       </p>
@@ -85,7 +85,7 @@
 
     <main>
       <section>
-        <h2><span class="num">01</span>The stack, and the shape of the loop</h2>
+        <h2><span class="num">01</span>The stack and the main loop</h2>
         <p>
           The whole thing is one Rust crate compiled to WebAssembly with
           <code>wasm-pack build --target web</code>, talking to the GPU through
@@ -174,7 +174,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
       </section>
 
       <section>
-        <h2><span class="num">03</span>The heart: all-pairs gravity, tiled</h2>
+        <h2><span class="num">03</span>Tiled all-pairs gravity</h2>
         <p>
           The expensive kernel is the <span class="pill">O(<var>N</var>²)</span> gravity sum: every body
           accumulates the pull of every other. Done naïvely, each of the <var>N</var> threads reads all
@@ -229,7 +229,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
 }</code></pre>
         </figure>
         <div class="note key">
-          <span class="tag">Why it's quick to read, fast to run</span>
+          <span class="tag">Two details</span>
           <p>
             The softened denominator means the self-term (where <code>d == 0</code>) is finite and adds zero,
             so the inner loop needs <em>no</em> <code>if i != j</code> branch.
@@ -240,7 +240,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
       </section>
 
       <section>
-        <h2><span class="num">04</span>A symplectic leapfrog, as three compute passes</h2>
+        <h2><span class="num">04</span>The leapfrog, as three compute passes</h2>
         <p>
           The integrator is split across <strong>three separate compute passes</strong> per fixed step. That
           separation isn't stylistic - it's how you avoid a read/write hazard. The gravity pass must read
@@ -387,7 +387,7 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
           <li><strong>Cast, don't serialise.</strong> <code>bytemuck</code> turns <code>#[repr(C)]</code> structs into byte slices for buffer writes with zero copies.</li>
         </ul>
         <div class="note warn">
-          <span class="tag">A WebGPU reality check</span>
+          <span class="tag">On WebGPU support</span>
           <p>
             WebGPU is broadly available now, but exact support still depends on browser, OS, GPU and driver.
             Feature-detect <code>navigator.gpu</code> and show a friendly message rather than a blank canvas
