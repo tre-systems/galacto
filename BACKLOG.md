@@ -1,79 +1,69 @@
 # Backlog
 
-Forward-looking work, roughly ordered by what unblocks or de-risks the most — intent, not a changelog.
+Forward-looking work, ordered by expected value and risk. This is an operating
+list, not a changelog. Keep it short enough that the next useful change is obvious.
 
-## P2 — Headless run mode
+## P1 — Today-Sized Foundation Work
 
-`cargo test` already covers the pure CPU logic that needs no GPU (camera math, scenario seeding, the `Particle` / `SimulationParams` buffer-layout contract — see [AGENTS § Tests](AGENTS.md#tests)).
+These are safe, behaviour-preserving improvements that reduce future risk without
+changing the deployed experience.
 
-The next step is an `examples/headless.rs` that steps the simulation without a browser — for profiling, and (paired with a CPU reference implementation of the gravity step) for validating the GPU solver: energy behaviour over a run, or regression-checking a scenario. The engine is FFI-free (`graphics` / `simulation` / `camera` / `scenarios` carry no `JsValue`), so a native harness only needs to stand up a headless `wgpu` device, or skip the GPU entirely for a CPU reference path. This also gates the tree-gravity work below — an approximate force can only be trusted against an exact reference.
+| Item | Why it matters | Effort |
+| --- | --- | --- |
+| **Harden production scripts** | `npm run produce` works, but the capture path should fail earlier and recover better: pick free Chrome debug ports or retry on collision, make `serve-static` report `EADDRINUSE` clearly, preflight Chrome/ffmpeg/rsvg-convert, fail on zero recorded chunks, and add a portable caption codec option instead of hard-coding macOS VideoToolbox HEVC. | M |
+| **Tighten small runtime edges** | `Graphics::resize` ignores zero-sized surfaces, but `AppState::resize` still updates postprocess/camera; make resize return whether reconfiguration happened. Add small `with_app` / `with_app_mut` helpers for repeated `APP_STATE.with(...)` exports. Factor shared additive render descriptors for particles and the halo. | S-M |
+| **Make deploy metadata reproducible** | `site.webmanifest` and `manifest.json` are intentionally identical, and icons/OG images are committed outputs. Either generate/check these pairs in CI or document the compatibility copy and add a `check:icons` guard so generated assets cannot drift. | S-M |
 
-## Roadmap — simulation depth
+**Recommended today:** start with production-script hardening. It is high value,
+low product risk, and directly protects the video workflow that already exists.
+If there is time left, do the resize/`APP_STATE` cleanup as a second small commit.
 
-The solver in `src/shaders/update.wgsl` runs the same for every `Scenario` (`src/scenarios.rs`) — only the seeded initial conditions differ, and new setups are cheap to add through the shared `push_disk_star` / `seed_galaxy` helpers. Larger directions, roughly by effort:
+## P2 — Maintainability Once P1 Is Clear
 
-- **More flyby library** — the shipped M51-style grand-design setup proves the tidal-driver path works; more prograde/retrograde flyby presets would broaden the pattern catalogue without changing the solver.
-- **Live particle halo** — the static halo (logarithmic or NFW, selectable) is a fixed background force; making it a *live* population of dark-matter particles would let it respond dynamically to the disk and to mergers, at O(N²) cost on the body budget.
-- **Auto-replay** — periodically re-seed so an unattended demo keeps showing fresh structure (the disk heats and the arms fade over many rotations).
+| Item | Why it matters | Effort |
+| --- | --- | --- |
+| **Move frontend logic out of `index.html`** | The inline module is now the biggest unchecked frontend surface. Move it to `static/app.js` so `npm run check:js` covers it directly, leaving `index.html` as markup/bootstrap. Preserve PWA/service-worker behaviour. | M |
+| **Extract shared article styling** | `audio.html`, `physics.html`, and `engineering.html` duplicate large reader-page CSS blocks. Move shared styling to a static CSS file while keeping page-specific art/diagrams local. | S-M |
+| **Split large construction paths** | `Simulation::new` and `audio::Graph::build` are the Rust maintenance hotspots. Split them into private helper builders without changing subsystem boundaries. | M |
+| **Make local setup fully reproducible** | CI uses `npm ci` and pins `cargo-audit`; local `npm run setup` still uses `npm install`. Align setup/docs with CI expectations. | S |
+| **Decide legacy redirect ownership** | `static/_worker.js` redirects `galacto.tre.systems` to `galacto.org`. Keep it with a short comment explaining why, or remove it if the old domain no longer matters. | S |
 
-### Tree gravity — scale past the O(N²) ceiling
+## P3 — Product Polish
 
-Gravity is the exact all-pairs sum (`compute_accel` in `src/shaders/update.wgsl`), `O(N²)` per step, which caps the count near ~16k for interactive speed (and leaves the arms a little grainy). Reaching 100k–1M bodies needs an approximate force.
+These improve the experience, but they are not prerequisites for keeping the app
+healthy.
 
-The production pipeline already renders denser than the interactive default — billboard size scales as `1/√count`, so the 4K glow fill-rate stays flat and a capture holds a steady 60+ fps at 2× (32k); a few × beyond that, this `O(N²)` gravity (not fill-rate) is the wall. So tree gravity is the prerequisite for both interactive *and* offline body counts past the ~tens-of-thousands range.
+| Item | Why it matters | Effort |
+| --- | --- | --- |
+| **More flyby presets** | The M51-style scenario proves the tidal-driver path works. A few more prograde/retrograde flybys would broaden the visual catalogue without changing the solver. | S-M |
+| **Auto-replay demo mode** | Periodically re-seed for unattended displays so the disk does not heat and fade indefinitely. | S |
+| **Richer audio core signals** | `reduce_core` has room for one more aggregate lane. Velocity dispersion, net angular momentum, or a coarse radial signal could give the sound another genuinely emergent driver. Keep it aggregate-only, throttled, and one-way. | S |
+| **Subtle audio-reactive visuals** | Let note onsets or pad energy drive a small bloom/exposure pulse so the audio and picture reinforce each other. Keep it tasteful and subordinate to the simulation. | S-M |
 
-Recommended approach: a **GPU LBVH / Barnes–Hut** tree — build a linear tree each step from Morton (Z-order) codes, then traverse stacklessly with a multipole opening criterion (θ). Alternatives fit worse: a particle-mesh/FFT solver is `O(N)` and simplest to build, but a fixed grid fights the sim's huge dynamic range and unbounded extent; a fixed-depth octree wastes cells on the dense bulge.
+## P4 — Larger Research/Production Tracks
 
-WebGPU crux (no recursion, no dynamic allocation, weak atomics): tree build is body-AABB → Morton-encode → **radix sort** the codes (the hard part — per-digit histogram + prefix-scan + scatter, several dispatches) → build internal nodes (Karras' branch-free LBVH) → bottom-up centre-of-mass pass; traversal uses a short fixed register stack or rope/skip-pointer trees.
+Do these only when the goal explicitly needs them. They are useful directions, not
+near-term cleanup.
 
-Reality check: Barnes–Hut has high constant factors and divergent, scattered memory access — the opposite of the current branch-free, coalesced, tile-cooperative kernel, which is near-peak GPU efficiency. Honest crossover is ~`N = 100k–250k`; below ~64k the tiled all-pairs sum still wins, and it trades away a selling point (exact, every-pair self-gravity). Worth it only if 100k+ bodies becomes an explicit goal, and only after the headless + CPU-reference harness (P2) exists. **Effort: XL** (the GPU radix sort alone is M–L).
+| Item | Why it matters | Effort |
+| --- | --- | --- |
+| **Headless simulation/reference harness** | Add an `examples/headless.rs` or equivalent native path for profiling and solver validation. This is the prerequisite for trusting approximate gravity or deeper physics changes. | M-L |
+| **Headless video export** | A native `wgpu` renderer could run the arrangement timeline into an offscreen texture and write a PNG/TIFF sequence for ffmpeg, avoiding real-time browser capture. | L |
+| **Stems + MIDI/automation export** | For a deliberately produced music release, export note events, automation curves, and per-layer stems for a DAW. The current one-command WAV/MP4 path is enough for normal production. | M |
+| **Gas-model realism** | A density/mean-velocity pass could support star formation, merger gas, or truer sticky gas. Start with one extra tiled `O(N²)` aggregate pass before considering spatial hashing. | L |
+| **Approximate gravity for 100k+ bodies** | A GPU LBVH/Barnes-Hut tree could move past the all-pairs `O(N²)` ceiling, but it trades away exact every-pair gravity and likely only wins above roughly 100k bodies. Do not start before the headless/reference harness exists. | XL |
 
-### Gas physics — star formation and mergers
+## Not Active
 
-The disk scenarios carry a dissipative gas component: a fraction of bodies are tagged as gas (via `vel.w`, gated by a per-scenario `has_gas` flag), cooled each step in `kick_drift_half` toward circular, in-plane orbits, and drawn blue. Cold gas therefore gathers in and sustains the spiral arms. What's missing is the physics this only gestures at:
+These are intentionally out of the active backlog unless the product goal changes.
 
-- **Actual star formation** — convert gas to stars where it is densest, with fresh stars starting blue and reddening with age. Needs a per-body local-density estimate (the neighbour search below) plus an age field; the warm→blue colour ramp already exists.
-- **Gas in mergers** — the multi-galaxy scenarios are collisionless (gas-free). Real mergers shock-compress gas into blue tidal tails and central starbursts. The merger render path uses `vel.w` for galaxy-of-origin tint, so merger gas needs a second flag to disambiguate it (the `aux` buffer below).
-- **Velocity-mean drag** — the cooling damps each gas body's own non-circular motion (a stand-in); a truer sticky gas nudges each body toward its *neighbours'* bulk velocity, which also handles non-disk geometry (tails, mergers). Needs the neighbour search.
-- **Full SPH** — kernel density + pressure + artificial viscosity + equation of state + cooling: the correct-physics version. **XL** and fiddly in single precision with no readback.
-
-Neighbour-search crux (the shared prerequisite, the genuinely hard part on WebGPU): reuse the tiled `O(N²)` sweep in `compute_accel` to also accumulate a kernel-weighted density and mean velocity — one extra compute pass, same shared-memory tiling, no atomics. At N=16k a second `O(N²)` pass is affordable. A uniform spatial-hash grid (atomic per-cell counters + counting sort) is the scalable answer but is the hard WGSL piece; defer it until the body count outgrows the all-pairs sweep.
-
-Data layout: gas rides in `vel.w` (shared with the colour tint), which is why merger gas would need disambiguating. A dedicated per-body state field (density, age, type) wants a parallel `aux` storage buffer (one `vec4`/body) plus a new compute bind-group entry. **Effort: M** for star formation given the neighbour pass; full SPH is a separate **XL**, with the spatial-hash grid an **L** prerequisite of its own.
-
-## Audio — deeper coupling
-
-The generative soundscape (`src/music.rs` + `src/audio.rs`) is driven by the visuals — the camera (zoom, orbit, rotation speed), the scenario, the live knobs, and the galaxy's own core dynamics (central mass, radial flux, churn, and a derived coherence) from the throttled `reduce_core` GPU readback (see [ARCHITECTURE § Audio](docs/ARCHITECTURE.md#audio)). Two directions remain:
-
-- **Audio-reactive visuals.** The reverse of the current coupling — let note onsets or the pad's energy feed a subtle visual response (a bloom/exposure pulse, or a brightness nudge) so the two reinforce each other, as in the sibling `geno` projects. Cheap once an audio energy signal exists; the care is in keeping it tasteful and not fighting the existing star-size / bloom look. **Effort: S–M.**
-- **Richer GPU core signals.** `reduce_core` returns windowed central mass + signed radial flux + radial churn in three of a `vec4`'s lanes; the fourth is free. A true velocity dispersion (sum of `m·vr²` to pair with the existing `m·vr`), net angular momentum, or a coarse radial histogram would each give the sound an emergent, evolving quantity the controls don't expose, at the cost of one more accumulation in the read-only reduction kernel and one CPU sum. **Effort: S.**
-
-## Codebase hardening
-
-The app is working and deployed, so these are behaviour-preserving cleanup passes. Do them in small commits with the normal gate, not as one broad refactor.
-
-- **Split large construction paths.** `Simulation::new` is the largest Rust maintenance hotspot; split it into private helper builders for buffers, bind-group layouts, compute pipelines, particle rendering, halo rendering, and reduction readback. Do the same for `audio::Graph::build`, dividing the master/effects, drone/sub, shimmer, starfield, and noise sections. Keep the public subsystem boundaries unchanged. **Effort: M.**
-- **Factor shared rendering state.** Particle and halo rendering both use additive, order-independent billboard-style state. Add tiny helpers for the shared blend, primitive, and multisample descriptors so future render changes do not drift between the two paths. **Effort: S.**
-- **Tighten resize semantics.** `Graphics::resize` already ignores zero dimensions before reconfiguring the surface; have it return whether reconfiguration happened, or guard the caller, so camera/postprocess resize work is skipped consistently for zero-sized browser events. **Effort: S.**
-- **Centralise WASM export access.** The `APP_STATE.with(...)` boilerplate in `src/lib.rs` is repetitive. Add small `with_app` / `with_app_mut` helpers for the exported setters and readbacks, keeping `JsValue` at the boundary and preserving the current infallible no-op behaviour where the UI expects it. **Effort: S.**
-- **Move checked frontend logic out of `index.html`.** The main page's inline module is large; move it into `static/app.js` so `npm run check:js` covers it directly, leaving `index.html` as markup/bootstrap. Preserve the installed-PWA same-window navigation behaviour. **Effort: M.**
-- **Extract shared article styling.** `audio.html`, `physics.html`, and `engineering.html` duplicate a large amount of inline article CSS. Move the shared reader-page styling to a static CSS file while keeping page-specific art and diagrams local where that is clearer. **Effort: S–M.**
-- **Single-source deploy metadata.** `site.webmanifest` and `manifest.json` are intentionally identical today; either generate one from the other or remove the compatibility copy after confirming install/offline behaviour. Likewise add a `check:icons`/CI guard so committed raster icons and the OG card cannot drift from their SVG sources. **Effort: S–M.**
-- **Clean asset leftovers intentionally.** Decide whether the legacy `_worker.js` redirect for `galacto.tre.systems` should stay; if it stays, document why. Remove unused SVG gradients when the brand sources are next touched. **Effort: S.**
-- **Make local setup fully reproducible.** Consider changing setup/docs toward `npm ci`, and make the `cargo-audit` expectation explicit for local `npm run audit` users even though CI installs the pinned tool. **Effort: S.**
-
-## Production export
-
-A finished YouTube-ready video is one command — `npm run produce` (`scripts/produce.mjs`) builds, captures the cinematic arrangement headlessly, renders the matching mastered audio offline from the same seed/duration, muxes, and adds start/end captions. The audio render (`generate_piece`) and the mastering chain (`src/mastering.rs`) run headlessly in the WASM — there is no in-app export UI. Remaining production directions ([docs/VIDEO_PRODUCTION.md](docs/VIDEO_PRODUCTION.md)):
-
-- **Stems + MIDI for a DAW.** Export the pure `MusicEngine`'s note events and automation curves (MIDI/JSON) plus per-layer stems, so a track can be re-synthesised with studio instruments and mastered by ear — a higher quality ceiling than the automatic in-app master, for a deliberate release. **Effort: M.**
-- **Headless video export.** Add a native `wgpu` binary that runs the same arrangement/camera timeline into an offscreen texture, reads back each tonemapped frame, and writes a PNG/TIFF sequence for ffmpeg — avoiding the real-time capture (a 10-min piece currently takes ~10 min of wall-clock to record) and any browser-capture compression. **Effort: L.**
-- **Harden the current browser-capture scripts.** Pick free Chrome debug ports, or retry on collision, in `smoke.mjs` and `capture-canvas-video.mjs`; make `serve-static` surface `EADDRINUSE` with a clear retry path; split `capture-canvas-video.mjs` into CDP, chunk-server, audio-export, mux, and caption helpers; add preflight checks for Chrome/ffmpeg/rsvg-convert and fail fast on zero recorded chunks. **Effort: M.**
-- **Make captions portable.** `add-video-captions.mjs` currently targets macOS VideoToolbox HEVC. Add a `--video-codec` option or fallback path, and remove the unused caption-overlay parameter while touching the script. **Effort: S.**
+| Candidate | Decision |
+| --- | --- |
+| **Full SPH hydrodynamics** | Delete from active planning. It is a separate simulation project, not an incremental improvement to the current calm galaxy sandbox. |
+| **Live particle dark-matter halo** | Delete from active planning for now. It would consume the body budget and complicate the central story; the current analytic halo is clearer for users and docs. |
+| **Tree gravity before a reference harness** | Keep only as a research track. Starting it now would add a large, divergent GPU system before there is a trustworthy validation path. |
 
 ## Definition of Done
-
-A change is done when:
 
 - The verification gate passes (see [AGENTS § Verification](AGENTS.md#verification)); the pre-commit hook enforces it.
 - Docs describing affected behaviour are updated to match.
