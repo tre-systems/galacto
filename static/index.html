@@ -78,6 +78,16 @@
       <div id="error-details"></div>
     </div>
 
+    <div id="runtime-notice" role="status" aria-live="polite" hidden>
+      <strong id="runtime-notice-title">Compatibility notice</strong>
+      <span id="runtime-notice-message">
+        Some advanced browser features are unavailable here.
+      </span>
+      <button id="runtime-notice-dismiss" type="button" aria-label="Dismiss" title="Dismiss">
+        ✕
+      </button>
+    </div>
+
     <!-- Main canvas -->
     <canvas id="gpu-canvas"></canvas>
 
@@ -343,14 +353,54 @@
       }
 
       async function checkWebGPUSupport() {
+        const ua = navigator.userAgent || "";
+        if (/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua)) {
+          throw new Error(
+            "Galacto needs Safari's current WebGPU implementation on iPhone and iPad. Firefox, Chrome, and Edge on iOS still expose WebGPU unreliably for this app.",
+          );
+        }
         if (!navigator.gpu) {
           throw new Error("WebGPU not supported in this browser");
         }
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu.requestAdapter().catch(() => null);
         if (!adapter) {
           throw new Error("No WebGPU adapter found");
         }
         return true;
+      }
+
+      function showRuntimeNotice(title, message) {
+        const notice = document.getElementById("runtime-notice");
+        const titleEl = document.getElementById("runtime-notice-title");
+        const messageEl = document.getElementById("runtime-notice-message");
+        if (!notice || notice.dataset.dismissed === "1") return;
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        notice.hidden = false;
+      }
+
+      function setupRuntimeNotice() {
+        document.getElementById("runtime-notice-dismiss")?.addEventListener("click", () => {
+          const notice = document.getElementById("runtime-notice");
+          notice.dataset.dismissed = "1";
+          notice.hidden = true;
+        });
+      }
+
+      function safeWasmCall(label, fn, options = {}) {
+        try {
+          return fn();
+        } catch (error) {
+          console.warn(`${label} is unavailable in this browser context`, error);
+          showRuntimeNotice(
+            options.title || `${label} is unavailable`,
+            options.message ||
+              "Galacto can keep showing the simulation, but this control is not supported by this browser or device.",
+          );
+          if (typeof options.onError === "function") options.onError(error);
+          return options.fallback;
+        }
       }
 
       // Star glow halo extent — reshapes the billboard falloff and colours audio,
@@ -375,10 +425,26 @@
         const toggle = document.getElementById("autopilot-toggle");
         const speed = document.getElementById("autopilot-speed");
         const canvas = document.getElementById("gpu-canvas");
-        const applySpeed = () => mod.set_autopilot_speed((speed.value / 100) * 2.0);
-        mod.set_autopilot(toggle.checked);
+        const disableAutopilot = () => {
+          toggle.checked = false;
+          toggle.disabled = true;
+          speed.disabled = true;
+        };
+        const applySpeed = () =>
+          safeWasmCall(
+            "Autopilot",
+            () => mod.set_autopilot_speed((speed.value / 100) * 2.0),
+            { onError: disableAutopilot },
+          );
+        safeWasmCall("Autopilot", () => mod.set_autopilot(toggle.checked), {
+          onError: disableAutopilot,
+        });
         applySpeed();
-        toggle.addEventListener("change", () => mod.set_autopilot(toggle.checked));
+        toggle.addEventListener("change", () =>
+          safeWasmCall("Autopilot", () => mod.set_autopilot(toggle.checked), {
+            onError: disableAutopilot,
+          }),
+        );
         speed.addEventListener("input", applySpeed);
         const DRAG_RELEASE_PX = 8;
         let pointerStart = null;
@@ -386,7 +452,9 @@
         const release = () => {
           if (!toggle.checked) return;
           toggle.checked = false;
-          mod.set_autopilot(false);
+          safeWasmCall("Autopilot", () => mod.set_autopilot(false), {
+            onError: disableAutopilot,
+          });
         };
         const movedFarEnough = (start, x, y) =>
           Math.hypot(x - start.x, y - start.y) >= DRAG_RELEASE_PX;
@@ -488,6 +556,7 @@
           setupVolumeControl(mod);
           setupMuteButton(mod);
           setupRestartButton(mod);
+          setupRuntimeNotice();
           setupAutoSound(mod);
           setupInfoButtons();
           setupAutopilot(mod);
@@ -1152,10 +1221,34 @@
             if (navigator.audioSession) navigator.audioSession.type = "playback";
           } catch (_) {}
         };
+        let soundUnavailable = false;
+        const markSoundUnavailable = () => {
+          soundUnavailable = true;
+          const muteButton = document.getElementById("mute-btn");
+          if (muteButton) {
+            muteButton.disabled = true;
+            muteButton.title = "Sound is unavailable in this browser";
+            muteButton.setAttribute("aria-label", "Sound unavailable");
+          }
+        };
         const tryStart = () => {
+          if (soundUnavailable) return;
           claimPlayback();
-          mod.set_sound_enabled(true); // builds the engine (first time), then resumes
-          if (mod.audio_running()) {
+          const running = safeWasmCall(
+            "Sound",
+            () => {
+              mod.set_sound_enabled(true); // builds the engine (first time), then resumes
+              return mod.audio_running();
+            },
+            {
+              fallback: false,
+              title: "Sound is unavailable",
+              message:
+                "This browser or device could not start Galacto's Web Audio engine. The visual simulation can still run.",
+              onError: markSoundUnavailable,
+            },
+          );
+          if (running) {
             events.forEach((e) =>
               window.removeEventListener(e, tryStart, { capture: true })
             );
@@ -1167,9 +1260,14 @@
         // iOS suspends the AudioContext when the PWA is backgrounded; re-assert the
         // session and resume it when we return to the foreground.
         document.addEventListener("visibilitychange", () => {
-          if (!document.hidden) {
+          if (!document.hidden && !soundUnavailable) {
             claimPlayback();
-            mod.resume_audio();
+            safeWasmCall("Sound", () => mod.resume_audio(), {
+              title: "Sound is unavailable",
+              message:
+                "This browser or device could not resume Galacto's Web Audio engine. The visual simulation can still run.",
+              onError: markSoundUnavailable,
+            });
           }
         });
       }

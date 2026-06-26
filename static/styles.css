@@ -81,6 +81,60 @@ body {
   font-family: monospace;
 }
 
+#runtime-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 1001;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  width: min(520px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  padding: 12px 14px;
+  border: 1px solid rgba(122, 162, 247, 0.5);
+  border-radius: 8px;
+  background: rgba(5, 8, 18, 0.92);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+#runtime-notice[hidden] {
+  display: none;
+}
+
+#runtime-notice-title {
+  color: #fff;
+}
+
+#runtime-notice-message {
+  grid-column: 1;
+}
+
+#runtime-notice-dismiss {
+  appearance: none;
+  -webkit-appearance: none;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(219, 234, 254, 0.24);
+  border-radius: 50%;
+  background: transparent;
+  color: #dbeafe;
+  cursor: pointer;
+}
+
+#runtime-notice-dismiss:hover,
+#runtime-notice-dismiss:focus-visible {
+  border-color: #7aa2f7;
+  color: #fff;
+  outline: none;
+}
+
 /* On-screen controls — a fixed cog button at the top-left that the panel hangs
    off. The chrome lives on the body (not the container), so the cog holds its exact
    place whether the panel is open or closed; it stays put when dragged too. */
