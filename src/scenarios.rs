@@ -799,11 +799,13 @@ fn generate_grand_design(
     particles
 }
 
-/// A main spiral disk (halo-supported, at the origin) with a second, substantial
-/// galaxy seeded near rest a long way up the +Y axis — a distance proportional to the
-/// piece length — that free-falls and collides with the disk around the middle of the
-/// composed piece. The sim runs slowed for the piece (`FLYBY_SIM_SPEED`), so the
-/// infall stretches over the half and the intruder is seen coming in from the top.
+/// The composed-piece scenario: a main spiral disk (halo-supported, at the origin)
+/// with two interactions. First, a compact Grand-Design companion on a close prograde
+/// flyby drives a tidal two-arm spiral through the opening (M51-like). Then a second,
+/// substantial galaxy, seeded near rest a long way up the +Y axis (a distance
+/// proportional to the piece length), free-falls and collides with the disk around the
+/// middle of the composed piece. The sim runs slowed for the piece (`FLYBY_SIM_SPEED`),
+/// so the infall stretches over the half and the intruder is seen coming in from the top.
 fn generate_flyby(
     count: u32,
     temp: f32,
@@ -815,10 +817,15 @@ fn generate_flyby(
 ) -> Vec<Particle> {
     let mut rng = StdRng::seed_from_u64(42);
     let mut particles = Vec::with_capacity(count as usize);
+    // Body budget: a dominant main disk, a small Grand-Design companion that drives the
+    // opening two-arm spiral on a close prograde pass, then a substantial intruder that
+    // free-falls in to collide around the midpoint.
+    let companion = count / 8;
     let intruder = count / 3;
+    let main = count - companion - intruder;
     seed_spiral_disk(
         &mut particles,
-        count - intruder,
+        main,
         temp,
         gas_fraction,
         bulge_frac,
@@ -826,6 +833,24 @@ fn generate_flyby(
         star_mass,
         &mut rng,
     );
+    // Grand-Design opening: a compact companion on a close prograde flyby (M51-like)
+    // that perturbs the disk into a tidal two-arm pattern before it recedes.
+    seed_galaxy(
+        &mut particles,
+        &Galaxy {
+            center: FLYBY_COMPANION_CENTER,
+            bulk: FLYBY_COMPANION_BULK,
+            core_mass: FLYBY_COMPANION_MASS,
+            radius: FLYBY_COMPANION_RADIUS,
+            count: companion,
+            tint: 1.0,
+            ..Default::default()
+        },
+        dispersion(temp),
+        star_mass,
+        &mut rng,
+    );
+    // Mid-piece collision: a second, substantial galaxy that free-falls from far up +Y.
     let y0 = FLYBY_DISTANCE_FACTOR * duration_secs.max(1.0);
     seed_galaxy(
         &mut particles,
