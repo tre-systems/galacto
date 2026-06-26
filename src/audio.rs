@@ -110,199 +110,68 @@ struct Graph {
     _lfos: Vec<OscillatorNode>,
 }
 
+struct MasterChain {
+    master_gain: GainNode,
+    master_lp: BiquadFilterNode,
+    breath_gain: GainNode,
+}
+
+struct SpaceBuses {
+    field_pan: StereoPannerNode,
+    reverb_in: GainNode,
+    reverb_wet: GainNode,
+    delay_in: GainNode,
+    delay_feedback: GainNode,
+    delay_wet: GainNode,
+}
+
+struct DronePad {
+    oscs: Vec<OscillatorNode>,
+    gain: GainNode,
+    lp: BiquadFilterNode,
+    lfos: Vec<OscillatorNode>,
+}
+
+struct Starfield {
+    oscs: Vec<OscillatorNode>,
+    lp: BiquadFilterNode,
+    gain: GainNode,
+    lfos: Vec<OscillatorNode>,
+}
+
 impl Graph {
     /// Build the full node graph on `ctx` (real-time or offline). The master gain
     /// starts silent; the caller ramps or sets it.
     fn build(ctx: &BaseAudioContext) -> Option<Self> {
-        // Master chain: gain → subsonic high-pass → tape saturation → low-pass
-        // (brightness) → compressor → breath → output.
-        let master_gain = gain(ctx, 0.0)?;
-        // Live low-end safety: trim sub-audio rumble before it spends compressor
-        // headroom. Offline mastering repeats this kind of protection at file level.
-        let master_hp = highpass(ctx, 28.0, 0.707)?;
-        // Gentle tape/console saturation for analog warmth — placed before the
-        // brightness low-pass so its harmonics are tamed and never turn shrill.
-        let saturator = tape_saturator(ctx)?;
-        let master_lp = lowpass(ctx, 1400.0, 0.7)?;
-        let comp = compressor(ctx)?;
-        // Post-compressor breath gain: a gentle ~0.1 Hz swell of the whole output so
-        // the breathing cue is coherent across the entire mix (placed after the
-        // compressor so the swell isn't squashed). Starts at unity.
-        let breath_gain = gain(ctx, 1.0)?;
-        connect(&master_gain, &master_hp);
-        connect(&master_hp, &saturator);
-        connect(&saturator, &master_lp);
-        connect(&master_lp, &comp);
-        connect(&comp, &breath_gain);
-        connect(&breath_gain, &ctx.destination());
+        let master = build_master_chain(ctx)?;
+        let space = build_space_buses(ctx, &master.master_gain)?;
+        let drone = build_drone_pad(ctx, &space.field_pan)?;
+        let shimmer_gain = build_shimmer(ctx, &drone.lp, &space.reverb_in)?;
+        let (sub_osc, sub_gain) = build_sub_bass(ctx, &master.master_gain)?;
+        let starfield = build_starfield(ctx, &space.field_pan)?;
+        let (noise_gain, noise_src) = build_noise_bed(ctx, &master.master_gain)?;
 
-        // Field bus: the pad + starfield route through one stereo panner that swings
-        // with the camera orbit, into the master mix and the reverb send. The sub and
-        // noise stay centred (mono low end), so only the "sources" move in the space.
-        let field_pan = StereoPannerNode::new(ctx).ok()?;
-        connect(&field_pan, &master_gain);
-
-        // Reverb bus: a long, dark, diffuse impulse response with early reflections —
-        // a huge cavern / the void of deep space. A low-pass on the return rolls off
-        // the tail's highs so it reads as a vast, distant room rather than a bright plate.
-        let reverb_in = gain(ctx, 1.0)?;
-        connect(&field_pan, &reverb_in); // pad + starfield sit in the same space
-        let convolver = ConvolverNode::new(ctx).ok()?;
-        convolver.set_normalize(true);
-        if let Some(ir) = make_impulse_response(ctx, 8.0) {
-            convolver.set_buffer(Some(&ir));
-        }
-        let reverb_lp = lowpass(ctx, 1900.0, 0.5)?;
-        let reverb_wet = gain(ctx, 0.6)?;
-        connect(&reverb_in, &convolver);
-        connect(&convolver, &reverb_lp);
-        connect(&reverb_lp, &reverb_wet);
-        connect(&reverb_wet, &master_gain);
-
-        // Delay bus: a long, band-limited feedback echo — widely-spaced repeats that
-        // trail off into the cavern. The low-pass in the loop darkens each pass.
-        let delay_in = gain(ctx, 1.0)?;
-        let delay = ctx.create_delay_with_max_delay_time(2.0).ok()?;
-        delay.delay_time().set_value(0.55);
-        let delay_tone = lowpass(ctx, 1600.0, 0.7)?;
-        let delay_feedback = gain(ctx, 0.4)?;
-        let delay_wet = gain(ctx, 0.22)?;
-        connect(&delay_in, &delay);
-        connect(&delay, &delay_tone);
-        connect(&delay_tone, &delay_feedback);
-        connect(&delay_feedback, &delay);
-        connect(&delay_tone, &delay_wet);
-        connect(&delay_wet, &master_gain);
-
-        // Drone pad: detuned oscillators, each hard-panned for width, through their
-        // own filter into the field bus. The fundamental stays centred; the harmonics
-        // spread left and right for a wide, lush bed.
-        let drone_gain = gain(ctx, 0.0)?;
-        let drone_lp = lowpass(ctx, 600.0, 0.6)?;
-        connect(&drone_gain, &drone_lp);
-        connect(&drone_lp, &field_pan);
-        let mut drone_oscs = Vec::with_capacity(DRONE_VOICES);
-        // Slow free-running LFOs (drift + starfield twinkle), kept alive together.
-        let mut lfos = Vec::new();
-        for i in 0..DRONE_VOICES {
-            let osc = OscillatorNode::new(ctx).ok()?;
-            osc.set_type(if i == 0 {
-                OscillatorType::Sine
-            } else {
-                OscillatorType::Triangle
-            });
-            osc.frequency().set_value(110.0);
-            osc.detune().set_value((i as f32 - 1.0) * 5.0);
-            // Analog oscillator drift: a slow, per-voice wander of a few cents, summed
-            // onto the set detune, so the pad is never perfectly, sterilely in tune.
-            let drift = OscillatorNode::new(ctx).ok()?;
-            drift.set_type(OscillatorType::Sine);
-            drift.frequency().set_value(0.027 + 0.019 * i as f32); // ~0.03–0.07 Hz, decorrelated
-            let drift_depth = gain(ctx, ANALOG_DRIFT_CENTS)?;
-            connect(&drift, &drift_depth);
-            connect_param(&drift_depth, &osc.detune());
-            let _ = drift.start();
-            lfos.push(drift);
-            let vp = panner(ctx, voice_spread(i))?;
-            connect(&osc, &vp);
-            connect(&vp, &drone_gain);
-            let _ = osc.start();
-            drone_oscs.push(osc);
-        }
-
-        // Shimmer: tap the (near-sinusoidal, low-passed) pad through an oversampled
-        // frequency doubler (the `2x²−1` waveshaper turns a sine into its octave) and a
-        // band-pass that keeps only the high sheen, sent into the reverb.
-        let shimmer_shaper = octave_up_shaper(ctx)?;
-        // Sit the sheen below the forward presence band, so it glows without the
-        // low-kHz fatigue that tires the ear over time.
-        let shimmer_bp = bandpass(ctx, 1800.0, 0.45)?;
-        let shimmer_gain = gain(ctx, 0.0)?;
-        connect(&drone_lp, &shimmer_shaper);
-        connect(&shimmer_shaper, &shimmer_bp);
-        connect(&shimmer_bp, &shimmer_gain);
-        connect(&shimmer_gain, &reverb_in);
-
-        // Sub-bass foundation: one sine an octave below the lowest pad voice, low-passed
-        // hard and kept centred — the deep weight that makes the space feel huge.
-        let sub_osc = OscillatorNode::new(ctx).ok()?;
-        sub_osc.set_type(OscillatorType::Sine);
-        sub_osc.frequency().set_value(55.0);
-        let sub_lp = lowpass(ctx, 120.0, 0.5)?;
-        let sub_gain = gain(ctx, 0.0)?;
-        connect(&sub_osc, &sub_lp);
-        connect(&sub_lp, &sub_gain);
-        connect(&sub_gain, &master_gain);
-        let _ = sub_osc.start();
-
-        // Starfield: high voices tuned to the pad's upper harmonics, each twinkling on
-        // its own slow LFO (a sine into its gain), through a shared brightness filter
-        // and level into the field bus.
-        let star_lp = lowpass(ctx, 2200.0, 0.5)?;
-        let star_gain = gain(ctx, 0.0)?;
-        connect(&star_lp, &star_gain);
-        connect(&star_gain, &field_pan);
-        let mut star_oscs = Vec::with_capacity(STAR_VOICES);
-        for i in 0..STAR_VOICES {
-            let osc = OscillatorNode::new(ctx).ok()?;
-            osc.set_type(OscillatorType::Sine);
-            osc.frequency().set_value(880.0);
-            osc.detune().set_value((i as f32 - 2.0) * 4.0);
-            // Base ≈ depth, so each star's deep tremolo dips all the way to silence and
-            // back — an intermittent twinkle, not a steady tone. A sustained pure tone
-            // reads as a whine; one that comes and goes reads as a sparkling star.
-            let voice_gain = gain(ctx, 0.5)?; // base the LFO swings around
-            connect(&osc, &voice_gain);
-            connect(&voice_gain, &star_lp);
-            let lfo = OscillatorNode::new(ctx).ok()?;
-            lfo.set_type(OscillatorType::Sine);
-            lfo.frequency().set_value(0.05 + 0.031 * i as f32); // decorrelated, slow
-            let depth = gain(ctx, 0.5)?;
-            connect(&lfo, &depth);
-            connect_param(&depth, &voice_gain.gain());
-            let _ = lfo.start();
-            let _ = osc.start();
-            star_oscs.push(osc);
-            lfos.push(lfo);
-        }
-
-        // Noise bed: a soft rumble of deterministic noise — organic "air" so the pure
-        // oscillators never sound sterile. A low-pass kills the hiss.
-        let noise_src = AudioBufferSourceNode::new(ctx).ok()?;
-        if let Some(buf) = make_noise_buffer(ctx, 4.0) {
-            noise_src.set_buffer(Some(&buf));
-        }
-        noise_src.set_loop(true);
-        // Two cascaded low-passes turn the bed into a deep, smoothed *brown*-noise
-        // rumble (~-24 dB/oct above the corner) — low-frequency-heavy with no harsh
-        // top, the focus-friendly character, rather than a faint hiss-shelf.
-        let noise_lp = lowpass(ctx, 240.0, 0.4)?;
-        let noise_lp2 = lowpass(ctx, 480.0, 0.4)?;
-        let noise_gain = gain(ctx, 0.0)?;
-        connect(&noise_src, &noise_lp);
-        connect(&noise_lp, &noise_lp2);
-        connect(&noise_lp2, &noise_gain);
-        connect(&noise_gain, &master_gain);
-        let _ = noise_src.start();
+        let mut lfos = drone.lfos;
+        lfos.extend(starfield.lfos);
 
         Some(Self {
-            master_gain,
-            master_lp,
-            breath_gain,
-            reverb_in,
-            reverb_wet,
-            delay_in,
-            delay_feedback,
-            delay_wet,
-            drone_oscs,
-            drone_gain,
-            drone_lp,
-            field_pan,
+            master_gain: master.master_gain,
+            master_lp: master.master_lp,
+            breath_gain: master.breath_gain,
+            reverb_in: space.reverb_in,
+            reverb_wet: space.reverb_wet,
+            delay_in: space.delay_in,
+            delay_feedback: space.delay_feedback,
+            delay_wet: space.delay_wet,
+            drone_oscs: drone.oscs,
+            drone_gain: drone.gain,
+            drone_lp: drone.lp,
+            field_pan: space.field_pan,
             sub_osc,
             sub_gain,
-            star_oscs,
-            star_lp,
-            star_gain,
+            star_oscs: starfield.oscs,
+            star_lp: starfield.lp,
+            star_gain: starfield.gain,
             shimmer_gain,
             noise_gain,
             _holds: vec![noise_src],
@@ -429,6 +298,202 @@ impl Graph {
         let _ = osc.start_with_when(t0);
         let _ = osc.stop_with_when(t0 + dur + 0.1);
     }
+}
+
+fn build_master_chain(ctx: &BaseAudioContext) -> Option<MasterChain> {
+    let master_gain = gain(ctx, 0.0)?;
+    let master_hp = highpass(ctx, 28.0, 0.707)?;
+    let saturator = tape_saturator(ctx)?;
+    let master_lp = lowpass(ctx, 1400.0, 0.7)?;
+    let comp = compressor(ctx)?;
+    let breath_gain = gain(ctx, 1.0)?;
+
+    connect(&master_gain, &master_hp);
+    connect(&master_hp, &saturator);
+    connect(&saturator, &master_lp);
+    connect(&master_lp, &comp);
+    connect(&comp, &breath_gain);
+    connect(&breath_gain, &ctx.destination());
+
+    Some(MasterChain {
+        master_gain,
+        master_lp,
+        breath_gain,
+    })
+}
+
+fn build_space_buses(ctx: &BaseAudioContext, master_gain: &GainNode) -> Option<SpaceBuses> {
+    let field_pan = StereoPannerNode::new(ctx).ok()?;
+    connect(&field_pan, master_gain);
+
+    let reverb_in = gain(ctx, 1.0)?;
+    connect(&field_pan, &reverb_in);
+    let convolver = ConvolverNode::new(ctx).ok()?;
+    convolver.set_normalize(true);
+    if let Some(ir) = make_impulse_response(ctx, 8.0) {
+        convolver.set_buffer(Some(&ir));
+    }
+    let reverb_lp = lowpass(ctx, 1900.0, 0.5)?;
+    let reverb_wet = gain(ctx, 0.6)?;
+    connect(&reverb_in, &convolver);
+    connect(&convolver, &reverb_lp);
+    connect(&reverb_lp, &reverb_wet);
+    connect(&reverb_wet, master_gain);
+
+    let delay_in = gain(ctx, 1.0)?;
+    let delay = ctx.create_delay_with_max_delay_time(2.0).ok()?;
+    delay.delay_time().set_value(0.55);
+    let delay_tone = lowpass(ctx, 1600.0, 0.7)?;
+    let delay_feedback = gain(ctx, 0.4)?;
+    let delay_wet = gain(ctx, 0.22)?;
+    connect(&delay_in, &delay);
+    connect(&delay, &delay_tone);
+    connect(&delay_tone, &delay_feedback);
+    connect(&delay_feedback, &delay);
+    connect(&delay_tone, &delay_wet);
+    connect(&delay_wet, master_gain);
+
+    Some(SpaceBuses {
+        field_pan,
+        reverb_in,
+        reverb_wet,
+        delay_in,
+        delay_feedback,
+        delay_wet,
+    })
+}
+
+fn build_drone_pad(ctx: &BaseAudioContext, field_pan: &StereoPannerNode) -> Option<DronePad> {
+    let drone_gain = gain(ctx, 0.0)?;
+    let lp = lowpass(ctx, 600.0, 0.6)?;
+    connect(&drone_gain, &lp);
+    connect(&lp, field_pan);
+
+    let mut oscs = Vec::with_capacity(DRONE_VOICES);
+    let mut lfos = Vec::with_capacity(DRONE_VOICES);
+    for i in 0..DRONE_VOICES {
+        let osc = OscillatorNode::new(ctx).ok()?;
+        osc.set_type(if i == 0 {
+            OscillatorType::Sine
+        } else {
+            OscillatorType::Triangle
+        });
+        osc.frequency().set_value(110.0);
+        osc.detune().set_value((i as f32 - 1.0) * 5.0);
+
+        let drift = OscillatorNode::new(ctx).ok()?;
+        drift.set_type(OscillatorType::Sine);
+        drift.frequency().set_value(0.027 + 0.019 * i as f32);
+        let drift_depth = gain(ctx, ANALOG_DRIFT_CENTS)?;
+        connect(&drift, &drift_depth);
+        connect_param(&drift_depth, &osc.detune());
+        let _ = drift.start();
+        lfos.push(drift);
+
+        let voice_pan = panner(ctx, voice_spread(i))?;
+        connect(&osc, &voice_pan);
+        connect(&voice_pan, &drone_gain);
+        let _ = osc.start();
+        oscs.push(osc);
+    }
+
+    Some(DronePad {
+        oscs,
+        gain: drone_gain,
+        lp,
+        lfos,
+    })
+}
+
+fn build_shimmer(
+    ctx: &BaseAudioContext,
+    drone_lp: &BiquadFilterNode,
+    reverb_in: &GainNode,
+) -> Option<GainNode> {
+    let shaper = octave_up_shaper(ctx)?;
+    let band = bandpass(ctx, 1800.0, 0.45)?;
+    let shimmer_gain = gain(ctx, 0.0)?;
+    connect(drone_lp, &shaper);
+    connect(&shaper, &band);
+    connect(&band, &shimmer_gain);
+    connect(&shimmer_gain, reverb_in);
+    Some(shimmer_gain)
+}
+
+fn build_sub_bass(
+    ctx: &BaseAudioContext,
+    master_gain: &GainNode,
+) -> Option<(OscillatorNode, GainNode)> {
+    let sub_osc = OscillatorNode::new(ctx).ok()?;
+    sub_osc.set_type(OscillatorType::Sine);
+    sub_osc.frequency().set_value(55.0);
+    let sub_lp = lowpass(ctx, 120.0, 0.5)?;
+    let sub_gain = gain(ctx, 0.0)?;
+    connect(&sub_osc, &sub_lp);
+    connect(&sub_lp, &sub_gain);
+    connect(&sub_gain, master_gain);
+    let _ = sub_osc.start();
+    Some((sub_osc, sub_gain))
+}
+
+fn build_starfield(ctx: &BaseAudioContext, field_pan: &StereoPannerNode) -> Option<Starfield> {
+    let lp = lowpass(ctx, 2200.0, 0.5)?;
+    let star_gain = gain(ctx, 0.0)?;
+    connect(&lp, &star_gain);
+    connect(&star_gain, field_pan);
+
+    let mut oscs = Vec::with_capacity(STAR_VOICES);
+    let mut lfos = Vec::with_capacity(STAR_VOICES);
+    for i in 0..STAR_VOICES {
+        let osc = OscillatorNode::new(ctx).ok()?;
+        osc.set_type(OscillatorType::Sine);
+        osc.frequency().set_value(880.0);
+        osc.detune().set_value((i as f32 - 2.0) * 4.0);
+
+        let voice_gain = gain(ctx, 0.5)?;
+        connect(&osc, &voice_gain);
+        connect(&voice_gain, &lp);
+
+        let lfo = OscillatorNode::new(ctx).ok()?;
+        lfo.set_type(OscillatorType::Sine);
+        lfo.frequency().set_value(0.05 + 0.031 * i as f32);
+        let depth = gain(ctx, 0.5)?;
+        connect(&lfo, &depth);
+        connect_param(&depth, &voice_gain.gain());
+        let _ = lfo.start();
+        let _ = osc.start();
+        oscs.push(osc);
+        lfos.push(lfo);
+    }
+
+    Some(Starfield {
+        oscs,
+        lp,
+        gain: star_gain,
+        lfos,
+    })
+}
+
+fn build_noise_bed(
+    ctx: &BaseAudioContext,
+    master_gain: &GainNode,
+) -> Option<(GainNode, AudioBufferSourceNode)> {
+    let noise_src = AudioBufferSourceNode::new(ctx).ok()?;
+    if let Some(buf) = make_noise_buffer(ctx, 4.0) {
+        noise_src.set_buffer(Some(&buf));
+    }
+    noise_src.set_loop(true);
+
+    let noise_lp = lowpass(ctx, 240.0, 0.4)?;
+    let noise_lp2 = lowpass(ctx, 480.0, 0.4)?;
+    let noise_gain = gain(ctx, 0.0)?;
+    connect(&noise_src, &noise_lp);
+    connect(&noise_lp, &noise_lp2);
+    connect(&noise_lp2, &noise_gain);
+    connect(&noise_gain, master_gain);
+    let _ = noise_src.start();
+
+    Some((noise_gain, noise_src))
 }
 
 /// Owns the real-time AudioContext, the node graph, and the generative engine.

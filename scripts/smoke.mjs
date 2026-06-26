@@ -2,12 +2,13 @@
 // Browser smoke test for the built site. It accepts either a ready WebGPU canvas
 // or the intentional WebGPU unsupported error, and fails on asset/load/runtime
 // errors. This keeps CI useful on machines whose headless Chrome lacks WebGPU.
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { hasFlag, take, takeNumber } from './cli.mjs';
+import { ensureChrome, findChrome, getFreePort } from './preflight.mjs';
 import { startStaticServer } from './serve-static.mjs';
 
 class Cdp {
@@ -68,6 +69,7 @@ if (!chromePath) {
   console.log(`${message}; skipping browser smoke`);
   process.exit(0);
 }
+ensureChrome(chromePath);
 
 if (targetUrl) new URL(targetUrl);
 
@@ -78,9 +80,10 @@ if (!url) {
 }
 
 const profileDir = mkdtempSync(join(tmpdir(), 'galacto-smoke-profile-'));
-const debugPort = 9400 + Math.floor(Math.random() * 400);
+const debugPort = await getFreePort();
 const chrome = spawn(chromePath, [
   `--remote-debugging-port=${debugPort}`,
+  '--remote-debugging-address=127.0.0.1',
   `--user-data-dir=${profileDir}`,
   '--headless=new',
   '--no-first-run',
@@ -202,20 +205,6 @@ async function evaluatePageState(page, timeoutMs) {
     }
   }
   throw new Error('smoke: page evaluation failed');
-}
-
-function findChrome() {
-  const candidates = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-  ];
-  return candidates.find((path) => existsSync(path));
 }
 
 async function waitForExit(child, timeoutMs) {

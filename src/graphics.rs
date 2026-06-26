@@ -72,14 +72,17 @@ impl Graphics {
         })
     }
 
-    pub fn resize(&mut self, new_width: u32, new_height: u32) {
-        if new_width > 0 && new_height > 0 {
-            self.size.0 = new_width;
-            self.size.1 = new_height;
-            self.config.width = new_width;
-            self.config.height = new_height;
-            self.surface.configure(&self.device, &self.config);
+    pub fn resize(&mut self, new_width: u32, new_height: u32) -> bool {
+        if new_width == 0 || new_height == 0 {
+            return false;
         }
+
+        self.size.0 = new_width;
+        self.size.1 = new_height;
+        self.config.width = new_width;
+        self.config.height = new_height;
+        self.surface.configure(&self.device, &self.config);
+        true
     }
 
     /// Re-apply the current surface configuration after a Lost/Outdated surface.

@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { take, takeNumber, hasFlag, passArg, run } from "./cli.mjs";
+import { ensureChrome, ensureExecutable, findChrome, getFreePort } from "./preflight.mjs";
 
 function usage() {
   console.error(`Usage:
@@ -27,6 +28,7 @@ Options:
   --out-dir renders/proofs
   --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   --bitrate 80000000
+  --video-codec auto|h264|hevc|libx264|hevc_videotoolbox
   --no-headless
   --no-remux
 `);
@@ -283,7 +285,7 @@ async function main() {
   const fps = takeNumber("--fps", 60);
   const label = take("--label", `galacto-${durationSec}s`);
   const outDir = resolve(take("--out-dir", "renders/proofs"));
-  const chromePath = take("--chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+  const chromePath = take("--chrome") || process.env.CHROME || findChrome();
   const headless = !hasFlag("--no-headless");
   const remux = !hasFlag("--no-remux");
   const bitrate = takeNumber("--bitrate", width * height >= 3840 * 2160 ? 80_000_000 : 28_000_000);
@@ -305,6 +307,29 @@ async function main() {
   }
   if (produce && composeSeed == null) {
     throw new Error("--produce requires --compose <seed>");
+  }
+  if (!chromePath) {
+    throw new Error("capture: Chrome/Chromium not found; set CHROME=/path/to/browser or pass --chrome /path/to/browser");
+  }
+  ensureChrome(chromePath);
+  if (remux || produce) {
+    ensureExecutable("ffmpeg", {
+      args: ["-version"],
+      label: "ffmpeg",
+      installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+    });
+  }
+  if (produce) {
+    ensureExecutable("ffprobe", {
+      args: ["-version"],
+      label: "ffprobe",
+      installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+    });
+    ensureExecutable("rsvg-convert", {
+      args: ["--version"],
+      label: "rsvg-convert",
+      installHint: "install librsvg (macOS: brew install librsvg)",
+    });
   }
 
   const chunkDir = join(outDir, `${label}-chunks`);
@@ -328,9 +353,10 @@ async function main() {
     chunkDir,
     produce ? audioPath : null,
   );
-  const debugPort = 9300 + Math.floor(Math.random() * 500);
+  const debugPort = await getFreePort();
   const chromeArgs = [
     `--remote-debugging-port=${debugPort}`,
+    "--remote-debugging-address=127.0.0.1",
     `--user-data-dir=${profileDir}`,
     "--no-first-run",
     "--no-default-browser-check",
@@ -426,7 +452,7 @@ async function main() {
       chunkCount = readdirSync(chunkDir).filter((f) => f.endsWith(".part")).length;
       console.log(`reusing ${chunkCount} existing chunks from ${chunkDir}`);
     } else {
-      await captureChunks(page, {
+      const recorded = await captureChunks(page, {
         screenshotPath,
         composeSeed,
         particles,
@@ -436,8 +462,14 @@ async function main() {
         captureDuration,
         chunkPort,
       });
+      if (!recorded.chunks) {
+        throw new Error("capture: MediaRecorder completed without producing any chunks");
+      }
       chunkCount = await done;
       console.log(`chunks received: ${chunkCount}`);
+    }
+    if (chunkCount <= 0) {
+      throw new Error(`capture: no recorded chunks found in ${chunkDir}`);
     }
 
     // Concatenate the chunks into one webm. MediaRecorder timeslices are valid
@@ -445,6 +477,9 @@ async function main() {
     // a multi-GB 4K capture has hundreds of chunks, and firing every write() at once
     // (ignoring the `false` return) overruns the buffer and flushes nothing.
     const files = readdirSync(chunkDir).filter((file) => file.endsWith(".part")).sort();
+    if (files.length === 0) {
+      throw new Error(`capture: no chunk files found in ${chunkDir}`);
+    }
     const out = createWriteStream(webmPath);
     for (const file of files) {
       if (!out.write(readFileSync(join(chunkDir, file)))) {
@@ -500,6 +535,7 @@ async function main() {
         ...passArg("--start-subtitle"),
         ...passArg("--end-title"),
         ...passArg("--end-subtitle"),
+        ...passArg("--video-codec"),
       ]);
       console.log(`\n✅ Finished piece: ${finalPath}`);
     }

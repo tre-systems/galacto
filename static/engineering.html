@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Building Galacto — a GPU N-body galaxy in Rust and WebGPU</title>
+    <title>Building Galacto - a GPU N-body galaxy in Rust and WebGPU</title>
     <meta
       name="description"
       content="A technical walkthrough of a real-time, self-gravitating N-body galaxy simulation in the browser with Rust, WebAssembly and WebGPU: GPU-resident state, the tiled all-pairs gravity kernel, a symplectic leapfrog as three compute passes, and instanced billboard rendering."
     />
     <link rel="canonical" href="https://galacto.org/engineering" />
-    <meta property="og:title" content="Building Galacto — a GPU N-body galaxy in Rust and WebGPU" />
+    <meta property="og:title" content="Building Galacto - a GPU N-body galaxy in Rust and WebGPU" />
     <meta
       property="og:description"
       content="How Galacto keeps a self-gravitating N-body galaxy on the GPU with Rust, WebAssembly, WebGPU compute shaders, tiled all-pairs gravity, leapfrog integration, and instanced rendering."
@@ -21,7 +21,7 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Building Galacto — a GPU N-body galaxy in Rust and WebGPU" />
+    <meta name="twitter:title" content="Building Galacto - a GPU N-body galaxy in Rust and WebGPU" />
     <meta
       name="twitter:description"
       content="Rust, WebAssembly, WebGPU compute shaders, tiled all-pairs gravity, leapfrog integration, and instanced rendering."
@@ -30,62 +30,30 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#05060d" />
+    <link rel="stylesheet" href="/article.css" />
     <style>
       :root {
-        --bg: #05060d;
-        --bg2: #0a0e1c;
-        --panel: rgba(14, 19, 38, 0.66);
-        --border: rgba(141, 162, 255, 0.18);
-        --ink: #d7def5;
-        --ink-dim: #9aa6c8;
-        --head: #f3f6ff;
-        --gold: #ffc97a;
-        --blue: #7aa2f7;
-        --cyan: #79d6ff;
-        --violet: #b794ff;
-        --green: #9ece6a;
-        --maxw: 52rem;
+        --accent: var(--blue);
+        --eyebrow-color: var(--cyan);
+        --section-num-color: var(--blue);
+        --hero-title-max: 18ch;
+        --hero-title-size: clamp(32px, 6vw, 56px);
+        --code-accent: var(--blue);
+        --crosslink-hover: var(--blue);
       }
-      * { box-sizing: border-box; }
-      html { scroll-behavior: smooth; }
-      body {
-        margin: 0; background: var(--bg); color: var(--ink);
-        font: 17px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
-      }
-      a { color: var(--cyan); text-decoration: none; }
-      a:hover { text-decoration: underline; }
-
-      nav.top {
-        position: sticky; top: 0; z-index: 10; display: flex; gap: 18px; align-items: center;
-        padding:
-          calc(12px + env(safe-area-inset-top))
-          max(clamp(16px, 5vw, 40px), env(safe-area-inset-right))
-          12px
-          max(clamp(16px, 5vw, 40px), env(safe-area-inset-left));
-        background: rgba(5, 6, 13, 0.72);
-        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-        border-bottom: 1px solid var(--border); font-size: 14px;
-      }
-      nav.top .brand {
-        display: inline-flex; align-items: center; gap: 8px;
-        font-weight: 700; color: var(--head); letter-spacing: 0.02em;
-      }
-      nav.top .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
-      nav.top .spacer { flex: 1; }
-      nav.top a { color: var(--ink-dim); }
-      nav.top a:hover { color: var(--cyan); text-decoration: none; }
 
       header.hero {
-        position: relative; overflow: hidden;
-        padding: clamp(64px, 12vw, 140px) clamp(16px, 5vw, 40px) clamp(48px, 8vw, 90px); text-align: center;
         background:
           radial-gradient(70% 90% at 50% -10%, rgba(122, 162, 247, 0.22), transparent 60%),
           radial-gradient(50% 70% at 78% 8%, rgba(121, 214, 255, 0.14), transparent 60%),
           radial-gradient(40% 60% at 22% 0%, rgba(158, 206, 106, 0.10), transparent 60%);
       }
       header.hero::before {
-        content: ""; position: absolute; inset: 0; z-index: 0; opacity: 0.5;
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        opacity: 0.5;
         background-image:
           radial-gradient(1px 1px at 20% 30%, #fff, transparent),
           radial-gradient(1px 1px at 70% 20%, #cfe0ff, transparent),
@@ -96,65 +64,6 @@
           radial-gradient(1.5px 1.5px at 33% 18%, #fff, transparent);
         background-repeat: no-repeat;
       }
-      header.hero > * { position: relative; z-index: 1; }
-      .eyebrow { text-transform: uppercase; letter-spacing: 0.22em; font-size: 12px; color: var(--cyan); font-weight: 700; margin: 0 0 18px; }
-      header.hero h1 {
-        margin: 0 auto 18px; max-width: 18ch; font-size: clamp(32px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.02em; font-weight: 800;
-        background: linear-gradient(180deg, #fff, #b9c6ee); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-      }
-      header.hero p.lede { margin: 0 auto; max-width: 58ch; font-size: clamp(16px, 2.3vw, 20px); color: var(--ink-dim); }
-
-      main { max-width: var(--maxw); margin: 0 auto; padding: 8px clamp(16px, 5vw, 40px) 80px; }
-      section { padding: 36px 0; border-top: 1px solid rgba(141, 162, 255, 0.10); }
-      section:first-of-type { border-top: 0; }
-      h2 { font-size: clamp(23px, 3.4vw, 30px); color: var(--head); font-weight: 750; letter-spacing: -0.01em; margin: 0 0 6px; scroll-margin-top: 70px; }
-      h2 .num { font-size: 0.62em; color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 0.6em; opacity: 0.8; }
-      h3 { color: var(--head); font-size: 19px; margin: 28px 0 4px; font-weight: 650; }
-      p { margin: 14px 0; }
-      strong { color: #e9eeff; font-weight: 650; }
-      em { color: #cdd6f4; }
-      ul, ol { padding-left: 1.3em; }
-      li { margin: 9px 0; }
-      .dim { color: var(--ink-dim); }
-      code { font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; font-size: 0.86em; color: var(--gold); background: rgba(255, 201, 122, 0.08); padding: 1px 6px; border-radius: 5px; }
-
-      /* ---- code blocks (self-contained) ---- */
-      figure.code { margin: 22px 0; }
-      figure.code figcaption {
-        display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-dim);
-        padding: 0 4px 8px;
-      }
-      figure.code figcaption .lang {
-        font-family: "SF Mono", ui-monospace, monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
-        color: var(--blue); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px;
-      }
-      figure.code figcaption .path { color: var(--ink-dim); }
-      pre {
-        margin: 0; padding: 18px 20px; border-radius: 12px; overflow-x: auto;
-        background: #080b16; border: 1px solid var(--border); border-left: 3px solid var(--blue);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-      }
-      pre code {
-        font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-        font-size: 13.5px; line-height: 1.62; color: #c6d0f0; background: none; padding: 0; white-space: pre;
-      }
-      pre code .c { color: #6b7aa8; font-style: italic; } /* comment */
-      pre code .k { color: var(--violet); }                /* keyword */
-      pre code .t { color: var(--cyan); }                  /* type */
-      pre code .f { color: var(--gold); }                  /* fn / attr */
-
-      .note { margin: 22px 0; padding: 16px 20px; border-radius: 12px; font-size: 15.5px; background: var(--panel); border: 1px solid var(--border); }
-      .note .tag { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; font-weight: 700; margin-bottom: 6px; }
-      .note.key { border-left: 3px solid var(--cyan); } .note.key .tag { color: var(--cyan); }
-      .note.warn { border-left: 3px solid var(--gold); } .note.warn .tag { color: var(--gold); }
-      .note p:first-of-type { margin-top: 0; } .note p:last-of-type { margin-bottom: 0; }
-
-      .pill { color: var(--violet); font-weight: 600; }
-
-      footer { border-top: 1px solid var(--border); padding: 40px clamp(16px, 5vw, 40px); text-align: center; color: var(--ink-dim); font-size: 14px; }
-      footer a { color: var(--ink-dim); }
-      .crosslink { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px; padding: 10px 18px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--head); font-weight: 600; font-size: 14px; }
-      .crosslink:hover { border-color: var(--blue); text-decoration: none; }
     </style>
   </head>
   <body>
@@ -170,7 +79,7 @@
       <p class="eyebrow">The engineering</p>
       <h1>Building a galaxy in Rust &amp; WebGPU</h1>
       <p class="lede">
-        How Galacto runs a self-gravitating galaxy entirely on the GPU — inside a browser tab.
+        How Galacto runs a self-gravitating galaxy entirely on the GPU - inside a browser tab.
       </p>
     </header>
 
@@ -184,7 +93,7 @@
           written in WGSL. The dependency list is deliberately small; this is the core of it:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">toml</span><span class="path">Cargo.toml — abridged</span></figcaption>
+          <figcaption><span class="lang">toml</span><span class="path">Cargo.toml - abridged</span></figcaption>
           <pre><code><span class="k">[dependencies]</span>
 wgpu = <span class="t">"29.0"</span>              <span class="c"># WebGPU: compute + render</span>
 wasm-bindgen = <span class="t">"0.2"</span>       <span class="c"># the JS &lt;-&gt; Rust boundary</span>
@@ -206,7 +115,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           that frame. The compute passes and the draw read and write the same GPU-resident particle buffer:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — the per-frame driver</span></figcaption>
+          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs - the per-frame driver</span></figcaption>
           <pre><code><span class="k">fn</span> <span class="f">animation_frame</span>(time: <span class="t">f32</span>) {
     <span class="k">let</span> app_state = APP_STATE.<span class="f">with</span>(|cell| cell.<span class="f">borrow</span>().<span class="f">clone</span>());
     <span class="k">if let</span> <span class="t">Some</span>(app_state) = app_state {
@@ -226,8 +135,8 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <h2><span class="num">02</span>A body, laid out for the GPU</h2>
         <p>
           Each body is two <code>vec4</code>s: position + mass, and velocity + a colour tint. Packing as
-          <code>vec4</code> rather than <code>vec3</code> is not laziness — it is the single most common
-          WebGPU footgun. WGSL rounds a <code>vec3&lt;f32&gt;</code> up to a <strong>16-byte stride</strong> in
+          <code>vec4</code> rather than <code>vec3</code> avoids the single most common WebGPU footgun: WGSL
+          rounds a <code>vec3&lt;f32&gt;</code> up to a <strong>16-byte stride</strong> in
           storage, so a <code>vec3</code>-based struct silently disagrees with its Rust mirror. Using
           <code>vec4</code> makes the layout unambiguous and identical on both sides:
         </p>
@@ -241,7 +150,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
 }</code></pre>
         </figure>
         <figure class="code">
-          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl — the exact mirror</span></figcaption>
+          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl - the exact mirror</span></figcaption>
           <pre><code><span class="k">struct</span> <span class="t">Particle</span> {
     pos_mass: <span class="t">vec4&lt;f32&gt;</span>,  <span class="c">// xyz = position, w = mass</span>
     vel: <span class="t">vec4&lt;f32&gt;</span>,       <span class="c">// xyz = velocity, w = colour tint</span>
@@ -254,7 +163,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           sides, or it fails before it reaches a browser:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">rust</span><span class="path">src/simulation.rs — a test that guards the layout</span></figcaption>
+          <figcaption><span class="lang">rust</span><span class="path">src/simulation.rs - a test that guards the layout</span></figcaption>
           <pre><code><span class="f">#[test]</span>
 <span class="k">fn</span> <span class="f">buffer_layout_matches_wgsl</span>() {
     <span class="c">// Mirrored byte-for-byte by the structs in update.wgsl.</span>
@@ -269,18 +178,18 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <p>
           The expensive kernel is the <span class="pill">O(<var>N</var>²)</span> gravity sum: every body
           accumulates the pull of every other. Done naïvely, each of the <var>N</var> threads reads all
-          <var>N</var> bodies from global memory — <var>N</var>² global reads, and the kernel is starved on
+          <var>N</var> bodies from global memory - <var>N</var>² global reads, and the kernel is starved on
           memory bandwidth, not arithmetic.
         </p>
         <p>
-          The fix is the classic GPU <em>N</em>-body tiling pattern. The workgroup walks the body array in
+          The fix is the classic GPU <em>N</em>-body tiling pattern <a href="#r2">[2]</a>. The workgroup walks the body array in
           <strong>tiles</strong>: all 256 threads cooperatively stage one tile into fast
           <code>var&lt;workgroup&gt;</code> shared memory, hit a barrier, then every thread accumulates that
           whole tile's pull on its own body from shared memory before moving to the next tile. Global memory
           is touched once per workgroup per tile, not once per body per thread:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl — compute_accel (core)</span></figcaption>
+          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl - compute_accel (core)</span></figcaption>
           <pre><code><span class="c">// Tile size == workgroup size; particle_count is clamped to a multiple of it,</span>
 <span class="c">// so the tile loop never needs a tail guard.</span>
 <span class="k">const</span> TILE: <span class="t">u32</span> = <span class="t">256u</span>;
@@ -309,7 +218,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
             <span class="k">let</span> d = pmj.xyz - pi;
             <span class="k">let</span> r2 = <span class="f">dot</span>(d, d) + soft2;       <span class="c">// Plummer softening</span>
             <span class="k">let</span> inv = <span class="f">inverseSqrt</span>(r2);
-            <span class="c">// Self term (d == 0) contributes nothing — no branch needed.</span>
+            <span class="c">// Self term (d == 0) contributes nothing - no branch needed.</span>
             a += params.g * pmj.w * d * (inv * inv * inv);
         }
         <span class="f">workgroupBarrier</span>();
@@ -334,12 +243,12 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
         <h2><span class="num">04</span>A symplectic leapfrog, as three compute passes</h2>
         <p>
           The integrator is split across <strong>three separate compute passes</strong> per fixed step. That
-          separation isn't stylistic — it's how you avoid a read/write hazard. The gravity pass must read
+          separation isn't stylistic - it's how you avoid a read/write hazard. The gravity pass must read
           positions that the drift pass has finished writing; making them distinct passes lets the GPU order
           all of pass <var>n</var>'s writes before pass <var>n</var>+1's reads:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">rust</span><span class="path">src/simulation.rs — one drift–kick–drift step</span></figcaption>
+          <figcaption><span class="lang">rust</span><span class="path">src/simulation.rs - one drift–kick–drift step</span></figcaption>
           <pre><code><span class="k">pub fn</span> <span class="f">compute_pass</span>(&amp;<span class="k">self</span>, encoder: &amp;<span class="k">mut</span> <span class="t">wgpu::CommandEncoder</span>) {
     <span class="k">self</span>.<span class="f">dispatch</span>(encoder, &amp;<span class="k">self</span>.drift_pipeline, <span class="t">"Drift Pass"</span>);  <span class="c">// x += v·dt/2</span>
     <span class="k">self</span>.<span class="f">dispatch</span>(encoder, &amp;<span class="k">self</span>.accel_pipeline, <span class="t">"Accel Pass"</span>);  <span class="c">// gravity @ midpoint</span>
@@ -355,9 +264,9 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
     pass.<span class="f">dispatch_workgroups</span>(<span class="k">self</span>.count / WORKGROUP_SIZE, <span class="t">1</span>, <span class="t">1</span>);
 }</code></pre>
         </figure>
-        <p>The drift and kick kernels themselves are tiny — and note the drift carries the colour tint through untouched:</p>
+        <p>The drift and kick kernels themselves are tiny - and note the drift carries the colour tint through untouched:</p>
         <figure class="code">
-          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl — the leapfrog halves</span></figcaption>
+          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/update.wgsl - the leapfrog halves</span></figcaption>
           <pre><code><span class="f">@compute @workgroup_size(256)</span>
 <span class="k">fn</span> <span class="f">drift_half</span>(<span class="f">@builtin(global_invocation_id)</span> gid: <span class="t">vec3&lt;u32&gt;</span>) {
     <span class="k">let</span> i = gid.x;
@@ -378,9 +287,9 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
 }</code></pre>
         </figure>
         <p class="dim">
-          Drifting <em>first</em> is a nice trick: the very first kernel each step reads no acceleration, so a
-          freshly-seeded galaxy needs no primed <code>accel</code> buffer — the next pass simply evaluates
-          gravity at the drifted midpoint.
+          Drifting <em>first</em> means the first kernel each step reads no acceleration, so a freshly-seeded
+          galaxy needs no primed <code>accel</code> buffer - the next pass just evaluates gravity at the drifted
+          midpoint.
         </p>
       </section>
 
@@ -392,7 +301,7 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
           in whole fixed steps. Refresh rate changes how many frames you see, not the size of a physics step.
         </p>
         <figure class="code">
-          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — the accumulator</span></figcaption>
+          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs - the accumulator</span></figcaption>
           <pre><code><span class="c">// Bank real elapsed time (clamped against a stall), scaled by the speed knob.</span>
 <span class="k">self</span>.accumulator += frame_dt.<span class="f">clamp</span>(<span class="t">0.0</span>, MAX_FRAME_DT) * <span class="k">self</span>.speed;
 
@@ -418,13 +327,13 @@ rand = { version = <span class="t">"0.10"</span>, default-features = <span class
       <section>
         <h2><span class="num">06</span>Rendering: instanced billboards + bloom</h2>
         <p>
-          Each star is a camera-facing quad, drawn instanced — 4 vertices × <var>N</var> instances — with the
+          Each star is a camera-facing quad, drawn instanced - 4 vertices × <var>N</var> instances - with the
           vertex shader reading the same particle buffer the compute passes just wrote. The trick for a
           constant on-screen size regardless of depth is to offset in <em>clip space</em>, scaling by
           <code>clip.w</code> and dividing <var>x</var> by the aspect ratio to keep quads square:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/render.wgsl — billboard vertex (core)</span></figcaption>
+          <figcaption><span class="lang">wgsl</span><span class="path">src/shaders/render.wgsl - billboard vertex (core)</span></figcaption>
           <pre><code><span class="k">let</span> particle = particles[instance_index];
 <span class="k">var</span> clip = camera.transform * <span class="t">vec4&lt;f32&gt;</span>(particle.pos_mass.xyz, <span class="t">1.0</span>);
 
@@ -435,7 +344,7 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
         </figure>
         <p>
           The fragment shader draws a soft radial falloff, and <strong>additive blending</strong> sums
-          overlapping stars so dense regions build into a bright core — then a bright-pass / separable-blur /
+          overlapping stars so dense regions build into a bright core - then a bright-pass / separable-blur /
           tonemap pass adds the bloom that gives the galaxy its glow.
         </p>
       </section>
@@ -449,13 +358,13 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
           <code>#[wasm_bindgen]</code> free function the JavaScript calls:
         </p>
         <figure class="code">
-          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs — exported controls</span></figcaption>
+          <figcaption><span class="lang">rust</span><span class="path">src/lib.rs - exported controls</span></figcaption>
           <pre><code><span class="f">#[wasm_bindgen]</span>
 <span class="k">pub fn</span> <span class="f">set_halo</span>(halo_v0: <span class="t">f32</span>) {
     <span class="k">let</span> halo_v0 = halo_v0.<span class="f">clamp</span>(<span class="t">0.0</span>, <span class="t">400.0</span>);
     APP_STATE.<span class="f">with</span>(|cell| {
         <span class="k">if let</span> <span class="t">Some</span>(app) = cell.<span class="f">borrow</span>().<span class="f">as_ref</span>() {
-            app.<span class="f">borrow_mut</span>().<span class="f">set_halo</span>(halo_v0);  <span class="c">// rewrites the params uniform — live, no re-seed</span>
+            app.<span class="f">borrow_mut</span>().<span class="f">set_halo</span>(halo_v0);  <span class="c">// rewrites the params uniform - live, no re-seed</span>
         }
     });
 }</code></pre>
@@ -471,7 +380,7 @@ clip.y += corner.y * camera.size * clip.w;</code></pre>
         <ul>
           <li><strong>Mind WGSL alignment.</strong> <code>vec3</code> takes a 16-byte slot; pack with <code>vec4</code> or pad uniforms, and <em>assert</em> the layout in a test (§02). Silent stride mismatches are miserable to debug.</li>
           <li><strong>Keep state on the GPU.</strong> A per-frame readback stalls the pipeline waiting for the device. The only readback here is asynchronous and single-in-flight: a flag skips it while a previous map is pending, which naturally throttles it to the GPU round-trip rate and keeps it off the hot path.</li>
-          <li><strong>Separate passes for read/write hazards.</strong> Gravity reads what drift wrote — distinct compute passes give you the ordering guarantee for free (§04).</li>
+          <li><strong>Separate passes for read/write hazards.</strong> Gravity reads what drift wrote - distinct compute passes give you the ordering guarantee for free (§04).</li>
           <li><strong>Make the count a multiple of the workgroup size.</strong> Then the inner tile loop needs no bounds check, and every dispatch divides evenly.</li>
           <li><strong>Fixed timestep + accumulator.</strong> The display rate never changes integration accuracy (§05).</li>
           <li><strong>Deterministic RNG.</strong> A fixed-seed <code>StdRng::seed_from_u64</code> draws no OS entropy, so initial conditions are repeatable and there is no <code>getrandom</code> wasm backend to configure.</li>
@@ -504,12 +413,22 @@ node scripts/cache-bust.mjs dist
 node scripts/verify-build.mjs dist</code></pre>
         </figure>
         <p>
-          The output in <code>dist/</code> is a plain static site — no server, no backend — so it deploys to
+          The output in <code>dist/</code> is a plain static site - no server, no backend - so it deploys to
           any static host (Galacto runs on Cloudflare Pages). The build stamps the JS, WASM, CSS, and
           service-worker URLs with the git SHA, gives the service worker a per-deploy cache name, and
           fails if required app-shell files or cache-bust placeholders are wrong. Repeat visits stay quick,
           offline launch works, and the next navigation can still see a fresh deploy.
         </p>
+      </section>
+
+      <section>
+        <h2><span class="num">10</span>References &amp; further reading</h2>
+        <ol class="refs">
+          <li><cite>W3C</cite> - the <a href="https://www.w3.org/TR/webgpu/">WebGPU</a> and <a href="https://www.w3.org/TR/WGSL/">WGSL</a> specifications.</li>
+          <li id="r2"><cite>Nyland, L., Harris, M. &amp; Prins, J.</cite> (2007). <a href="https://developer.nvidia.com/gpugems/gpugems3/part-v-physics-simulation/chapter-31-fast-n-body-simulation-cuda">“Fast N-Body Simulation with CUDA,”</a> <em>GPU Gems 3</em>, ch. 31 - the tiled, shared-memory all-pairs pattern this kernel follows.</li>
+          <li><cite>Dehnen, W. &amp; Read, J. I.</cite> (2011). <a href="https://doi.org/10.1140/epjp/i2011-11055-3">“N-body simulations of gravitational dynamics,”</a> <em>Eur. Phys. J. Plus</em> 126, 55 - the symplectic leapfrog and softening.</li>
+          <li><cite>Tools</cite> - <a href="https://wgpu.rs/">wgpu</a> (WebGPU in Rust), <a href="https://docs.rs/wasm-bindgen/">wasm-bindgen</a> (the JS ↔ Rust boundary), <a href="https://docs.rs/bytemuck/">bytemuck</a> (zero-copy casts).</li>
+        </ol>
       </section>
 
       <p style="text-align: center; margin-top: 24px;">
@@ -524,7 +443,7 @@ node scripts/verify-build.mjs dist</code></pre>
       <p>
         <a href="https://galacto.org/">Open the simulator</a> · <a href="/physics">The physics</a> · <a href="/audio">The sound</a>
       </p>
-      <p class="dim">Galacto — a GPU-accelerated N-body galaxy sandbox, written in Rust and rendered with WebGPU.</p>
+      <p class="dim">Galacto - a GPU-accelerated N-body galaxy sandbox, written in Rust and rendered with WebGPU.</p>
     </footer>
   </body>
 </html>

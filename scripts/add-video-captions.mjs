@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { take, takeNumber, hasFlag, run } from "./cli.mjs";
+import { ensureExecutable } from "./preflight.mjs";
 
 function usage() {
   console.error(`Usage:
@@ -24,6 +25,7 @@ Options:
   --end-duration 7
   --fade 0.8
   --bitrate 55M
+  --video-codec auto|h264|hevc|libx264|hevc_videotoolbox
 `);
 }
 
@@ -34,15 +36,6 @@ function required(name) {
     throw new Error(`${name} is required`);
   }
   return value;
-}
-
-function ensureTool(command, argsForVersion) {
-  const result = spawnSync(command, argsForVersion, {
-    stdio: "ignore",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} is required. Install it with: brew install librsvg`);
-  }
 }
 
 function probe(path) {
@@ -166,6 +159,88 @@ function overlayFilter({ inputIndex, streamName, duration, start, end, fade }) {
   return `[${inputIndex}:v]format=rgba,fade=t=in:st=0:d=${effectiveFade}:alpha=1,fade=t=out:st=${fadeOutStart}:d=${effectiveFade}:alpha=1,setpts=PTS+${start}/TB[${streamName}];`;
 }
 
+function codecCandidates(requested) {
+  const normalized = requested.trim().toLowerCase();
+  if (!normalized || normalized === "auto") {
+    return process.platform === "darwin" ? ["hevc_videotoolbox", "libx264"] : ["libx264"];
+  }
+  if (normalized === "h264" || normalized === "x264") {
+    return process.platform === "darwin" ? ["libx264", "h264_videotoolbox"] : ["libx264"];
+  }
+  if (normalized === "hevc" || normalized === "h265") {
+    return process.platform === "darwin" ? ["hevc_videotoolbox", "libx265"] : ["libx265"];
+  }
+  if (normalized === "x265") return ["libx265"];
+  return [requested];
+}
+
+function videoCodecArgs(encoder, bitrate) {
+  const args = ["-c:v", encoder];
+  if (encoder === "libx264" || encoder === "libx265") {
+    args.push("-preset", "slow");
+  }
+  args.push("-b:v", bitrate, "-maxrate", "70M", "-bufsize", "110M");
+  if (isHevcEncoder(encoder)) {
+    args.push("-tag:v", "hvc1");
+  }
+  return args;
+}
+
+function isHevcEncoder(encoder) {
+  return /hevc|h265|x265/i.test(encoder);
+}
+
+function encodeWithFallback({ ffmpegArgs, filter, bitrate, requestedCodec, output }) {
+  const candidates = codecCandidates(requestedCodec);
+  const failures = [];
+  for (const encoder of candidates) {
+    const args = [
+      ...ffmpegArgs,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[v]",
+      "-map",
+      "0:a?",
+      ...videoCodecArgs(encoder, bitrate),
+      "-pix_fmt",
+      "yuv420p",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-colorspace",
+      "bt709",
+      "-c:a",
+      "copy",
+      "-movflags",
+      "+faststart",
+      output,
+    ];
+    console.log(`Video codec: ${encoder}`);
+    const result = spawnSync("ffmpeg", args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (!result.error && result.status === 0) return encoder;
+
+    rmSync(output, { force: true });
+    failures.push(`${encoder}: ${summarizeFailure(result)}`);
+    if (candidates.length > 1) {
+      console.warn(`ffmpeg failed with ${encoder}; trying next codec...`);
+    }
+  }
+  throw new Error(`Caption encode failed with codec candidates ${candidates.join(", ")}:\n${failures.join("\n")}`);
+}
+
+function summarizeFailure(result) {
+  if (result.error) return result.error.message;
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`.trim();
+  const tail = output.split("\n").filter(Boolean).slice(-12).join("\n");
+  return tail || `ffmpeg exited with status ${result.status}`;
+}
+
 if (hasFlag("--help")) {
   usage();
   process.exit(0);
@@ -182,9 +257,24 @@ const startDuration = takeNumber("--start-duration", 4.0);
 const endDuration = takeNumber("--end-duration", 7.0);
 const fade = takeNumber("--fade", 0.8);
 const bitrate = take("--bitrate", "55M");
+const videoCodec = take("--video-codec", "auto");
 
 if (!existsSync(input)) throw new Error(`Input does not exist: ${input}`);
-ensureTool("rsvg-convert", ["--version"]);
+ensureExecutable("ffmpeg", {
+  args: ["-version"],
+  label: "ffmpeg",
+  installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+});
+ensureExecutable("ffprobe", {
+  args: ["-version"],
+  label: "ffprobe",
+  installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+});
+ensureExecutable("rsvg-convert", {
+  args: ["--version"],
+  label: "rsvg-convert",
+  installHint: "install librsvg (macOS: brew install librsvg)",
+});
 const meta = probe(input);
 if (!Number.isFinite(meta.duration)) throw new Error(`Could not read video duration for ${input}`);
 mkdirSync(dirname(output), { recursive: true });
@@ -263,38 +353,13 @@ try {
   console.log(`Opening caption: ${startAt.toFixed(2)}s-${startEnd.toFixed(2)}s`);
   console.log(`End caption: ${endStart.toFixed(2)}s-${endEnd.toFixed(2)}s`);
 
-  run("ffmpeg", [
-    ...ffmpegArgs,
-    "-filter_complex",
+  encodeWithFallback({
+    ffmpegArgs,
     filter,
-    "-map",
-    "[v]",
-    "-map",
-    "0:a?",
-    "-c:v",
-    "hevc_videotoolbox",
-    "-b:v",
     bitrate,
-    "-maxrate",
-    "70M",
-    "-bufsize",
-    "110M",
-    "-tag:v",
-    "hvc1",
-    "-pix_fmt",
-    "yuv420p",
-    "-color_primaries",
-    "bt709",
-    "-color_trc",
-    "bt709",
-    "-colorspace",
-    "bt709",
-    "-c:a",
-    "copy",
-    "-movflags",
-    "+faststart",
+    requestedCodec: videoCodec,
     output,
-  ]);
+  });
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

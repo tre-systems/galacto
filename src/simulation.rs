@@ -209,6 +209,43 @@ pub struct Simulation {
     reduce_state: Rc<RefCell<ReduceState>>,
 }
 
+struct GpuBuffers {
+    particle: wgpu::Buffer,
+    accel: wgpu::Buffer,
+    params: wgpu::Buffer,
+    camera: wgpu::Buffer,
+    reductions: wgpu::Buffer,
+    reduction_staging: wgpu::Buffer,
+}
+
+struct ShaderModules {
+    compute: wgpu::ShaderModule,
+    render: wgpu::ShaderModule,
+}
+
+struct BindGroupLayouts {
+    compute: wgpu::BindGroupLayout,
+    render: wgpu::BindGroupLayout,
+}
+
+struct ComputePipelines {
+    accel: wgpu::ComputePipeline,
+    drift: wgpu::ComputePipeline,
+    kick: wgpu::ComputePipeline,
+    reduce: wgpu::ComputePipeline,
+}
+
+struct BindGroups {
+    compute: wgpu::BindGroup,
+    render: wgpu::BindGroup,
+}
+
+struct HaloRenderResources {
+    pipeline: wgpu::RenderPipeline,
+    viz_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+}
+
 impl Simulation {
     pub fn new(device: &wgpu::Device, color_format: wgpu::TextureFormat) -> Self {
         console_log!("Creating simulation...");
@@ -222,39 +259,63 @@ impl Simulation {
         // count, balanced against the default (logarithmic) halo — the first thing a
         // visitor sees, so it leads with the most dynamic scenario.
         let scenario = Scenario::GrandDesign;
+        let buffers = Self::create_buffers(device, scenario);
+        let shaders = Self::create_shaders(device);
+        let layouts = Self::create_bind_group_layouts(device);
+        let compute_pipelines =
+            Self::create_compute_pipelines(device, &shaders.compute, &layouts.compute);
+        let render_pipeline =
+            Self::create_render_pipeline(device, color_format, &shaders.render, &layouts.render);
+        let bind_groups = Self::create_bind_groups(device, &layouts, &buffers);
+        let halo = Self::create_halo_resources(device, color_format, &buffers.camera);
+
+        console_log!(
+            "✨ Self-gravitating galaxy ({} bodies) initialized!",
+            NUM_PARTICLES
+        );
+        console_log!("🌌 Pick a scenario and tweak the sliders.");
+
+        Self {
+            count: NUM_PARTICLES,
+            has_gas: scenario.has_gas(),
+            particle_buffer: buffers.particle,
+            accel_buffer: buffers.accel,
+            params_buffer: buffers.params,
+            accel_pipeline: compute_pipelines.accel,
+            drift_pipeline: compute_pipelines.drift,
+            kick_pipeline: compute_pipelines.kick,
+            render_pipeline,
+            compute_bind_group: bind_groups.compute,
+            render_bind_group: bind_groups.render,
+            camera_buffer: buffers.camera,
+            halo_pipeline: halo.pipeline,
+            halo_viz_buffer: halo.viz_buffer,
+            halo_bind_group: halo.bind_group,
+            reduce_pipeline: compute_pipelines.reduce,
+            reductions_buffer: buffers.reductions,
+            reduction_staging: buffers.reduction_staging,
+            reduce_state: Rc::new(RefCell::new(ReduceState::default())),
+        }
+    }
+
+    fn create_buffers(device: &wgpu::Device, scenario: Scenario) -> GpuBuffers {
         let particles = scenario.generate(NUM_PARTICLES, DEFAULT_TEMP, HaloKind::Logarithmic);
 
         // The particle buffer is sized for MAX_PARTICLES (zero-padded past the active
         // count) so the body-count slider can grow the sim without reallocating it.
         let mut initial = vec![Particle::zeroed(); MAX_PARTICLES as usize];
         initial[..particles.len()].copy_from_slice(&particles);
-        let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let particle = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
             contents: bytemuck::cast_slice(&initial),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
         // Scratch accel buffer, rewritten every step; no initial contents needed.
-        let accel_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let accel = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Accel Buffer"),
             size: (MAX_PARTICLES as u64) * 16, // vec4<f32> per body
             usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        // Core-statistics reduction output (one vec4 per workgroup) plus a mappable
-        // staging copy for the async readback that feeds the audio. Sized for the
-        // maximum body count; only the active prefix is copied and read each frame.
-        let reductions_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Core Reduction Buffer"),
-            size: MAX_REDUCTION_BYTES,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let reduction_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Core Reduction Staging"),
-            size: MAX_REDUCTION_BYTES,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
@@ -267,199 +328,369 @@ impl Simulation {
             NUM_PARTICLES,
             scenario.has_gas(),
         );
-
-        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let params = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Params Buffer"),
             contents: bytemuck::cast_slice(&[params]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let camera = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
             size: 80, // mat4 (64) + vec4 params (size, aspect, color_mode, glow)
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
+        // Core-statistics reduction output (one vec4 per workgroup) plus a mappable
+        // staging copy for the async readback that feeds the audio. Sized for the
+        // maximum body count; only the active prefix is copied and read each frame.
+        let reductions = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Core Reduction Buffer"),
+            size: MAX_REDUCTION_BYTES,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let reduction_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Core Reduction Staging"),
+            size: MAX_REDUCTION_BYTES,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        GpuBuffers {
+            particle,
+            accel,
+            params,
+            camera,
+            reductions,
+            reduction_staging,
+        }
+    }
+
+    fn create_shaders(device: &wgpu::Device) -> ShaderModules {
         // Compute shader holds the drift, gravity, kick, and audio-reduction kernels.
-        let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let compute = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/update.wgsl").into()),
         });
-
-        let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let render = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/render.wgsl").into()),
         });
+        ShaderModules { compute, render }
+    }
 
-        // Compute bind group: particles (rw), params (uniform), accel (rw). Both
-        // kernels share this one layout and bind group.
-        let compute_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Compute Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+    fn create_bind_group_layouts(device: &wgpu::Device) -> BindGroupLayouts {
+        // Compute bind group: particles (rw), params (uniform), accel (rw). All
+        // compute kernels share this one layout and bind group.
+        let compute = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Compute Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    // Binding 3: core-statistics partials, written only by
-                    // `reduce_core`; the simulation kernels ignore it.
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                // Binding 3: core-statistics partials, written only by `reduce_core`;
+                // the simulation kernels ignore it.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            });
-
-        let render_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Render Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        // The camera uniform is read in both stages now: the vertex
-                        // shader for the transform/size, the fragment shader for the
-                        // glow falloff.
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        let compute_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &[Some(&compute_bind_group_layout)],
-                immediate_size: 0,
-            });
-
-        // All-pairs gravity: reads positions, writes accelerations.
-        let accel_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Accel Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &compute_shader,
-            entry_point: Some("compute_accel"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
+                    count: None,
+                },
+            ],
         });
 
-        // Leapfrog half-drift (part 1): advance positions to the step midpoint.
-        let drift_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Drift Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &compute_shader,
-            entry_point: Some("drift_half"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
+        let render = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Render Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    // The camera uniform is read in both stages: the vertex shader
+                    // for transform/size, the fragment shader for glow falloff.
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
 
-        // Leapfrog kick + half-drift (part 2): apply the velocity kick from the
-        // midpoint accelerations, then drift the second half-step.
-        let kick_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Kick Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &compute_shader,
-            entry_point: Some("kick_drift_half"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
+        BindGroupLayouts { compute, render }
+    }
+
+    fn create_compute_pipelines(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        layout: &wgpu::BindGroupLayout,
+    ) -> ComputePipelines {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Compute Pipeline Layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
         });
 
-        // Core-statistics reduction (drives the audio): reads bodies, writes the
-        // per-workgroup partials. Shares the compute layout (binding 3 unused by
-        // the other kernels).
-        let reduce_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Core Reduce Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &compute_shader,
-            entry_point: Some("reduce_core"),
+        ComputePipelines {
+            // All-pairs gravity: reads positions, writes accelerations.
+            accel: Self::create_compute_pipeline(
+                device,
+                &pipeline_layout,
+                shader,
+                "Accel Pipeline",
+                "compute_accel",
+            ),
+            // Leapfrog half-drift: advance positions to the step midpoint.
+            drift: Self::create_compute_pipeline(
+                device,
+                &pipeline_layout,
+                shader,
+                "Drift Pipeline",
+                "drift_half",
+            ),
+            // Leapfrog kick + half-drift: apply the midpoint acceleration kick, then
+            // drift the second half-step.
+            kick: Self::create_compute_pipeline(
+                device,
+                &pipeline_layout,
+                shader,
+                "Kick Pipeline",
+                "kick_drift_half",
+            ),
+            // Core-statistics reduction: writes per-workgroup partials for audio.
+            reduce: Self::create_compute_pipeline(
+                device,
+                &pipeline_layout,
+                shader,
+                "Core Reduce Pipeline",
+                "reduce_core",
+            ),
+        }
+    }
+
+    fn create_compute_pipeline(
+        device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        shader: &wgpu::ShaderModule,
+        label: &'static str,
+        entry_point: &'static str,
+    ) -> wgpu::ComputePipeline {
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(label),
+            layout: Some(layout),
+            module: shader,
+            entry_point: Some(entry_point),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
+        })
+    }
+
+    fn create_render_pipeline(
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+        shader: &wgpu::ShaderModule,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::RenderPipeline {
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[Some(bind_group_layout)],
+            immediate_size: 0,
+        });
+        Self::create_additive_billboard_pipeline(
+            device,
+            "Render Pipeline",
+            &layout,
+            shader,
+            color_format,
+        )
+    }
+
+    fn create_bind_groups(
+        device: &wgpu::Device,
+        layouts: &BindGroupLayouts,
+        buffers: &GpuBuffers,
+    ) -> BindGroups {
+        let compute = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Compute Bind Group"),
+            layout: &layouts.compute,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.particle.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.accel.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.reductions.as_entire_binding(),
+                },
+            ],
         });
 
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&render_bind_group_layout)],
-                immediate_size: 0,
-            });
+        let render = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group"),
+            layout: &layouts.render,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.camera.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.particle.as_entire_binding(),
+                },
+            ],
+        });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
+        BindGroups { compute, render }
+    }
+
+    fn create_halo_resources(
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+        camera_buffer: &wgpu::Buffer,
+    ) -> HaloRenderResources {
+        // Dark-matter halo overlay: camera uniform + a small halo uniform, one
+        // additive billboard quad. Shares the HDR target and blend with the
+        // particles; drawn only when the page enables it.
+        let viz_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Halo Viz Buffer"),
+            size: std::mem::size_of::<HaloVizParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Halo Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/halo.wgsl").into()),
+        });
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Halo Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Halo Pipeline Layout"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+        let pipeline = Self::create_additive_billboard_pipeline(
+            device,
+            "Halo Pipeline",
+            &pipeline_layout,
+            &shader,
+            color_format,
+        );
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Halo Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: viz_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        HaloRenderResources {
+            pipeline,
+            viz_buffer,
+            bind_group,
+        }
+    }
+
+    fn create_additive_billboard_pipeline(
+        device: &wgpu::Device,
+        label: &'static str,
+        layout: &wgpu::PipelineLayout,
+        shader: &wgpu::ShaderModule,
+        color_format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        let targets = [Some(Self::additive_color_target(color_format))];
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(layout),
             vertex: wgpu::VertexState {
-                module: &render_shader,
+                module: shader,
                 entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &render_shader,
+                module: shader,
                 entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    // Additive: overlapping glowing particles accumulate brightness
-                    // (order-independent, correct for points on black).
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &targets,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             cache: None,
@@ -481,179 +712,27 @@ impl Simulation {
                 alpha_to_coverage_enabled: false,
             },
             multiview_mask: None,
-        });
+        })
+    }
 
-        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: particle_buffer.as_entire_binding(),
+    fn additive_color_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
+        wgpu::ColorTargetState {
+            format,
+            // Additive: overlapping glowing particles or halo pixels accumulate
+            // brightness (order-independent, correct for points on black).
+            blend: Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
                 },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: params_buffer.as_entire_binding(),
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
                 },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: accel_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: reductions_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &render_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: particle_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        // Dark-matter halo overlay: camera uniform + a small halo uniform, one
-        // additive billboard quad. Shares the HDR target and blend with the
-        // particles; drawn only when the page enables it.
-        let halo_viz_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Halo Viz Buffer"),
-            size: std::mem::size_of::<HaloVizParams>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let halo_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Halo Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/halo.wgsl").into()),
-        });
-        let halo_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Halo Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-        let halo_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Halo Pipeline Layout"),
-            bind_group_layouts: &[Some(&halo_bind_group_layout)],
-            immediate_size: 0,
-        });
-        let halo_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Halo Pipeline"),
-            layout: Some(&halo_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &halo_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &halo_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
-            cache: None,
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview_mask: None,
-        });
-        let halo_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Halo Bind Group"),
-            layout: &halo_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: halo_viz_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        console_log!(
-            "✨ Self-gravitating galaxy ({} bodies) initialized!",
-            NUM_PARTICLES
-        );
-        console_log!("🌌 Pick a scenario and tweak the sliders.");
-
-        Self {
-            count: NUM_PARTICLES,
-            has_gas: scenario.has_gas(),
-            particle_buffer,
-            accel_buffer,
-            params_buffer,
-            accel_pipeline,
-            drift_pipeline,
-            kick_pipeline,
-            render_pipeline,
-            compute_bind_group,
-            render_bind_group,
-            camera_buffer,
-            halo_pipeline,
-            halo_viz_buffer,
-            halo_bind_group,
-            reduce_pipeline,
-            reductions_buffer,
-            reduction_staging,
-            reduce_state: Rc::new(RefCell::new(ReduceState::default())),
+            write_mask: wgpu::ColorWrites::ALL,
         }
     }
 

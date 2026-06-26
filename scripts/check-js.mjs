@@ -8,6 +8,7 @@ import { join } from 'node:path';
 const roots = ['scripts'];
 const files = [
   'static/_worker.js',
+  'static/app.js',
   'static/sentry-config.js',
   'static/sentry.js',
 ];

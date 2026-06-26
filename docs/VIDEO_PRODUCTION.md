@@ -73,8 +73,8 @@ Use `--no-build` only when `dist/` is already a freshly verified build. Use
 
 ## Required Tools
 
-- Node.js 22+ and npm dependencies (`npm run setup`).
-- Rust + the wasm target and `wasm-pack` (`npm run setup` installs these).
+- Node.js 22+ and lockfile npm dependencies (`npm run setup` runs `npm ci`).
+- Rust + the wasm target, `wasm-pack` 0.15.0, and `cargo-audit` 0.22.2 (`npm run setup` installs these).
 - Chrome/Chromium for canvas capture.
 - `ffmpeg` and `ffprobe` on `PATH`.
 - `rsvg-convert` from librsvg for caption plates (`brew install librsvg`).

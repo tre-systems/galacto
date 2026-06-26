@@ -57,14 +57,27 @@ export async function startStaticServer({ dir = 'dist', host = '127.0.0.1', port
   });
 
   await new Promise((resolveListen, rejectListen) => {
-    server.once('error', rejectListen);
+    const onError = (error) => rejectListen(describeListenError(error, host, port));
+    server.once('error', onError);
     server.listen(port, host, () => {
-      server.off('error', rejectListen);
+      server.off('error', onError);
       resolveListen();
     });
   });
   const address = server.address();
   return { server, root, url: `http://${address.address}:${address.port}/` };
+}
+
+function describeListenError(error, host, port) {
+  if (error.code === 'EADDRINUSE') {
+    return Object.assign(
+      new Error(
+        `serve-static: ${host}:${port} is already in use; stop that process or pass a different --port`,
+      ),
+      { code: error.code, cause: error },
+    );
+  }
+  return error;
 }
 
 async function resolveRequest(root, rawUrl) {
@@ -110,7 +123,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.log(`serve-static: ${url}`);
     })
     .catch((error) => {
-      console.error(error);
+      console.error(error.message || error);
       process.exit(1);
     });
 }

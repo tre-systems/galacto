@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>The Physics of Galacto — real gravity in a browser-sized galaxy</title>
+    <title>The Physics of Galacto - real gravity in a browser-sized galaxy</title>
     <meta
       name="description"
-      content="How Galacto works as physics: self-gravity, leapfrog integration, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction in galaxy mergers — with a clear split between the real dynamics and the deliberate approximations."
+      content="How Galacto works as physics: self-gravity, leapfrog integration, dark-matter halos and flat rotation curves, the Toomre stability of spiral arms, dissipative gas, and dynamical friction in galaxy mergers - with a clear split between the real dynamics and the deliberate approximations."
     />
     <link rel="canonical" href="https://galacto.org/physics" />
-    <meta property="og:title" content="The Physics of Galacto — real gravity in a browser-sized galaxy" />
+    <meta property="og:title" content="The Physics of Galacto - real gravity in a browser-sized galaxy" />
     <meta
       property="og:description"
       content="How Galacto models self-gravity, leapfrog integration, dark-matter halos, Toomre Q, cold gas, and dynamical friction, with a clear split between real dynamics and deliberate approximations."
@@ -21,7 +21,7 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Galacto: a luminous spiral galaxy simulation with blue gas arms and a warm stellar core" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="The Physics of Galacto — real gravity in a browser-sized galaxy" />
+    <meta name="twitter:title" content="The Physics of Galacto - real gravity in a browser-sized galaxy" />
     <meta
       name="twitter:description"
       content="Self-gravity, leapfrog integration, dark-matter halos, Toomre Q, cold gas, and dynamical friction in Galacto."
@@ -30,69 +30,39 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#05060d" />
+    <link rel="stylesheet" href="/article.css" />
     <style>
       :root {
-        --bg: #05060d;
-        --bg2: #0a0e1c;
-        --panel: rgba(14, 19, 38, 0.66);
-        --border: rgba(141, 162, 255, 0.18);
-        --ink: #d7def5;
-        --ink-dim: #9aa6c8;
-        --head: #f3f6ff;
-        --gold: #ffc97a;
-        --blue: #7aa2f7;
-        --cyan: #79d6ff;
-        --violet: #b794ff;
         --maxw: 50rem;
+        --accent: var(--blue);
+        --eyebrow-color: var(--gold);
+        --section-num-color: var(--blue);
+        --hero-title-max: 16ch;
+        --hero-title-size: clamp(34px, 6.5vw, 60px);
+        --hero-title-line-height: 1.04;
+        --lede-max: 56ch;
+        --inline-code-size: 0.88em;
+        --eq-accent: var(--blue);
+        --eq-bg-start: rgba(122, 162, 247, 0.08);
+        --eq-bg-end: rgba(122, 162, 247, 0.03);
+        --eq-font-size: 19px;
+        --eq-padding: 18px 22px;
+        --crosslink-hover: var(--blue);
+        --li-margin: 8px;
       }
-      * { box-sizing: border-box; }
-      html { scroll-behavior: smooth; }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font: 17px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-      }
-      a { color: var(--cyan); text-decoration: none; }
-      a:hover { text-decoration: underline; }
 
-      /* ---- top nav ---- */
-      nav.top {
-        position: sticky; top: 0; z-index: 10;
-        display: flex; gap: 18px; align-items: center;
-        padding:
-          calc(12px + env(safe-area-inset-top))
-          max(clamp(16px, 5vw, 40px), env(safe-area-inset-right))
-          12px
-          max(clamp(16px, 5vw, 40px), env(safe-area-inset-left));
-        background: rgba(5, 6, 13, 0.72);
-        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-        border-bottom: 1px solid var(--border);
-        font-size: 14px;
-      }
-      nav.top .brand {
-        display: inline-flex; align-items: center; gap: 8px;
-        font-weight: 700; color: var(--head); letter-spacing: 0.02em;
-      }
-      nav.top .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
-      nav.top .spacer { flex: 1; }
-      nav.top a { color: var(--ink-dim); }
-      nav.top a:hover { color: var(--cyan); text-decoration: none; }
-
-      /* ---- hero ---- */
       header.hero {
-        position: relative; overflow: hidden;
-        padding: clamp(64px, 12vw, 140px) clamp(16px, 5vw, 40px) clamp(48px, 8vw, 90px);
-        text-align: center;
         background:
           radial-gradient(70% 90% at 50% -10%, rgba(122, 162, 247, 0.22), transparent 60%),
           radial-gradient(50% 70% at 78% 8%, rgba(183, 148, 255, 0.16), transparent 60%),
           radial-gradient(40% 60% at 22% 0%, rgba(255, 201, 122, 0.10), transparent 60%);
       }
       header.hero::before {
-        content: ""; position: absolute; inset: 0; z-index: 0; opacity: 0.5;
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        opacity: 0.5;
         background-image:
           radial-gradient(1px 1px at 20% 30%, #fff, transparent),
           radial-gradient(1px 1px at 70% 20%, #cfe0ff, transparent),
@@ -104,85 +74,19 @@
           radial-gradient(1.5px 1.5px at 33% 18%, #fff, transparent);
         background-repeat: no-repeat;
       }
-      header.hero > * { position: relative; z-index: 1; }
-      .eyebrow {
-        text-transform: uppercase; letter-spacing: 0.22em; font-size: 12px;
-        color: var(--gold); font-weight: 700; margin: 0 0 18px;
-      }
-      header.hero h1 {
-        margin: 0 auto 18px; max-width: 16ch;
-        font-size: clamp(34px, 6.5vw, 60px); line-height: 1.04; letter-spacing: -0.02em;
-        color: var(--head); font-weight: 800;
-        background: linear-gradient(180deg, #fff, #b9c6ee);
-        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-      }
-      header.hero p.lede {
-        margin: 0 auto; max-width: 56ch; font-size: clamp(16px, 2.3vw, 20px); color: var(--ink-dim);
-      }
 
-      /* ---- layout ---- */
-      main { max-width: var(--maxw); margin: 0 auto; padding: 8px clamp(16px, 5vw, 40px) 80px; }
-      section { padding: 36px 0; border-top: 1px solid rgba(141, 162, 255, 0.10); }
-      section:first-of-type { border-top: 0; }
-      h2 {
-        font-size: clamp(23px, 3.4vw, 30px); color: var(--head); font-weight: 750;
-        letter-spacing: -0.01em; margin: 0 0 6px; scroll-margin-top: 70px;
+      .frac {
+        display: inline-flex;
+        flex-direction: column;
+        vertical-align: middle;
+        text-align: center;
+        margin: 0 0.25em;
       }
-      h2 .num {
-        font-size: 0.62em; color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums;
-        margin-right: 0.6em; opacity: 0.8;
+      .frac > span {
+        padding: 0 0.5em;
+        line-height: 1.25;
       }
-      h3 { color: var(--head); font-size: 19px; margin: 28px 0 4px; font-weight: 650; }
-      p { margin: 14px 0; }
-      strong { color: #e9eeff; font-weight: 650; }
-      em { color: #cdd6f4; }
-      ul, ol { padding-left: 1.3em; }
-      li { margin: 8px 0; }
-      .dim { color: var(--ink-dim); }
-
-      /* ---- equation block (self-contained, no external math lib) ---- */
-      .eq {
-        margin: 22px 0; padding: 18px 22px; border-radius: 12px;
-        background: linear-gradient(180deg, rgba(122, 162, 247, 0.08), rgba(122, 162, 247, 0.03));
-        border: 1px solid var(--border); border-left: 3px solid var(--blue);
-        font-size: 19px; text-align: center; color: #eaf0ff; overflow-x: auto;
-      }
-      .eq .where { display: block; margin-top: 10px; font-size: 13px; color: var(--ink-dim); text-align: center; }
-      var, .var { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
-      .frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 0.25em; }
-      .frac > span { padding: 0 0.5em; line-height: 1.25; }
       .frac > .num { border-bottom: 1.4px solid currentColor; }
-
-      /* ---- callouts ---- */
-      .note {
-        margin: 22px 0; padding: 16px 20px; border-radius: 12px; font-size: 15.5px;
-        background: var(--panel); border: 1px solid var(--border);
-      }
-      .note .tag {
-        display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
-        font-weight: 700; margin-bottom: 6px;
-      }
-      .note.honesty { border-left: 3px solid var(--gold); }
-      .note.honesty .tag { color: var(--gold); }
-      .note.key { border-left: 3px solid var(--cyan); }
-      .note.key .tag { color: var(--cyan); }
-      .note p:first-of-type { margin-top: 0; }
-      .note p:last-of-type { margin-bottom: 0; }
-
-      .pill { color: var(--violet); font-weight: 600; }
-      code { font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; font-size: 0.88em; color: var(--gold); background: rgba(255, 201, 122, 0.08); padding: 1px 6px; border-radius: 5px; }
-
-      footer {
-        border-top: 1px solid var(--border); padding: 40px clamp(16px, 5vw, 40px); text-align: center;
-        color: var(--ink-dim); font-size: 14px;
-      }
-      footer a { color: var(--ink-dim); }
-      .crosslink {
-        display: inline-flex; gap: 8px; align-items: center; margin-top: 10px;
-        padding: 10px 18px; border: 1px solid var(--border); border-radius: 999px;
-        background: var(--panel); color: var(--head); font-weight: 600; font-size: 14px;
-      }
-      .crosslink:hover { border-color: var(--blue); text-decoration: none; }
     </style>
   </head>
   <body>
@@ -198,11 +102,9 @@
       <p class="eyebrow">The science</p>
       <h1>Real gravity, browser-sized galaxy</h1>
       <p class="lede">
-        Galacto is a self-gravitating <em>N</em>-body galaxy sandbox: tens of thousands of stars,
-        each pulling on every other through the same Newtonian gravity used in real galaxy simulations,
-        scaled down for a browser. No scripted arms, no canned animation — the spirals, bars, tidal
-        bridges and merger remnants are consequences of the dynamics. This page is the split between
-        what is really being simulated and what is deliberately approximate.
+        Tens of thousands of stars, each pulling on every other with Newtonian gravity - the same force real
+        galaxy simulations use, scaled to a browser. Nothing is scripted: the arms, bars, tidal bridges and
+        merger remnants all fall out of the dynamics. Here's what's real, and where the model cuts corners.
       </p>
     </header>
 
@@ -210,9 +112,9 @@
       <section>
         <h2><span class="num">01</span>Gravity, all of it</h2>
         <p>
-          Every body carries a mass and feels the pull of <em>every</em> other body — the full
-          <strong>all-pairs</strong> sum, with no tree code or particle-mesh approximation to the force.
-          The acceleration of body <var>i</var> is Newtonian gravity summed over all <var>j</var>:
+          Every body feels the pull of <em>every</em> other - the full <strong>all-pairs</strong> sum, with no
+          tree code or particle-mesh shortcut. The acceleration of body <var>i</var> is Newtonian gravity summed
+          over all <var>j</var>:
         </p>
         <div class="eq">
           <var>a</var><sub><var>i</var></sub> = <var>G</var> ∑<sub><var>j</var></sub> <var>m</var><sub><var>j</var></sub>
@@ -220,30 +122,28 @@
           <span class="where">with a <strong>Plummer softening</strong> length <var>ε</var> in the denominator</span>
         </div>
         <p>
-          That <var>ε</var>² is the one liberty taken with Newton. A pure <var>1/r</var>² force diverges when two
-          bodies pass arbitrarily close, and with a finite timestep that produces spurious slingshots
-          that wreck energy conservation. Softening replaces each point mass with a small
-          <em>Plummer sphere</em>, capping the force at short range — the standard, physically-motivated
-          fix in collisionless <em>N</em>-body work. It also stands in for the fact that each simulated
-          body represents millions of real stars, not one.
+          The <var>ε</var>² is the one liberty taken with Newton. A pure <var>1/r</var>² force blows up when two
+          bodies pass close, and at a finite timestep that throws spurious slingshots that wreck energy
+          conservation. Softening spreads each point mass into a small <em>Plummer sphere</em> <a href="#r6">[6]</a>,
+          capping the force at short range - standard in collisionless <em>N</em>-body work <a href="#r8">[8]</a><a href="#r9">[9]</a>,
+          and a fair stand-in for the fact that each body here represents millions of real stars.
         </p>
         <div class="note key">
           <span class="tag">In the sandbox</span>
           <p>
-            16,384 bodies by default, up to 163,840 — ten times as many — with the <strong>Bodies</strong> slider.
-            Per-body mass scales as 1/<var>N</var>, so adding bodies refines the <em>same</em> galaxy rather
-            than piling on mass. The cost is real: all-pairs gravity is <span class="pill">O(<var>N</var>²)</span>,
-            which is exactly why a browser sim lives in the thousands, not the billions.
+            16,384 bodies by default, up to 163,840 with the <strong>Bodies</strong> slider. Per-body mass
+            scales as 1/<var>N</var>, so adding bodies refines the <em>same</em> galaxy instead of piling on mass.
+            All-pairs gravity is <span class="pill">O(<var>N</var>²)</span> - which is why a browser sim lives in
+            the thousands, not the billions.
           </p>
         </div>
       </section>
 
       <section>
-        <h2><span class="num">02</span>Moving the stars: the leapfrog</h2>
+        <h2><span class="num">02</span>Moving the stars: leapfrog</h2>
         <p>
-          Integrating those accelerations forward in time is where naïve methods quietly fail. Galacto
-          uses the <strong>leapfrog</strong> (drift–kick–drift) scheme, advancing each body by a fixed
-          step <var>dt</var> in three moves:
+          Integrating those accelerations is where naïve schemes fail. Galacto uses <strong>leapfrog</strong>
+          (drift–kick–drift), advancing each body a fixed step <var>dt</var> in three moves:
         </p>
         <div class="eq">
           <var>x</var> ← <var>x</var> + <var>v</var>·<var>dt</var>/2 &nbsp;&nbsp;→&nbsp;&nbsp;
@@ -252,42 +152,38 @@
           <span class="where">drift a half-step, kick with gravity sampled at the midpoint, drift the second half</span>
         </div>
         <p>
-          Leapfrog is <strong>symplectic</strong>: it preserves the geometric structure of
-          Hamiltonian (energy-conserving) flow, so the total energy oscillates within a bound instead
-          of drifting away. A simple Euler step, by contrast, leaks energy every orbit and would let
-          the cold disk puff up or spiral in within a few rotations. That stability is what lets a
-          thin disk survive long enough to grow arms.
+          Leapfrog is <strong>symplectic</strong> <a href="#r8">[8]</a>: total energy oscillates within a bound
+          instead of drifting away. Plain Euler leaks energy every orbit - the cold disk would puff up or spiral
+          in within a few rotations. That stability is what lets a thin disk survive long enough to grow arms.
         </p>
         <p class="dim">
-          The step is fixed at <var>dt</var> = 1/60 in simulation time and decoupled from your screen's
-          refresh rate by an accumulator, so a slow display does not make the integrator take bigger,
-          less accurate steps. The seeded initial conditions are repeatable; the long-run path is not
-          promised bit-for-bit across different GPUs.
+          The step is fixed at <var>dt</var> = 1/60 of sim time and decoupled from the display by an accumulator,
+          so a slow refresh rate never forces bigger, less accurate steps. Seeds are repeatable; the long-run
+          path is not bit-for-bit across different GPUs.
         </p>
       </section>
 
       <section>
         <h2><span class="num">03</span>Putting numbers on it</h2>
         <p>
-          The solver runs in arbitrary units with <var>G</var> = 1. Two anchors turn those into
-          recognisable galaxy scales for the on-screen readouts:
+          The solver runs in arbitrary units with <var>G</var> = 1. Two anchors turn those into galaxy scales
+          for the on-screen readouts:
         </p>
         <ul>
-          <li>one length unit ≡ <strong>0.1 kpc</strong>, and</li>
-          <li>the default halo's circular speed ≡ <strong>220 km/s</strong> — a Milky-Way-like flat rotation curve.</li>
+          <li>one length unit ≡ <strong>0.1 kpc</strong>;</li>
+          <li>the default halo flattens at <strong>220 km/s</strong> - a Milky-Way-like rotation curve.</li>
         </ul>
         <p>
-          Because <var>G</var> = 1, the time scale then follows from length ÷ velocity: one time unit ≈
-          <strong>33 million years</strong>. With those, the disk's scale length (35 units) reads ≈ 3.5&nbsp;kpc
-          and the galaxy's stellar mass works out to ≈ 7×10<sup>10</sup> solar masses — all squarely galaxy-plausible. The
-          <strong>Speed</strong> readout shows millions of years of simulated time per real second, and the
-          clock on the rotation-curve overlay shows elapsed Myr.
+          The time unit then follows: ≈ <strong>33 million years</strong>. The disk's scale length (35 units)
+          reads ≈ 3.5&nbsp;kpc and its stellar mass ≈ 7×10<sup>10</sup> <var>M</var><sub>☉</sub> -
+          galaxy-plausible. The <strong>Speed</strong> readout shows Myr of simulated time per real second; the
+          rotation-curve clock shows elapsed Myr.
         </p>
         <div class="note honesty">
           <span class="tag">Worth knowing</span>
           <p>
-            These factors are for <em>display only</em> — the solver never sees them. They re-label the
-            visuals in physical units without touching the dynamics, so the equations hold in real units too.
+            These factors are display-only; the solver never sees them. They re-label the visuals in physical
+            units without touching the dynamics.
           </p>
         </div>
       </section>
@@ -295,11 +191,11 @@
       <section>
         <h2><span class="num">04</span>Dark matter and the flat rotation curve</h2>
         <p>
-          Spin a galaxy's visible mass and Newton predicts the orbital speed should <em>fall</em> with
-          radius once you're outside most of the light — the way planets slow down further from the Sun.
-          Real galaxies don't: their rotation curves stay <strong>flat</strong> far beyond the visible disk.
-          The standard explanation is an enormous, invisible <strong>dark-matter halo</strong> whose mass keeps
-          growing with radius. Galacto adds that halo as a static background force, in two selectable shapes:
+          Outside most of a galaxy's visible mass, Newton says orbital speed should <em>fall</em> with radius,
+          the way planets slow further from the Sun. Real galaxies don't - their rotation curves stay
+          <strong>flat</strong> far beyond the visible disk <a href="#r7">[7]</a>. The standard explanation is an
+          invisible <strong>dark-matter halo</strong> whose enclosed mass keeps growing outward. Galacto adds one
+          as a static background force, in two shapes:
         </p>
         <div class="eq">
           <strong>Logarithmic:</strong>&nbsp; <var>v</var><sub>c</sub>² =
@@ -307,32 +203,30 @@
           <span class="where">flat at large <var>r</var>; an unbounded potential, so the system stays bound and debris always returns</span>
         </div>
         <div class="eq">
-          <strong>NFW</strong> (cold dark matter):&nbsp; <var>v</var><sub>c</sub>² ∝
+          <strong>NFW</strong> (cold dark matter) <a href="#r4">[4]</a>:&nbsp; <var>v</var><sub>c</sub>² ∝
           <span class="frac"><span class="num">ln(1+<var>x</var>) − <var>x</var>/(1+<var>x</var>)</span><span class="den"><var>x</var></span></span>,&nbsp; <var>x</var> = <var>r</var>/<var>r</var><sub>s</sub>
           <span class="where">rises to a peak near <var>r</var> ≈ 2.16 <var>r</var><sub>s</sub> then declines; a finite potential, so fast debris can escape</span>
         </div>
         <p>
           The <strong>Curve</strong> overlay plots the circular speed against radius and splits it into its
-          three contributions — bulge, disk and halo — which add in quadrature:
+          three contributions - bulge, disk and halo - which add in quadrature:
         </p>
         <div class="eq">
           <var>v</var><sub>c</sub>²(<var>r</var>) = <var>v</var><sub>bulge</sub>² + <var>v</var><sub>disk</sub>² + <var>v</var><sub>halo</sub>²
         </div>
         <p>
-          The flat outer part is held up almost entirely by the halo — the classic observational clue
-          behind dark matter, made visible as a live decomposition. Drag the <strong>Strength</strong> slider (in km/s) or the
-          <strong>Size</strong> slider (the halo's scale radius, in kpc) and watch the curve respond: a
-          concentrated halo rises steeply in the centre, a diffuse one gently.
+          The flat outer part is held up almost entirely by the halo - the original clue for dark matter, here as
+          a live decomposition. Drag <strong>Strength</strong> (km/s) or <strong>Size</strong> (the scale radius,
+          kpc) and the curve responds: a concentrated halo rises steeply, a diffuse one gently.
         </p>
       </section>
 
       <section>
         <h2><span class="num">05</span>Why spiral arms form: the Toomre <var>Q</var></h2>
         <p>
-          A cold, rotating, self-gravitating disk is poised on a knife-edge. Too cold and its own gravity
-          wins, collapsing it into clumps; too hot and random motions smear out any structure. In between
-          lies the regime where small disturbances get amplified into the grand sweeping arms of a spiral.
-          The control parameter is the <strong>Toomre stability parameter</strong>:
+          A cold, rotating, self-gravitating disk sits on a knife-edge. Too cold and its own gravity collapses it
+          into clumps; too hot and random motions smear out any structure. Between them, small disturbances
+          amplify into spiral arms. The control parameter is Toomre's <var>Q</var> <a href="#r1">[1]</a>:
         </p>
         <div class="eq">
           <var>Q</var> =
@@ -340,28 +234,27 @@
           <span class="where"><var>σ</var><sub>R</sub> = radial velocity dispersion · <var>κ</var> = epicyclic frequency · <var>Σ</var> = surface density</span>
         </div>
         <p>
-          Here <var>κ</var> is the <em>epicyclic frequency</em> — the rate at which a slightly-disturbed star
-          oscillates radially as it orbits — read straight off the rotation curve via
-          <var>κ</var>² = 2<var>Ω</var>(<var>Ω</var> + d<var>v</var><sub>c</sub>/d<var>r</var>). The stability sequence is sharp:
+          <var>κ</var> is the <em>epicyclic frequency</em> - how fast a slightly-disturbed star oscillates
+          radially as it orbits - read straight off the rotation curve via
+          <var>κ</var>² = 2<var>Ω</var>(<var>Ω</var> + d<var>v</var><sub>c</sub>/d<var>r</var>). The sequence is sharp:
         </p>
         <ul>
-          <li><strong><var>Q</var> ≲ 1</strong> — gravity dominates; the disk fragments into clumps and rings.</li>
-          <li><strong><var>Q</var> ≈ 1–2</strong> — the sweet spot; <em>swing amplification</em> turns noise into trailing spiral density waves.</li>
-          <li><strong><var>Q</var> ≫ 2</strong> — pressure and rotation win; a smooth, featureless disk.</li>
+          <li><strong><var>Q</var> ≲ 1</strong> - gravity dominates; the disk fragments into clumps and rings.</li>
+          <li><strong><var>Q</var> ≈ 1–2</strong> - the sweet spot; <em>swing amplification</em> turns noise into trailing spiral density waves <a href="#r2">[2]</a><a href="#r3">[3]</a>.</li>
+          <li><strong><var>Q</var> ≫ 2</strong> - pressure and rotation win; a smooth, featureless disk.</li>
         </ul>
         <p>
-          The <strong>Toomre Q</strong> slider sets the target <var>Q</var> for the next seed. The sim inverts the relation to
-          assign each radius the dispersion it needs — <var>σ</var><sub>R</sub>(<var>r</var>) = <var>Q</var> · 3.36 <var>G</var> <var>Σ</var>(<var>r</var>) / <var>κ</var>(<var>r</var>) —
-          so the disk is <em>born</em> at your chosen stability and then evolves on its own after Restart or a scenario switch.
+          The <strong>Toomre Q</strong> slider sets the target for the next seed. The sim inverts the relation to
+          give each radius the dispersion it needs - <var>σ</var><sub>R</sub>(<var>r</var>) = <var>Q</var> · 3.36 <var>G</var> <var>Σ</var>(<var>r</var>) / <var>κ</var>(<var>r</var>) -
+          so the disk is <em>born</em> at your chosen stability, then evolves on its own.
         </p>
         <div class="note honesty">
           <span class="tag">Honest about the model</span>
           <p>
-            Softening, the disk's finite thickness, and the modest particle count all make this disk more
-            stable than razor-thin Toomre theory predicts. So an empirical correction is applied to make the
-            slider read an <em>effective</em> <var>Q</var>, calibrated so the spiral sweet spot lands near
-            <var>Q</var> ≈ 1.3. The radial <em>shape</em> of the dispersion and the stability <em>sequence</em>
-            are physically right; the absolute number is tuned to this softened, finite-<var>N</var> disk.
+            Softening, finite disk thickness, and the modest particle count all make this disk more stable than
+            razor-thin theory predicts. So the slider reads an <em>effective</em> <var>Q</var>, calibrated so the
+            spiral sweet spot lands near <var>Q</var> ≈ 1.3. The radial <em>shape</em> of the dispersion and the
+            stability <em>sequence</em> are right; the absolute number is tuned to this softened, finite-<var>N</var> disk.
           </p>
         </div>
       </section>
@@ -369,28 +262,24 @@
       <section>
         <h2><span class="num">06</span>Cold gas, and the blue arms</h2>
         <p>
-          Stars are <em>collisionless</em> — they pass through one another's neighbourhoods without
-          colliding — so a purely stellar disk slowly heats up and its arms fade. Spiral galaxies keep
-          sharp arms because of their <strong>cold gas</strong>, which <em>is</em> collisional: it radiates
-          energy away, shocks, and settles into a thin, cold layer that keeps responding sharply to the
-          disk's gravity. That gas is where new, hot, blue stars are born — which is why the arms of real
-          spirals glow blue.
+          Stars are <em>collisionless</em> - they pass through each other's neighbourhoods without colliding - so
+          a purely stellar disk slowly heats and its arms fade. Real spirals keep sharp arms because of
+          <strong>cold gas</strong>, which <em>is</em> collisional: it radiates energy away and settles into a
+          thin layer that keeps responding sharply to the disk's gravity. That gas is where blue stars are born -
+          which is why spiral arms glow blue.
         </p>
         <p>
-          In the spiral and M51 scenarios, Galacto seeds about a quarter of the disk as a gas component
-          by default (set it with the <strong>Gas</strong> slider). Each step, the gas damps radial and
-          vertical motion while keeping its tangential circulation — a "sticky gas" stand-in for radiative
-          cooling — so it stays cold while the stars heat
-          and blur. It gathers into the arms and is drawn a bright blue, tracing the star-forming ridges over
-          a warmer, redder stellar disk.
+          In the spiral and M51 scenarios about a quarter of the disk is gas by default (the <strong>Gas</strong>
+          slider). Each step it damps radial and vertical motion while keeping its circulation - a "sticky gas"
+          stand-in for cooling - so it stays cold while the stars heat and blur. It gathers into the arms and is
+          drawn bright blue over the warmer stellar disk.
         </p>
         <div class="note honesty">
           <span class="tag">Honest about the model</span>
           <p>
-            This is a velocity-damping caricature, not hydrodynamics: there is no gas pressure, no genuine
-            shocks, and no actual conversion of gas into stars with feedback. It captures the one effect that
-            matters for the look and the dynamics — a cold, dissipative component that sharpens and sustains
-            the arms.
+            This is velocity damping, not hydrodynamics: no gas pressure, no real shocks, no star formation with
+            feedback. It captures the one effect that matters on screen - a cold, dissipative component that
+            sharpens the arms.
           </p>
         </div>
       </section>
@@ -398,11 +287,10 @@
       <section>
         <h2><span class="num">07</span>Mergers, and why galaxies fall together</h2>
         <p>
-          When two galaxies pass close, why can they merge into one remnant rather than simply swinging
-          past? One key mechanism is <strong>dynamical friction</strong>. A massive body ploughing through a
-          sea of lighter ones — here, the dark-matter halo — gathers an over-dense gravitational
-          <em>wake</em> behind it, and that wake pulls back, draining the body's orbital energy.
-          Chandrasekhar's classic result gives the drag:
+          When two galaxies pass close, why merge rather than swing past? One mechanism is <strong>dynamical
+          friction</strong>. A massive body ploughing through lighter ones - here, the halo - gathers an
+          over-dense <em>wake</em> behind it, and the wake pulls back, draining its orbital energy. Chandrasekhar's
+          result gives the drag <a href="#r5">[5]</a>:
         </p>
         <div class="eq">
           <var>a</var><sub>df</sub> ∝ −
@@ -411,20 +299,18 @@
           <span class="where">∝ the body's own mass <var>M</var>, the local halo density <var>ρ</var>, the Coulomb logarithm ln<var>Λ</var>, and a velocity factor <var>f</var>(<var>X</var>)</span>
         </div>
         <p>
-          Because the drag scales with the perturber's <em>mass</em>, it bites hard on the heavy galaxy
-          cores and is negligible for the featherweight disk stars. So colliding galaxies genuinely lose
-          orbital energy and spiral together — one real merger mechanism — rather than sailing past. The
-          <strong>Grand-design (M51)</strong> scenario layers a second classic effect on top: a companion's
-          tidal field sweeping past a disk draws out a two-armed grand-design pattern and a luminous bridge,
-          just like the real M51.
+          Because the drag scales with the perturber's <em>mass</em>, it bites the heavy galaxy cores and is
+          negligible for disk stars. So colliding galaxies lose orbital energy and spiral together rather than
+          sailing past. The <strong>Grand-design (M51)</strong> scenario adds a second classic effect: a
+          companion's tidal field sweeping a disk draws out a two-armed pattern and a luminous bridge, like the
+          real M51.
         </p>
         <div class="note honesty">
           <span class="tag">Honest about the model</span>
           <p>
-            The halo is a static background force, so it can't grow its own wake — the friction is added
-            analytically from Chandrasekhar's formula instead, with the Coulomb logarithm fixed at a
-            galaxy-merger-scale ln<var>Λ</var> ≈ 3 and the local density estimated from the halo's enclosed-mass
-            gradient.
+            The halo is a static force, so it can't grow its own wake - the friction is added analytically from
+            Chandrasekhar's formula, with ln<var>Λ</var> ≈ 3 and the local density read from the halo's
+            enclosed-mass gradient.
           </p>
         </div>
       </section>
@@ -432,30 +318,26 @@
       <section>
         <h2><span class="num">08</span>Bulges and the shape of a galaxy</h2>
         <p>
-          The <strong>Bulge</strong> slider sets how much of the galaxy's mass sits in a dense central
-          concentration. Turn it down and you get a disk-dominated <em>late-type</em> spiral with a gently
-          rising rotation curve; turn it up and you get a bulge-dominated <em>early-type</em> galaxy whose
-          rotation curve spikes sharply in the centre. That single axis — how centrally concentrated the
-          light is — is essentially the backbone of the Hubble tuning-fork classification, and you can watch
-          it reshape the decomposed rotation curve live.
+          The <strong>Bulge</strong> slider sets how much mass sits in a dense central concentration. Low gives a
+          disk-dominated <em>late-type</em> spiral with a gently rising rotation curve; high gives a
+          bulge-dominated <em>early-type</em> galaxy whose curve spikes in the centre. That one axis - central
+          concentration - is the backbone of the Hubble tuning fork, and you can watch it reshape the decomposed
+          curve live.
         </p>
       </section>
 
       <section>
         <h2><span class="num">09</span>What's real, and what's illustrative</h2>
-        <p>
-          Galacto is a compact model, not a claim to simulate every piece of galaxy physics. The deliberate
-          simplifications are:
-        </p>
+        <p>Galacto is a compact model, not every piece of galaxy physics. The deliberate simplifications:</p>
         <ul>
-          <li><strong>Finite <var>N</var>.</strong> Tens of thousands of bodies stand in for ~10<sup>11</sup> stars, so each "star" is enormously massive and two-body scattering is artificially fast — softening mitigates it, but this is a collisionless approximation, not a star-by-star model.</li>
+          <li><strong>Finite <var>N</var>.</strong> Tens of thousands of bodies stand in for ~10<sup>11</sup> stars, so each "star" is enormously massive and two-body scattering is artificially fast - softening mitigates it, but this is a collisionless approximation, not a star-by-star model.</li>
           <li><strong>Effective Toomre <var>Q</var>.</strong> Calibrated to this softened, finite-thickness disk rather than read from razor-thin theory (see §05).</li>
           <li><strong>"Sticky gas," not hydrodynamics.</strong> Velocity damping, with no pressure, shocks, or real star formation (see §06).</li>
           <li><strong>Analytic dynamical friction.</strong> Chandrasekhar's formula with a fixed Coulomb logarithm, not friction emerging from live halo particles (see §07).</li>
-          <li><strong>Static halo</strong> — a fixed background potential, so the halo neither responds to the disk nor sloshes during a merger.</li>
-          <li><strong>Spherical enclosed-mass approximation</strong> for the disk's equilibrium circular speeds — close enough that the disk settles and ripples, but not the exact potential of a flattened disk.</li>
+          <li><strong>Static halo</strong> - a fixed background potential, so the halo neither responds to the disk nor sloshes during a merger.</li>
+          <li><strong>Spherical enclosed-mass approximation</strong> for the disk's equilibrium circular speeds - close enough that the disk settles and ripples, but not the exact potential of a flattened disk.</li>
         </ul>
-        <p>And what is genuinely <strong>dynamic</strong>, arising from the gravitating bodies with nothing scripted:</p>
+        <p>What's genuinely <strong>dynamic</strong>, straight from the gravitating bodies:</p>
         <ul>
           <li>spiral arms and bars from disk instability and swing amplification;</li>
           <li>tidal tails and bridges in close encounters;</li>
@@ -465,11 +347,25 @@
         <div class="note key">
           <span class="tag">The takeaway</span>
           <p>
-            The visible structures are consequences of the simulated gravity, not animation. The
-            approximations are the price of running the model in real time in a browser tab, and they are
-            chosen to preserve the behaviours that matter on screen.
+            The structures you see are consequences of the simulated gravity, not animation. The approximations
+            are the price of running it live in a browser tab, chosen to keep the behaviours that matter on screen.
           </p>
         </div>
+      </section>
+
+      <section>
+        <h2><span class="num">10</span>References</h2>
+        <ol class="refs">
+          <li id="r1"><cite>Toomre, A.</cite> (1964). <a href="https://ui.adsabs.harvard.edu/abs/1964ApJ...139.1217T">“On the gravitational stability of a disk of stars.”</a> <em>ApJ</em> 139, 1217 - the <var>Q</var> parameter.</li>
+          <li id="r2"><cite>Toomre, A.</cite> (1981). <a href="https://ui.adsabs.harvard.edu/abs/1981seng.proc..111T">“What amplifies the spiral arms?”</a> in <em>The Structure and Evolution of Normal Galaxies</em> - swing amplification.</li>
+          <li id="r3"><cite>Lin, C. C. &amp; Shu, F. H.</cite> (1964). <a href="https://ui.adsabs.harvard.edu/abs/1964ApJ...140..646L">“On the spiral structure of disk galaxies.”</a> <em>ApJ</em> 140, 646 - density-wave theory.</li>
+          <li id="r4"><cite>Navarro, J. F., Frenk, C. S. &amp; White, S. D. M.</cite> (1997). <a href="https://ui.adsabs.harvard.edu/abs/1997ApJ...490..493N">“A universal density profile from hierarchical clustering.”</a> <em>ApJ</em> 490, 493 - the NFW halo.</li>
+          <li id="r5"><cite>Chandrasekhar, S.</cite> (1943). <a href="https://ui.adsabs.harvard.edu/abs/1943ApJ....97..255C">“Dynamical friction. I.”</a> <em>ApJ</em> 97, 255.</li>
+          <li id="r6"><cite>Plummer, H. C.</cite> (1911). <a href="https://ui.adsabs.harvard.edu/abs/1911MNRAS..71..460P">“On the problem of distribution in globular star clusters.”</a> <em>MNRAS</em> 71, 460 - the Plummer model behind softening.</li>
+          <li id="r7"><cite>Rubin, V. C., Ford, W. K. &amp; Thonnard, N.</cite> (1980). <a href="https://ui.adsabs.harvard.edu/abs/1980ApJ...238..471R">“Rotational properties of 21 Sc galaxies…”</a> <em>ApJ</em> 238, 471 - flat rotation curves.</li>
+          <li id="r8"><cite>Dehnen, W. &amp; Read, J. I.</cite> (2011). <a href="https://doi.org/10.1140/epjp/i2011-11055-3">“N-body simulations of gravitational dynamics.”</a> <em>Eur. Phys. J. Plus</em> 126, 55 - softening, leapfrog, and the rest of the method.</li>
+          <li id="r9"><cite>Binney, J. &amp; Tremaine, S.</cite> (2008). <a href="https://press.princeton.edu/books/paperback/9780691130279/galactic-dynamics"><em>Galactic Dynamics</em></a> (2nd ed.), Princeton - the standard text for all of the above.</li>
+        </ol>
       </section>
 
       <p style="text-align: center; margin-top: 24px;">
@@ -484,7 +380,7 @@
       <p>
         <a href="https://galacto.org/">Open the simulator</a> · <a href="/audio">The sound</a> · <a href="/engineering">The engineering</a>
       </p>
-      <p class="dim">Galacto — a GPU-accelerated N-body galaxy sandbox, written in Rust and rendered with WebGPU.</p>
+      <p class="dim">Galacto - a GPU-accelerated N-body galaxy sandbox, written in Rust and rendered with WebGPU.</p>
     </footer>
   </body>
 </html>

@@ -10,6 +10,7 @@ const outDir = resolve(root, process.argv[2] || 'dist');
 const requiredFiles = [
   '_headers',
   '_worker.js',
+  'app.js',
   'audio.html',
   'engineering.html',
   'favicon.svg',
@@ -82,13 +83,16 @@ scanTextFiles(outDir, (file, text) => {
 });
 
 const index = readText('index.html');
+const app = readText('app.js');
 const sw = readText('sw.js');
 const headers = readText('_headers');
 const manifest = readText('site.webmanifest');
+const legacyManifest = readText('manifest.json');
 
-if (index && sw) verifyVersioning(index, sw);
+if (index && app && sw) verifyVersioning(index, app, sw);
 if (headers) verifyHeaders(headers);
 if (manifest) verifyManifest(manifest);
+if (manifest && legacyManifest) verifyManifestIdentity(manifest, legacyManifest);
 
 if (errors.length) {
   console.error('verify-build failed:');
@@ -98,18 +102,32 @@ if (errors.length) {
 
 console.log(`verify-build: ${requiredFiles.length} required files checked in ${outDir}`);
 
-function verifyVersioning(index, sw) {
-  const jsVersion = match(index, /galacto\.js\?v=([A-Za-z0-9._-]+)/, 'versioned galacto.js');
-  const wasmVersion = match(index, /galacto_bg\.wasm\?v=([A-Za-z0-9._-]+)/, 'versioned wasm');
+function verifyVersioning(index, app, sw) {
+  const appVersion = match(index, /app\.js\?v=([A-Za-z0-9._-]+)/, 'versioned app.js');
   const cssVersion = match(index, /styles\.css\?v=([A-Za-z0-9._-]+)/, 'versioned styles.css');
-  const swRegisterVersion = match(index, /sw\.js\?v=([A-Za-z0-9._-]+)/, 'versioned service worker registration');
   const swBuildHash = match(sw, /const BUILD_HASH = '([^']+)'/, 'service worker BUILD_HASH');
 
-  const versions = [jsVersion, wasmVersion, cssVersion, swRegisterVersion, swBuildHash].filter(Boolean);
+  const versions = [appVersion, cssVersion, swBuildHash].filter(Boolean);
   if (new Set(versions).size > 1) {
     errors.push(`asset versions disagree: ${versions.join(', ')}`);
   }
 
+  if (!app.includes('new URL(import.meta.url).searchParams.get("v")')) {
+    errors.push('app.js does not read its cache-bust version from import.meta.url');
+  }
+  if (!app.includes('./galacto.js${assetVersionSuffix}')) {
+    errors.push('app.js does not load versioned galacto.js');
+  }
+  if (!app.includes('./galacto_bg.wasm${assetVersionSuffix}')) {
+    errors.push('app.js does not load versioned galacto_bg.wasm');
+  }
+  if (!app.includes('./sw.js${assetVersionSuffix}')) {
+    errors.push('app.js does not register a versioned service worker');
+  }
+
+  if (!sw.includes('/app.js?v=') || !sw.includes('BUILD_HASH')) {
+    errors.push('service worker does not precache versioned app.js');
+  }
   if (!sw.includes('/galacto.js?v=') || !sw.includes('BUILD_HASH')) {
     errors.push('service worker does not precache versioned galacto.js');
   }
@@ -143,6 +161,12 @@ function verifyManifest(manifestText) {
     }
   } catch (error) {
     errors.push(`site.webmanifest is not valid JSON: ${error.message}`);
+  }
+}
+
+function verifyManifestIdentity(canonical, compatibility) {
+  if (canonical !== compatibility) {
+    errors.push('site.webmanifest and manifest.json must be byte-identical');
   }
 }
 

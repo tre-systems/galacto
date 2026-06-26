@@ -60,6 +60,7 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 - **Rust** — install from [rustup.rs](https://rustup.rs/)
 - **Node.js** 22+ — for the build scripts and Cloudflare Wrangler
+- **librsvg** — for regenerating or checking committed PWA icons and the Open Graph card (`brew install librsvg`)
 - **A WebGPU browser** — see [Browser Support](#browser-support)
 
 ### Installation
@@ -68,7 +69,7 @@ From a local checkout:
 
 ```bash
 cd galacto
-npm run setup   # installs deps, wasm-pack, and the wasm32 target
+npm run setup   # npm ci, wasm-pack 0.15.0, cargo-audit 0.22.2, and the wasm32 target
 npm run dev     # builds, then serves on http://localhost:8000
 ```
 
@@ -89,7 +90,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 
 | Command                 | Description                                      |
 | ----------------------- | ------------------------------------------------ |
-| `npm run setup`         | Install dependencies, wasm-pack, and the WASM target |
+| `npm run setup`         | Install lockfile dependencies, wasm-pack 0.15.0, cargo-audit 0.22.2, and the WASM target |
 | `npm run build`         | Build WASM, assemble `dist/`, cache-bust, and verify the deploy artifact |
 | `npm run dev`           | Build and serve on port 8000                     |
 | `npm run deploy`        | Build, then deploy to Cloudflare Pages           |
@@ -97,6 +98,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | `npm run lint`          | Run Clippy                                       |
 | `npm run format`        | Format with rustfmt                              |
 | `npm run check:js`      | Syntax-check repo-owned JavaScript scripts       |
+| `npm run check:deploy-metadata` | Verify manifest identity and committed icon/OG-card outputs |
 | `npm run verify:build`  | Check the generated `dist/` deploy artifact      |
 | `npm run smoke`         | Browser-smoke the built site from `dist/`        |
 | `npm run smoke:live`    | Browser-smoke the deployed site                  |
@@ -104,6 +106,8 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | `npm run diagrams`      | Render the architecture diagrams (needs Graphviz)|
 
 A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `check` — and CI adds JavaScript syntax, dependency advisory, verified-build, and browser-smoke checks before deploying on push to `main`. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
+
+Deploy metadata is intentionally reproducible: `static/site.webmanifest` is the canonical PWA manifest, `static/manifest.json` is a byte-identical compatibility copy, and the committed PWA icons / Open Graph card are generated from `assets/` by `npm run icons`. `npm run check:deploy-metadata` enforces both invariants.
 
 ### Audio & video production
 

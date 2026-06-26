@@ -5,10 +5,11 @@
 const BUILD_HASH = '__CACHE_BUST__';
 const CACHE_NAME = `galacto-${BUILD_HASH}`;
 
-// The shell needed for a cold, offline launch. The glue JS and CSS carry the same
-// per-deploy ?v= as index.html references them with; the wasm filename is stable.
+// The shell needed for a cold, offline launch. JS/CSS/WASM carry the same
+// per-deploy ?v= as index.html references them with; the filenames are stable.
 const REQUIRED_PRECACHE_URLS = [
   '/',
+  `/app.js?v=${BUILD_HASH}`,
   `/galacto.js?v=${BUILD_HASH}`,
   `/galacto_bg.wasm?v=${BUILD_HASH}`,
   `/styles.css?v=${BUILD_HASH}`,

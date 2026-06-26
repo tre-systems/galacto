@@ -460,10 +460,12 @@ impl AppState {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.graphics.resize(width, height);
-        self.postprocess
-            .resize(&self.graphics.device, (width, height));
-        self.camera.set_aspect_ratio(width as f32 / height as f32);
+        if !self.graphics.resize(width, height) {
+            return;
+        }
+        let size = self.graphics.size;
+        self.postprocess.resize(&self.graphics.device, size);
+        self.camera.set_aspect_ratio(size.0 as f32 / size.1 as f32);
     }
 
     /// Stage the disk temperature for the next (re)seed (the disk-temperature
@@ -831,6 +833,26 @@ thread_local! {
     static APP_STATE: RefCell<Option<Rc<RefCell<AppState>>>> = const { RefCell::new(None) };
 }
 
+fn app_state_handle() -> Option<Rc<RefCell<AppState>>> {
+    APP_STATE.with(|cell| cell.borrow().clone())
+}
+
+fn with_app<R>(default: R, f: impl FnOnce(&AppState) -> R) -> R {
+    let Some(app) = app_state_handle() else {
+        return default;
+    };
+    let app = app.borrow();
+    f(&app)
+}
+
+fn with_app_mut<R>(default: R, f: impl FnOnce(&mut AppState) -> R) -> R {
+    let Some(app) = app_state_handle() else {
+        return default;
+    };
+    let mut app = app.borrow_mut();
+    f(&mut app)
+}
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     set_panic_hook();
@@ -877,11 +899,8 @@ fn show_init_error(err: &JsValue) {
 #[wasm_bindgen]
 pub fn set_speed(speed: f32) {
     let speed = speed.clamp(0.0, MAX_SPEED);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            let mut app = app.borrow_mut();
-            app.speed = speed.min(max_speed_for_count(app.particle_count));
-        }
+    with_app_mut((), |app| {
+        app.speed = speed.min(max_speed_for_count(app.particle_count));
     });
 }
 
@@ -897,55 +916,35 @@ pub fn max_speed_for_particle_count(count: u32) -> f32 {
 /// it. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_disk_temperature(temp: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_temperature(temp);
-        }
-    });
+    with_app_mut((), |app| app.set_temperature(temp));
 }
 
 /// Stage the gas fraction for audio/overlays while the slider is dragged. The
 /// expensive reseed still happens on `set_gas_fraction`.
 #[wasm_bindgen]
 pub fn stage_gas_fraction(fraction: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().stage_gas_fraction(fraction);
-        }
-    });
+    with_app_mut((), |app| app.stage_gas_fraction(fraction));
 }
 
 /// Set the disk's gas fraction (the gas-fraction slider, 0..1) and re-seed the
 /// current scenario so the blue star-forming gas grows or thins. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_gas_fraction(fraction: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_gas_fraction(fraction);
-        }
-    });
+    with_app_mut((), |app| app.set_gas_fraction(fraction));
 }
 
 /// Stage the bulge fraction for audio/rotation-curve feedback while the slider is
 /// dragged. The expensive reseed still happens on `set_bulge_fraction`.
 #[wasm_bindgen]
 pub fn stage_bulge_fraction(fraction: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().stage_bulge_fraction(fraction);
-        }
-    });
+    with_app_mut((), |app| app.stage_bulge_fraction(fraction));
 }
 
 /// Set the bulge mass fraction (the bulge slider, 0..0.8) and re-seed, shifting the
 /// galaxy between disk-dominated and bulge-dominated. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_bulge_fraction(fraction: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_bulge_fraction(fraction);
-        }
-    });
+    with_app_mut((), |app| app.set_bulge_fraction(fraction));
 }
 
 /// Switch the initial-condition scenario (0 = spiral disk; 1–6 = public
@@ -953,33 +952,21 @@ pub fn set_bulge_fraction(fraction: f32) {
 /// initial conditions. Called by the scenario dropdown and production scripts.
 #[wasm_bindgen]
 pub fn set_scenario(id: u32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_scenario(id);
-        }
-    });
+    with_app_mut((), |app| app.set_scenario(id));
 }
 
 /// Re-seed the current scenario from fresh initial conditions (the Restart
 /// button). No-ops until ready.
 #[wasm_bindgen]
 pub fn restart() {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().restart();
-        }
-    });
+    with_app_mut((), AppState::restart);
 }
 
 /// Preview the body-count slider in the soundscape while dragging. The active GPU
 /// buffers are still committed by `set_particle_count` on release.
 #[wasm_bindgen]
 pub fn stage_particle_count(count: u32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().stage_count_for_audio(count);
-        }
-    });
+    with_app_mut((), |app| app.stage_count_for_audio(count));
 }
 
 /// Set the body count (the body-count slider), re-seeding the current scenario at
@@ -987,33 +974,21 @@ pub fn stage_particle_count(count: u32) {
 /// No-ops until ready.
 #[wasm_bindgen]
 pub fn set_particle_count(count: u32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_count(count);
-        }
-    });
+    with_app_mut((), |app| app.set_count(count));
 }
 
 /// Live gravity strength (the gravity slider). No-ops until ready.
 #[wasm_bindgen]
 pub fn set_gravity(gravity: f32) {
     let gravity = gravity.clamp(0.0, 10.0);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_gravity(gravity);
-        }
-    });
+    with_app_mut((), |app| app.set_gravity(gravity));
 }
 
 /// Live dark-matter halo strength (the halo slider). No-ops until ready.
 #[wasm_bindgen]
 pub fn set_halo(halo_v0: f32) {
     let halo_v0 = halo_v0.clamp(0.0, 400.0);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_halo(halo_v0);
-        }
-    });
+    with_app_mut((), |app| app.set_halo(halo_v0));
 }
 
 /// Live dark-matter halo concentration — the scale-radius multiplier (the
@@ -1022,11 +997,7 @@ pub fn set_halo(halo_v0: f32) {
 #[wasm_bindgen]
 pub fn set_halo_concentration(scale: f32) {
     let scale = scale.clamp(0.1, 5.0);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_halo_concentration(scale);
-        }
-    });
+    with_app_mut((), |app| app.set_halo_concentration(scale));
 }
 
 /// Switch the dark-matter halo profile (0 = logarithmic, 1 = NFW), re-seeding so
@@ -1034,40 +1005,24 @@ pub fn set_halo_concentration(scale: f32) {
 /// No-ops until ready.
 #[wasm_bindgen]
 pub fn set_halo_profile(id: u32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_halo_profile(id);
-        }
-    });
+    with_app_mut((), |app| app.set_halo_profile(id));
 }
 
 /// Show or hide the dark-matter halo overlay (the halo "Show" toggle). Render-only.
 /// No-ops until ready.
 #[wasm_bindgen]
 pub fn set_halo_visible(visible: bool) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_halo_visible(visible);
-        }
-    });
+    with_app_mut((), |app| app.set_halo_visible(visible));
 }
 
 #[wasm_bindgen]
 pub fn set_autopilot(on: bool) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_autopilot(on);
-        }
-    });
+    with_app_mut((), |app| app.set_autopilot(on));
 }
 
 #[wasm_bindgen]
 pub fn set_autopilot_speed(speed: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_autopilot_speed(speed);
-        }
-    });
+    with_app_mut((), |app| app.set_autopilot_speed(speed));
 }
 
 /// Sample the disk's rotation curve under the current live gravity/halo, in
@@ -1078,12 +1033,7 @@ pub fn set_autopilot_speed(speed: f32) {
 #[wasm_bindgen]
 pub fn rotation_curve(samples: u32) -> Vec<f32> {
     let n = samples.max(2);
-    APP_STATE.with(|cell| {
-        let borrow = cell.borrow();
-        let Some(app) = borrow.as_ref() else {
-            return Vec::new();
-        };
-        let app = app.borrow();
+    with_app(Vec::new(), |app| {
         // Sample out past the disk edge so the flat, halo-supported part is visible.
         let r_max = 260.0_f32;
         let mut out = Vec::with_capacity(n as usize * 5);
@@ -1120,12 +1070,7 @@ pub fn myr_per_unit_time() -> f32 {
 /// 0 until ready.
 #[wasm_bindgen]
 pub fn elapsed_myr() -> f32 {
-    APP_STATE.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|app| app.borrow().sim_time * units::MYR_PER_UNIT)
-            .unwrap_or(0.0)
-    })
+    with_app(0.0, |app| app.sim_time * units::MYR_PER_UNIT)
 }
 
 /// Toggle the generative soundscape on or off (the page's 🔊 button). The first
@@ -1133,74 +1078,46 @@ pub fn elapsed_myr() -> f32 {
 /// the AudioContext to start. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_sound_enabled(on: bool) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_sound(on);
-        }
-    });
+    with_app_mut((), |app| app.set_sound(on));
 }
 
 /// Resume the AudioContext after the PWA returns to the foreground (iOS suspends it
 /// in the background). No-ops until the engine exists; leaves on/off + volume alone.
 #[wasm_bindgen]
 pub fn resume_audio() {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow().resume_audio();
-        }
-    });
+    with_app((), AppState::resume_audio);
 }
 
 /// Whether the soundscape's AudioContext is actually running (not just created).
 #[wasm_bindgen]
 pub fn audio_running() -> bool {
-    APP_STATE.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .is_some_and(|app| app.borrow().audio_running())
-    })
+    with_app(false, AppState::audio_running)
 }
 
 /// Set the soundscape volume (0..1) from the page's volume slider. Remembered
 /// until the audio engine is built, then applied live. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_volume(volume: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_volume(volume);
-        }
-    });
+    with_app_mut((), |app| app.set_volume(volume));
 }
 
 /// Mute or unmute the soundscape (the page's mute button). No-ops until ready.
 #[wasm_bindgen]
 pub fn set_muted(muted: bool) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_muted(muted);
-        }
-    });
+    with_app_mut((), |app| app.set_muted(muted));
 }
 
 /// Live on-screen star size (the star-size slider). No-ops until ready.
 #[wasm_bindgen]
 pub fn set_particle_size(size: f32) {
     let size = size.clamp(0.002, 0.06);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_particle_size(size);
-        }
-    });
+    with_app_mut((), |app| app.set_particle_size(size));
 }
 
 /// Live star glow halo extent, 0..1 (the Glow slider). Render-only. No-ops until ready.
 #[wasm_bindgen]
 pub fn set_glow(glow: f32) {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().set_glow(glow);
-        }
-    });
+    with_app_mut((), |app| app.set_glow(glow));
 }
 
 /// Render a complete, *composed* ambient piece — a deterministic A→B→C arrangement
@@ -1217,7 +1134,7 @@ pub async fn generate_piece(
     target_lufs: f32,
 ) -> Result<JsValue, JsValue> {
     let duration = (duration_secs as f64).clamp(20.0, MAX_RECORD_SEC);
-    let scenario = APP_STATE.with(|cell| cell.borrow().as_ref().map(|app| app.borrow().scenario));
+    let scenario = with_app(None, |app| Some(app.scenario));
     let Some(scenario) = scenario else {
         return Err(JsValue::from_str("Audio is not ready yet."));
     };
@@ -1243,31 +1160,19 @@ pub async fn generate_piece(
 #[wasm_bindgen]
 pub fn start_arrangement(duration_secs: f32, seed: u32) {
     let duration = (duration_secs as f64).clamp(20.0, MAX_RECORD_SEC);
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().start_arrangement(duration, seed);
-        }
-    });
+    with_app_mut((), |app| app.start_arrangement(duration, seed));
 }
 
 /// Stop the cinematic arrangement, releasing the camera.
 #[wasm_bindgen]
 pub fn stop_arrangement() {
-    APP_STATE.with(|cell| {
-        if let Some(app) = cell.borrow().as_ref() {
-            app.borrow_mut().stop_arrangement();
-        }
-    });
+    with_app_mut((), AppState::stop_arrangement);
 }
 
 /// Whether a cinematic arrangement is currently playing (false once it finishes).
 #[wasm_bindgen]
 pub fn arrangement_active() -> bool {
-    APP_STATE.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .is_some_and(|app| app.borrow().arrangement.is_some())
-    })
+    with_app(false, |app| app.arrangement.is_some())
 }
 
 /// Whether the async GPU/app init has completed and the engine is live. The
@@ -1275,18 +1180,14 @@ pub fn arrangement_active() -> bool {
 /// engine, since setters silently no-op until the app exists.
 #[wasm_bindgen]
 pub fn is_ready() -> bool {
-    APP_STATE.with(|cell| cell.borrow().is_some())
+    with_app(false, |_| true)
 }
 
 /// Smoothed frames-per-second of the render loop. Production tooling reads this to
 /// confirm a capture is holding a steady rate at a chosen body count.
 #[wasm_bindgen]
 pub fn fps() -> f32 {
-    APP_STATE.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map_or(0.0, |app| app.borrow().fps_ema)
-    })
+    with_app(0.0, |app| app.fps_ema)
 }
 
 /// A human-readable mastering summary returned alongside a composed-piece WAV.
@@ -1398,10 +1299,7 @@ async fn run() -> Result<(), JsValue> {
             let (w, h) = canvas_physical_size(&resize_window, &resize_canvas);
             resize_canvas.set_width(w);
             resize_canvas.set_height(h);
-            let app_state = APP_STATE.with(|cell| cell.borrow().clone());
-            if let Some(app_state) = app_state {
-                app_state.borrow_mut().resize(w, h);
-            }
+            with_app_mut((), |app| app.resize(w, h));
         }) as Box<dyn FnMut(web_sys::Event)>);
         window.add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())?;
         // One forever-listener, so forget() (the app-lifetime variant of the
@@ -1426,15 +1324,13 @@ fn request_animation_frame() {
 }
 
 fn animation_frame(time: f32) {
-    let app_state = APP_STATE.with(|cell| cell.borrow().clone());
-    if let Some(app_state) = app_state {
-        let mut app = app_state.borrow_mut();
+    with_app_mut((), |app| {
         app.update(time);
         app.update_audio();
         if let Err(e) = app.render() {
             console_log!("Render error: {:?}", e);
         }
-    }
+    });
 
     request_animation_frame();
 }

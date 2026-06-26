@@ -7,7 +7,33 @@
 // Defaults to a 10-minute piece at 4K/60. Same seed + duration always yields the
 // same arrangement.
 import { take, hasFlag, passArg, run } from "./cli.mjs";
+import { ensureChrome, ensureExecutable, findChrome } from "./preflight.mjs";
 import { startStaticServer } from "./serve-static.mjs";
+
+function usage() {
+  console.error(`Usage:
+  npm run produce -- --seed 7 --duration 600 [options]
+
+Options:
+  --seed <N>         deterministic arrangement seed (default 1)
+  --duration <sec>  composed-piece duration before reverb tail (default 600)
+  --width <px>      capture width (default 3840)
+  --height <px>     capture height (default 2160)
+  --fps <N>         capture frame rate (default 60)
+  --particles <N>   body count for the arrangement (default 32768)
+  --label <name>    output label (default galacto-piece-<seed>)
+  --port <N>        local static-server port (default 8000)
+  --chrome <path>   Chrome/Chromium executable
+  --no-build        use an already-built dist/
+  --no-headless     show Chrome during capture
+  --video-codec auto|h264|hevc|libx264|hevc_videotoolbox
+`);
+}
+
+if (hasFlag("--help")) {
+  usage();
+  process.exit(0);
+}
 
 const seed = take("--seed", "1");
 const duration = take("--duration", "600"); // 10 min default composed piece
@@ -20,6 +46,27 @@ const fps = take("--fps", "60");
 const particles = take("--particles", "32768");
 const label = take("--label", `galacto-piece-${seed}`);
 const port = Number(take("--port", "8000"));
+const chromePath = take("--chrome") || process.env.CHROME || findChrome();
+
+if (!chromePath) {
+  throw new Error("produce: Chrome/Chromium not found; set CHROME=/path/to/browser or pass --chrome /path/to/browser");
+}
+ensureChrome(chromePath);
+ensureExecutable("ffmpeg", {
+  args: ["-version"],
+  label: "ffmpeg",
+  installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+});
+ensureExecutable("ffprobe", {
+  args: ["-version"],
+  label: "ffprobe",
+  installHint: "install ffmpeg (macOS: brew install ffmpeg)",
+});
+ensureExecutable("rsvg-convert", {
+  args: ["--version"],
+  label: "rsvg-convert",
+  installHint: "install librsvg (macOS: brew install librsvg)",
+});
 
 if (!hasFlag("--no-build")) {
   console.log("● Building…");
@@ -43,8 +90,9 @@ try {
       "--fps", fps,
       "--particles", particles,
       "--label", label,
+      "--chrome", chromePath,
       // Forward the optional pass-through flags the user supplied.
-      ..."--start-title --start-subtitle --end-title --end-subtitle --lufs --out-dir --bitrate"
+      ..."--start-title --start-subtitle --end-title --end-subtitle --lufs --out-dir --bitrate --video-codec"
         .split(" ")
         .flatMap(passArg),
       ...(hasFlag("--no-headless") ? ["--no-headless"] : []),
