@@ -55,8 +55,18 @@ jobs:
 
       - name: Audit Rust dependencies
         run: |
+          cargo_install() {
+            for attempt in 1 2 3; do
+              cargo install "$@" && return 0
+              if [ "$attempt" = 3 ]; then
+                return 1
+              fi
+              sleep $((attempt * 10))
+            done
+          }
+
           if ! command -v cargo-audit >/dev/null 2>&1 || ! cargo audit --version | grep -q '0.22.2'; then
-            cargo install cargo-audit --locked --version 0.22.2 --force
+            cargo_install cargo-audit --locked --version 0.22.2 --force
           fi
           cargo audit
 
@@ -76,7 +86,18 @@ jobs:
         run: npm run audit:npm
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.15.0 --force
+        run: |
+          if command -v wasm-pack >/dev/null 2>&1 && wasm-pack --version | grep -q '0.15.0'; then
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            cargo install wasm-pack --locked --version 0.15.0 --force && exit 0
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: Build web package
         run: npm run build
@@ -95,8 +116,32 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
 
+      - name: Cache Cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-tools-wasm-pack-0.15.0-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tools-wasm-pack-0.15.0-
+
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.15.0 --force
+        run: |
+          if command -v wasm-pack >/dev/null 2>&1 && wasm-pack --version | grep -q '0.15.0'; then
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            cargo install wasm-pack --locked --version 0.15.0 --force && exit 0
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
