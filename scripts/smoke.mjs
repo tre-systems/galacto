@@ -135,8 +135,12 @@ try {
 } finally {
   chrome.kill('SIGTERM');
   await waitForExit(chrome, 2_000);
+  if (isRunning(chrome)) {
+    chrome.kill('SIGKILL');
+    await waitForExit(chrome, 2_000);
+  }
   if (server) await new Promise((resolveClose) => server.close(resolveClose));
-  rmSync(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await removeProfileDir(profileDir);
 }
 
 async function waitForJson(url, timeoutMs) {
@@ -215,9 +219,28 @@ function findChrome() {
 }
 
 async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (!isRunning(child)) return;
   await Promise.race([
     new Promise((resolveExit) => child.once('exit', resolveExit)),
     sleep(timeoutMs),
   ]);
+}
+
+function isRunning(child) {
+  return child.exitCode === null && child.signalCode === null;
+}
+
+async function removeProfileDir(profileDir) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      rmSync(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      return;
+    } catch (error) {
+      if (attempt === 8) {
+        console.warn(`smoke: could not remove temporary Chrome profile ${profileDir}: ${error.message}`);
+        return;
+      }
+      await sleep(250);
+    }
+  }
 }
