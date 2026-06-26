@@ -10,7 +10,10 @@ import { execSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 
 const outDir = resolve(process.cwd(), process.argv[2] || 'dist');
-const indexPath = join(outDir, 'index.html');
+// Every HTML page that links a force-cached asset (styles.css / app.js on the
+// app shell, article.css on the articles) needs its ?v= stamped, or returning
+// visitors keep stale CSS/JS until the max-age expires.
+const htmlPages = ['index.html', 'physics.html', 'engineering.html', 'audio.html', '404.html'];
 const sentryConfigPath = join(outDir, 'sentry-config.js');
 const swPath = join(outDir, 'sw.js');
 
@@ -22,7 +25,9 @@ try {
   version = String(Date.now());
 }
 
-replaceRequired(indexPath, 'index.html', version);
+for (const page of htmlPages) {
+  replaceRequired(join(outDir, page), page, version);
+}
 console.log(`cache-bust: pinned HTML asset URLs to ?v=${version}`);
 
 // Stamp the same version into the service worker, so each deploy gets its own
