@@ -282,8 +282,8 @@ mkdirSync(dirname(output), { recursive: true });
 const tmp = mkdtempSync(join(tmpdir(), "galacto-captions-"));
 
 try {
-  const titleSize = Math.max(48, Math.round(meta.height / 27));
-  const subtitleSize = Math.max(26, Math.round(meta.height / 54));
+  const titleSize = Math.max(56, Math.round(meta.height / 21));
+  const subtitleSize = Math.max(30, Math.round(meta.height / 42));
   const startEnd = Math.min(meta.duration - 0.15, startAt + startDuration);
   const endStart = Math.max(startEnd + 1, meta.duration - endDuration);
   const endEnd = meta.duration - 0.15;
@@ -297,8 +297,8 @@ try {
       height: meta.height,
       title: startTitle,
       subtitle: startSubtitle,
-      // Lower third — clear of the galaxy's bright centre.
-      titleY: meta.height * 0.72,
+      // Lower third, dropped a little further down, clear of the bright centre.
+      titleY: meta.height * 0.77,
       titleSize,
       subtitleSize,
     });
@@ -314,8 +314,8 @@ try {
       height: meta.height,
       title: endTitle,
       subtitle: endSubtitle,
-      // Upper third — clear of the galaxy's bright centre.
-      titleY: meta.height * 0.28,
+      // Upper third, nudged down toward the middle but still clear of the centre.
+      titleY: meta.height * 0.33,
       titleSize,
       subtitleSize,
     });
