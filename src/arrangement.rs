@@ -136,8 +136,10 @@ impl Arrangement {
             // not a constant floor — which keeps the intro sparse and the peak full.
             halo: 0.35,
             halo_size: 0.5,
-            glow: (0.12 + 0.5 * a + glow_pulse).clamp(0.0, 1.0), // dim intro → bright, pulsing peak
-            star_size: (0.4 + 0.25 * a + star_pulse).clamp(0.0, 1.0),
+            // Higher floor on both so the stars read as soft, glowing points rather than
+            // fine pinpricks: more glow halo around each, and a larger billboard.
+            glow: (0.34 + 0.5 * a + glow_pulse).clamp(0.0, 1.0), // soft glow intro → bright, pulsing peak
+            star_size: (0.55 + 0.22 * a + star_pulse).clamp(0.0, 1.0),
         }
     }
 

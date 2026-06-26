@@ -37,10 +37,17 @@ const MAX_SUBSTEPS: u32 = 32;
 const MAX_SPEED: f32 = 8.0;
 
 /// Simulation speed for the composed cinematic piece — slower than real time so the
-/// particle motion is calm and the incoming `Flyby` galaxy is seen drifting in over
-/// the first half before it collides (the audio is rendered from the arrangement's own
-/// timeline, so this only affects the visuals). Tunable.
-const FLYBY_SIM_SPEED: f32 = 0.3;
+/// particle motion is calm AND the disk evolves less over the long piece, staying in the
+/// clumpy spiral regime rather than relaxing into a smooth disc by the end (the audio is
+/// rendered from the arrangement's own timeline, so this only affects the visuals).
+const FLYBY_SIM_SPEED: f32 = 0.18;
+
+/// Colder, gassier disk for the composed Grand-Design piece. A lower Toomre Q makes the
+/// companion-driven arms swing-amplify more strongly, and a high dissipative-gas fraction
+/// keeps re-forming cold, clumpy structure in the arms — so the disk stays textured over
+/// the long render instead of heating into a smooth, featureless disc.
+const COMPOSED_DISK_TEMP: f32 = 1.0;
+const COMPOSED_GAS_FRACTION: f32 = 0.45;
 
 /// Page slider ranges used to normalise values for the soundscape. Keep these in
 /// sync with `static/index.html`; the sim setters may accept wider developer-console
@@ -627,10 +634,14 @@ impl AppState {
     /// is produced separately by [`generate_piece`] from the same `seed`/`duration`.
     pub fn start_arrangement(&mut self, duration: f64, seed: u32) {
         self.autopilot = false;
-        // The composed piece is the two-galaxy flyby, run at a calm, slowed sim rate
-        // (the audio is rendered separately from the arrangement timeline, so this only
-        // slows the visuals — and lets the incoming galaxy be seen drifting in).
-        self.scenario = Scenario::Flyby;
+        // The composed piece is the Grand-Design (M51) encounter: a single companion flyby
+        // that drives a tidal two-arm spiral, run at a calm, slowed sim rate (the audio is
+        // rendered separately from the arrangement timeline, so this only slows the visuals).
+        // A colder, gassier disk keeps the arms clumpy and structured over the long piece
+        // rather than heating into a smooth, featureless disc.
+        self.scenario = Scenario::GrandDesign;
+        self.disk_temp = COMPOSED_DISK_TEMP;
+        self.gas_fraction = COMPOSED_GAS_FRACTION;
         self.speed = FLYBY_SIM_SPEED;
         self.arrangement = Some(arrangement::Arrangement::new(duration, seed, self.scenario));
         self.arrangement_t = 0.0;
