@@ -27,6 +27,7 @@
     "audit": "npm run audit:npm && npm run audit:rust",
     "video:capture": "node scripts/capture-canvas-video.mjs",
     "video:captions": "node scripts/add-video-captions.mjs",
+    "capture:still": "node scripts/capture-still.mjs",
     "produce": "node scripts/produce.mjs",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=galacto",
     "check": "cargo check --target wasm32-unknown-unknown",
