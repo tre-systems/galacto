@@ -43,6 +43,24 @@
         }
         event.transaction = scrubUrl(event.transaction);
         event.tags = { ...event.tags, app: config.app || "galacto" };
+        const firstException = event.exception?.values?.[0];
+        const frames = firstException?.stacktrace?.frames || [];
+        const fromWasmDescriptionBridge =
+          firstException?.type === "TypeError" &&
+          typeof firstException.value === "string" &&
+          firstException.value.includes("reading 'description'") &&
+          frames.some((frame) =>
+            String(frame.function || "").startsWith("__wbg_description_"),
+          );
+        if (fromWasmDescriptionBridge) {
+          event.fingerprint = ["galacto", "wasm-js-error-description-bridge"];
+          event.exception.values[0].value =
+            "WASM/JS error bridge tried to read Error.description";
+          event.tags = {
+            ...event.tags,
+            wasm_bridge_failure: "error_description",
+          };
+        }
         return event;
       };
       const configuredTracesSampleRate = Number(config.tracesSampleRate);
