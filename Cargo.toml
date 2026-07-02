@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Multivibrator"]
 description = "A GPU-accelerated self-gravitating N-body galaxy sandbox in Rust, WebAssembly, and WebGPU"
-license = "MIT"
+license = "AGPL-3.0-only"
 repository = "https://github.com/tre-systems/galacto"
 
 [package.metadata.wasm-pack.profile.release]

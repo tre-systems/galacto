@@ -164,4 +164,8 @@ WebGPU support changes quickly and still depends on OS, GPU, driver, and browser
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+The code is licensed under the GNU Affero General Public License v3.0 — see [LICENSE](LICENSE). You may use, study, modify, and share it; if you deploy a modified version (including as a network service), you must make your modified source available under the same license.
+
+Copyright © 2025–2026 Multivibrator.
+
+**Not licensed:** the Galacto and Multivibrator names, logos, and visual identity, and the released recordings and videos of composed pieces. Forks must not present themselves as Galacto or Multivibrator.

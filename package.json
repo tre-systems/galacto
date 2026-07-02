@@ -42,7 +42,7 @@
     "n-body"
   ],
   "author": "Multivibrator",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "husky": "^9.1.7",
     "wrangler": "^4.105.0"
