@@ -3,9 +3,11 @@ digraph SystemOverview {
     rankdir=TB,
     bgcolor="#ffffff",
     pad="0.55",
-    nodesep="0.55",
-    ranksep="0.85",
-    splines=polyline,
+    nodesep="0.65",
+    ranksep="1.0",
+    sep="+14",
+    esep="+8",
+    splines=spline,
     outputorder=edgesfirst,
     compound=true,
     newrank=true,
@@ -23,9 +25,9 @@ digraph SystemOverview {
   node [
     shape=box,
     style="rounded,filled",
-    margin="0.21,0.13",
+    margin="0.24,0.16",
     width=3.05,
-    height=0.74,
+    height=0.8,
     fixedsize=false,
     fontname="Avenir",
     fontsize=18,
@@ -51,13 +53,18 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>HOST</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Cloudflare Pages serves the verified static dist/ directory.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT" CELLPADDING="3"><FONT POINT-SIZE="12" COLOR="#357a74">Cloudflare Pages serves the verified static dist/ directory.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    H1 [label=<<B>Cloudflare Pages</B><BR/><FONT POINT-SIZE="15">dist/: galacto.js + _bg.wasm + index.html</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+    H1 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Cloudflare Pages</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">dist/: galacto.js + _bg.wasm + index.html</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
   }
 
   // ---- Browser ----
@@ -66,17 +73,34 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1f5fbf"><B>BROWSER</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#496f9f">A WebGPU page driving a requestAnimationFrame loop.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT" CELLPADDING="3"><FONT POINT-SIZE="12" COLOR="#496f9f">A WebGPU page driving a requestAnimationFrame loop.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    B1 [label=<<B>index.html bootstrap</B><BR/><FONT POINT-SIZE="15">checks navigator.gpu, imports galacto.js</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    B2 [label=<<B>requestAnimationFrame loop</B><BR/><FONT POINT-SIZE="15">update() · update_audio() · render()</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    B3 [label=<<B>InputHandler</B><BR/><FONT POINT-SIZE="15">mouse · wheel · touch · keys</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B1 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>index.html bootstrap</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">checks navigator.gpu, imports galacto.js</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B2 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>requestAnimationFrame loop</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">update() · update_audio() · render()</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B3 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>InputHandler</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">mouse · wheel · touch · keys</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
     B1 -> B2 [style=invis];
-    B2 -> B3 [style=invis];
+    // InputHandler sits beside the rAF loop, keeping the cluster compact and
+    // giving its dashed edge a clear run to Camera.
+    { rank=same; B2; B3; }
   }
 
   // ---- WASM app core ----
@@ -85,15 +109,31 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1e6b43"><B>WASM APP CORE (RUST)</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, input, audio, arrangement, and post-processing.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT" CELLPADDING="3"><FONT POINT-SIZE="12" COLOR="#4e7a61">AppState owns graphics, simulation, camera, input, audio, arrangement, and post-processing.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
-      color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
+      // Extra vertical margin keeps inbound splines below the label text.
+      color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin="24,34"
     ];
-    C1 [label=<<B>AppState</B><BR/><FONT POINT-SIZE="15">#[wasm_bindgen] entry · update / update_audio / render</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    C2 [label=<<B>Camera</B><BR/><FONT POINT-SIZE="15">orbit → view-projection matrix</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    C3 [label=<<B>Simulation</B><BR/><FONT POINT-SIZE="15">buffers · pipelines · dispatch</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C1 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>AppState</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">#[wasm_bindgen] entry · update / update_audio / render</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C2 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Camera</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">orbit → view-projection matrix</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C3 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Simulation</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">buffers · pipelines · dispatch</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
     C1 -> C2 [style=invis];
   }
 
@@ -103,35 +143,109 @@ digraph SystemOverview {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#5f3b8a"><B>GPU (WEBGPU)</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#6d4d8d">Body state lives here; physics and drawing both run on-device.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT" CELLPADDING="3"><FONT POINT-SIZE="12" COLOR="#6d4d8d">Body state lives here; physics and drawing both run on-device.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t, labeljust=l,
       color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    G1 [label=<<B>Compute pipelines</B><BR/><FONT POINT-SIZE="15">update.wgsl · leapfrog: drift → gravity → kick</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-    G2 [label=<<B>Storage buffers</B><BR/><FONT POINT-SIZE="15">self-gravitating bodies (16,384 default, up to 10×)</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    G3 [label=<<B>Render pipeline</B><BR/><FONT POINT-SIZE="15">render.wgsl · billboard project + glow</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    G4 [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · composite</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G1 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Compute pipelines</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">update.wgsl · leapfrog: drift → gravity → kick</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    G2 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Storage buffers</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">self-gravitating bodies (16,384 default, up to 10×)</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G3 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Render pipeline</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">render.wgsl · billboard project + glow</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G4 [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><B>Bloom + tonemap</B></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · composite</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }
 
   // ---- Output ----
-  CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="15">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+  CANVAS [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>&lt;canvas&gt;</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">on-screen frame</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
 
   // ---- Edges ----
-  H1 -> B1 [lhead=cluster_browser, label="serves SPA + WASM"];
+  // Edge labels are white "chips" (rounded, padded, subtle border) so the
+  // spline never runs through its own caption and stays readable on any
+  // cluster tint.
+  H1 -> B1 [lhead=cluster_browser, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">serves SPA + WASM</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  B1 -> C1 [lhead=cluster_core, label="init AppState"];
-  B2 -> C1 [label="update · update_audio · render"];
-  B3 -> C2 [label="orbit · zoom", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  B1 -> C1 [lhead=cluster_core, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">init AppState</FONT></TD></TR>
+    </TABLE>
+  >];
+  // Terminate at the cluster border (like init AppState) so the spline never
+  // crosses the cluster's label text on its way to AppState.
+  B2 -> C1 [lhead=cluster_core, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">update · update_audio · render</FONT></TD></TR>
+    </TABLE>
+  >];
+  B3 -> C2 [color="#6b7280", style=dashed, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">orbit · zoom</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  C1 -> C3 [label="owns / drives"];
-  C3 -> G1 [lhead=cluster_gpu, label="dispatch: drift · accel · kick"];
+  C1 -> C3 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">owns / drives</FONT></TD></TR>
+    </TABLE>
+  >];
+  C3 -> G1 [lhead=cluster_gpu, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">dispatch: drift · accel · kick</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  G1 -> G2 [label="advance in place"];
-  G2 -> G3 [label="instanced billboard draw"];
-  C2 -> G3 [label="view-proj uniform", color="#6b7280", fontcolor="#6b7280", style=dashed];
-  G3 -> G4 [label="HDR scene"];
+  G1 -> G2 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">advance in place</FONT></TD></TR>
+    </TABLE>
+  >];
+  G2 -> G3 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">instanced billboard draw</FONT></TD></TR>
+    </TABLE>
+  >];
+  C2 -> G3 [color="#6b7280", style=dashed, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">view-proj uniform</FONT></TD></TR>
+    </TABLE>
+  >];
+  G3 -> G4 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">HDR scene</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  G4 -> CANVAS [ltail=cluster_gpu, label="composite to swapchain"];
+  G4 -> CANVAS [ltail=cluster_gpu, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">composite to swapchain</FONT></TD></TR>
+    </TABLE>
+  >];
 }
