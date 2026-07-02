@@ -3,9 +3,11 @@ digraph FrameLoop {
     rankdir=TB,
     bgcolor="#ffffff",
     pad="0.55",
-    nodesep="0.5",
-    ranksep="0.7",
-    splines=polyline,
+    nodesep="0.6",
+    ranksep="0.8",
+    sep="+14",
+    esep="+8",
+    splines=spline,
     outputorder=edgesfirst,
     newrank=true,
     forcelabels=true,
@@ -13,7 +15,7 @@ digraph FrameLoop {
     label=<
       <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
         <TR><TD><FONT POINT-SIZE="34"><B>Frame Loop</B></FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">One requestAnimationFrame: update, update audio, then render.</FONT></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15" COLOR="#5b6573">One requestAnimationFrame: update, update audio, then render.</FONT></TD></TR>
       </TABLE>
     >,
     labelloc=t,
@@ -23,9 +25,9 @@ digraph FrameLoop {
   node [
     shape=box,
     style="rounded,filled",
-    margin="0.22,0.13",
+    margin="0.24,0.16",
     width=3.2,
-    height=0.7,
+    height=0.75,
     fontname="Avenir",
     fontsize=18,
     penwidth=2.4,
@@ -44,31 +46,104 @@ digraph FrameLoop {
     arrowsize=0.8
   ];
 
-  START [label=<<B>animation_frame(time)</B><BR/><FONT POINT-SIZE="14">browser invokes the rAF callback</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+  START [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>animation_frame(time)</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">browser invokes the rAF callback</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
   // update phase (green)
-  U1 [label=<<B>InputHandler.update_camera</B><BR/><FONT POINT-SIZE="14">apply orbit · zoom · reset</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  U1 [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>InputHandler.update_camera</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">apply orbit · zoom · reset</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
   U2 [shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=2.4, height=1.05, label=<<B>Space<BR/>pressed?</B>>];
-  U3 [label=<<B>Fixed-step accumulator</B><BR/><FONT POINT-SIZE="14">+ frame dt × speed → N × FIXED_DT steps<BR/>N = 0 when paused</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  U3 [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>Fixed-step accumulator</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">+ frame dt × speed → N × FIXED_DT steps<BR/>N = 0 when paused</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // render phase
-  CP [label=<<B>Compute passes × N</B><BR/><FONT POINT-SIZE="14">per step (leapfrog): drift_half → compute_accel → kick_drift_half<BR/>tiled all-pairs self-gravity · count / 256 groups</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  AUD [label=<<B>update_audio()</B><BR/><FONT POINT-SIZE="14">camera + controls + throttled reduce_core readback<BR/>schedule calm synthesized soundscape</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
-  RP [label=<<B>Particle pass</B><BR/><FONT POINT-SIZE="14">one billboard quad per body (additive)<BR/>into the HDR scene target</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-  BLOOM [label=<<B>Bloom + tonemap</B><BR/><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  CP [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>Compute passes × N</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">per step (leapfrog): drift_half → compute_accel → kick_drift_half<BR/>tiled all-pairs self-gravity · count / 256 groups</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  AUD [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>update_audio()</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">camera + controls + throttled reduce_core readback<BR/>schedule calm synthesized soundscape</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+  RP [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>Particle pass</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">one billboard quad per body (additive)<BR/>into the HDR scene target</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+  BLOOM [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>Bloom + tonemap</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">bright-pass · blur (H, V) · composite<BR/>HDR scene → swapchain</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   PRES [label=<<B>queue.submit + present()</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
 
-  CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="14">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+  CANVAS [label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>&lt;canvas&gt;</B></TD></TR>
+      <TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">on-screen frame</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
 
-  START -> U1 [label="update(time)"];
+  // Edge labels are rounded white chips so captions never touch their lines.
+  START -> U1 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">update(time)</FONT></TD></TR>
+    </TABLE>
+  >];
   U1 -> U2;
-  U2 -> U3 [label="toggle pause, then continue"];
-  U3 -> CP [label="render(): run N steps"];
-  CP -> AUD [label="updated buffer + core stats"];
-  AUD -> RP [label="same frame"];
-  RP -> BLOOM [label="HDR scene"];
+  U2 -> U3 [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">toggle pause, then continue</FONT></TD></TR>
+    </TABLE>
+  >];
+  U3 -> CP [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">render(): run N steps</FONT></TD></TR>
+    </TABLE>
+  >];
+  CP -> AUD [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">updated buffer + core stats</FONT></TD></TR>
+    </TABLE>
+  >];
+  AUD -> RP [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">same frame</FONT></TD></TR>
+    </TABLE>
+  >];
+  RP -> BLOOM [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">HDR scene</FONT></TD></TR>
+    </TABLE>
+  >];
   BLOOM -> PRES;
-  PRES -> CANVAS [label="draw"];
+  PRES -> CANVAS [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">draw</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  PRES -> START [label="schedule next frame", color="#6b7280", fontcolor="#6b7280", style=dashed, constraint=false];
+  PRES -> START [color="#6b7280", style=dashed, constraint=false, label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">schedule next frame</FONT></TD></TR>
+    </TABLE>
+  >];
 }

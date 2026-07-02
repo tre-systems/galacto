@@ -3,17 +3,20 @@ digraph GpuBuffers {
     rankdir=TB,
     bgcolor="#ffffff",
     pad="0.55",
-    nodesep="0.55",
+    nodesep="0.85",
     ranksep="1.15",
-    splines=polyline,
+    sep="+14",
+    esep="+8",
+    splines=spline,
     outputorder=edgesfirst,
     compound=true,
     newrank=true,
+    forcelabels=true,
     fontname="Avenir",
     label=<
       <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
         <TR><TD><FONT POINT-SIZE="34"><B>GPU Buffers</B></FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="15" COLOR="#5b6573">Body state lives only on the GPU. A leapfrog step's three compute passes order the write→read hazards on the Particle and Accel buffers.</FONT></TD></TR>
+        <TR><TD CELLPADDING="4"><FONT POINT-SIZE="15" COLOR="#5b6573">Body state lives only on the GPU. A leapfrog step's three compute passes order the write→read hazards on the Particle and Accel buffers.</FONT></TD></TR>
       </TABLE>
     >,
     labelloc=t,
@@ -36,12 +39,42 @@ digraph GpuBuffers {
   ];
 
   // ---- GPU passes (amber = compute, purple = render) ----
-  accel_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>compute_accel</B><BR/><FONT POINT-SIZE="13">tiled all-pairs gravity + halo</FONT>>];
-  drift_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>drift_half</B><BR/><FONT POINT-SIZE="13">½-step position drift</FONT>>];
-  kick_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>kick_drift_half</B><BR/><FONT POINT-SIZE="13">velocity kick + ½-step drift</FONT>>];
-  reduce_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<<B>reduce_core</B><BR/><FONT POINT-SIZE="13">audio core-stat partial sums</FONT>>];
-  render_pass [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#7c3aed", fillcolor="#f5f3ff:#ffffff", gradientangle=270, label=<<B>render · vertex</B><BR/><FONT POINT-SIZE="13">instanced billboard draw</FONT>>];
-  cpu_audio [shape=box, style="rounded,filled", margin="0.2,0.12", penwidth=2.2, fontsize=15, color="#0f766e", fillcolor="#e6fffb:#ffffff", gradientangle=270, label=<<B>Audio state</B><BR/><FONT POINT-SIZE="13">async readback · no sim feedback</FONT>>];
+  accel_pass [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>compute_accel</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">tiled all-pairs gravity + halo</FONT></TD></TR>
+    </TABLE>
+  >];
+  drift_pass [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>drift_half</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">½-step position drift</FONT></TD></TR>
+    </TABLE>
+  >];
+  kick_pass [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>kick_drift_half</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">velocity kick + ½-step drift</FONT></TD></TR>
+    </TABLE>
+  >];
+  reduce_pass [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#d39a00", fillcolor="#fff4d1:#fffaf0", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>reduce_core</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">audio core-stat partial sums</FONT></TD></TR>
+    </TABLE>
+  >];
+  render_pass [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#7c3aed", fillcolor="#f5f3ff:#ffffff", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>render · vertex</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">instanced billboard draw</FONT></TD></TR>
+    </TABLE>
+  >];
+  cpu_audio [shape=box, style="rounded,filled", margin="0.22,0.15", penwidth=2.2, fontsize=15, color="#0f766e", fillcolor="#e6fffb:#ffffff", gradientangle=270, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+      <TR><TD><B>Audio state</B></TD></TR>
+      <TR><TD CELLPADDING="3"><FONT POINT-SIZE="13">async readback · no sim feedback</FONT></TD></TR>
+    </TABLE>
+  >];
 
   // ---- Buffers (teal = storage, blue = uniform) ----
   subgraph cluster_buffers {
@@ -49,7 +82,7 @@ digraph GpuBuffers {
       label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
           <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>GPU-RESIDENT BUFFERS</B></FONT></TD></TR>
-          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">Mirrored byte-for-byte by the WGSL structs — the layout is a Rust↔WGSL contract.</FONT></TD></TR>
+          <TR><TD ALIGN="LEFT" CELLPADDING="3"><FONT POINT-SIZE="12" COLOR="#357a74">Mirrored byte-for-byte by the WGSL structs — the layout is a Rust↔WGSL contract.</FONT></TD></TR>
         </TABLE>
       >,
       labelloc=t,
@@ -117,24 +150,71 @@ digraph GpuBuffers {
   }
 
   // ---- Reads (dashed grey) and writes (solid) ----
-  particle -> drift_pass [label="read vel", style=dashed, color="#6b7280", fontcolor="#6b7280"];
-  drift_pass -> particle [label="write pos"];
+  // Edge labels are rounded white chips so captions never touch their lines.
+  particle -> drift_pass [style=dashed, color="#6b7280", label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">read vel</FONT></TD></TR>
+    </TABLE>
+  >];
+  drift_pass -> particle [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">write pos</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  particle -> accel_pass [label="read positions", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  // taillabel anchors this caption near the Particle buffer, keeping it clear
+  // of the "read accel" chip that sits mid-corridor.
+  particle -> accel_pass [style=dashed, color="#6b7280", labeldistance=4.5, labelangle=-30, taillabel=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">read positions</FONT></TD></TR>
+    </TABLE>
+  >];
   params -> accel_pass [style=dashed, color="#6b7280"];
-  accel_pass -> accel [label="write accel"];
+  accel_pass -> accel [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">write accel</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  accel -> kick_pass [label="read accel"];
+  accel -> kick_pass [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">read accel</FONT></TD></TR>
+    </TABLE>
+  >];
   params -> kick_pass [style=dashed, color="#6b7280"];
-  kick_pass -> particle [label="write vel + pos"];
+  kick_pass -> particle [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">write vel + pos</FONT></TD></TR>
+    </TABLE>
+  >];
 
-  particle -> render_pass [label="read state", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  particle -> render_pass [style=dashed, color="#6b7280", label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">read state</FONT></TD></TR>
+    </TABLE>
+  >];
   camera -> render_pass [style=dashed, color="#6b7280"];
 
-  particle -> reduce_pass [label="read state", style=dashed, color="#6b7280", fontcolor="#6b7280"];
-  reduce_pass -> reductions [label="write partials"];
-  reductions -> staging [label="copy active prefix"];
-  staging -> cpu_audio [label="map after submit", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  particle -> reduce_pass [style=dashed, color="#6b7280", label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">read state</FONT></TD></TR>
+    </TABLE>
+  >];
+  reduce_pass -> reductions [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">write partials</FONT></TD></TR>
+    </TABLE>
+  >];
+  reductions -> staging [label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">copy active prefix</FONT></TD></TR>
+    </TABLE>
+  >];
+  staging -> cpu_audio [style=dashed, color="#6b7280", label=<
+    <TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4">
+      <TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">map after submit</FONT></TD></TR>
+    </TABLE>
+  >];
 
   // Keep the three compute passes stacked in leapfrog execution order so the
   // buffer read/write edges stay short and parallel instead of crossing.
