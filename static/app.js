@@ -980,7 +980,7 @@ function showUpdateToast(reg) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const pwa = await import(`./pwa-update.mjs${assetVersionSuffix}`);
+      const pwa = await import(`./pwa-update.js${assetVersionSuffix}`);
       window.galactoPwa = pwa;
       warmAppShellCache();
       const swUrl = `./sw.js${assetVersionSuffix}`;

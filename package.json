@@ -1,5 +1,6 @@
 {
   "name": "galacto",
+  "type": "module",
   "version": "0.1.0",
   "description": "A GPU-accelerated self-gravitating N-body galaxy sandbox in Rust, WebAssembly, and WebGPU",
   "scripts": {

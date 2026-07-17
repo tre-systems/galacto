@@ -5,7 +5,7 @@ import {
   checkForServiceWorkerUpdate,
   installUpdateCheckTriggers,
   shouldCheckForUpdate,
-} from '../static/pwa-update.mjs';
+} from '../static/pwa-update.js';
 
 test('update checks use a cooldown', () => {
   assert.equal(shouldCheckForUpdate(1, 0), true);
