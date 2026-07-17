@@ -15,6 +15,7 @@
     "lint": "cargo clippy",
     "format": "cargo fmt",
     "check:js": "node scripts/check-js.mjs",
+    "test:pwa": "node --test scripts/pwa-update.test.mjs",
     "check:deploy-metadata": "node scripts/check-deploy-metadata.mjs",
     "diagrams": "node scripts/render-diagrams.mjs",
     "check:diagrams": "node scripts/check-diagrams.mjs",

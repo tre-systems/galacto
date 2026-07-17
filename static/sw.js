@@ -10,6 +10,7 @@ const CACHE_NAME = `galacto-${BUILD_HASH}`;
 const REQUIRED_PRECACHE_URLS = [
   '/',
   `/app.js?v=${BUILD_HASH}`,
+  `/pwa-update.mjs?v=${BUILD_HASH}`,
   `/galacto.js?v=${BUILD_HASH}`,
   `/galacto_bg.wasm?v=${BUILD_HASH}`,
   `/styles.css?v=${BUILD_HASH}`,

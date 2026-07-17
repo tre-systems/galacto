@@ -9,6 +9,7 @@ const roots = ['scripts'];
 const files = [
   'static/_worker.js',
   'static/app.js',
+  'static/pwa-update.mjs',
   'static/sentry-config.js',
   'static/sentry.js',
 ];

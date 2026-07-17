@@ -957,23 +957,20 @@ function showUpdateToast(reg) {
     (e) => {
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = "Updating…";
-      // Message the *current* waiting worker (a worker captured when the
-      // prompt first appeared may have gone redundant if another deploy
-      // landed since) so it calls skipWaiting → controllerchange → reload.
-      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-      // Safety net: if control never changes hands (no waiting worker, or it
-      // went redundant), reload anyway rather than hang on "Updating…".
-      // Navigation is network-first and assets are ?v=-versioned, so a plain
-      // reload still loads the fresh app.
-      setTimeout(() => window.location.reload(), 2500);
+      if (reg.waiting) window.galactoPwa.activateWaitingServiceWorker(reg.waiting);
     },
     { once: true },
   );
-  document.getElementById("update-dismiss").addEventListener(
-    "click",
-    () => toast.classList.remove("show"),
-    { once: true },
-  );
+  const dismiss = document.getElementById("update-dismiss");
+  dismiss.addEventListener("click", () => {
+    const deferred = toast.classList.toggle("deferred");
+    dismiss.textContent = deferred ? "Update ready" : "✕";
+    dismiss.setAttribute(
+      "aria-label",
+      deferred ? "Update ready. Show update options" : "Show update options later",
+    );
+    dismiss.title = deferred ? "Show update options" : "Later";
+  });
 }
 
 // Register the service worker so the app installs and launches offline, and
@@ -983,8 +980,34 @@ function showUpdateToast(reg) {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
+      const pwa = await import(`./pwa-update.mjs${assetVersionSuffix}`);
+      window.galactoPwa = pwa;
       warmAppShellCache();
-      const reg = await navigator.serviceWorker.register(`./sw.js${assetVersionSuffix}`);
+      const swUrl = `./sw.js${assetVersionSuffix}`;
+      const reg = await navigator.serviceWorker.register(swUrl);
+      let checking = false;
+      let lastCheckAt = 0;
+      const checkForUpdate = async (force = false) => {
+        if (
+          checking ||
+          !navigator.onLine ||
+          document.visibilityState !== "visible" ||
+          (!force && !pwa.shouldCheckForUpdate(Date.now(), lastCheckAt))
+        ) {
+          return;
+        }
+        checking = true;
+        lastCheckAt = Date.now();
+        try {
+          await pwa.checkForServiceWorkerUpdate(reg, swUrl);
+          if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg);
+        } catch {
+          // Update checks are best-effort; the simulation remains available offline.
+        } finally {
+          checking = false;
+        }
+      };
+      pwa.installUpdateCheckTriggers(() => void checkForUpdate());
 
       // A new version already finished installing and is waiting.
       if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg);
@@ -1000,16 +1023,7 @@ if ("serviceWorker" in navigator) {
         });
       });
 
-      // Only reload once the user accepts (the new worker takes control).
-      // On the very first install there is no prior controller, so that
-      // claim must not trigger a reload.
-      const hadController = !!navigator.serviceWorker.controller;
-      let reloading = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (!hadController || reloading) return;
-        reloading = true;
-        window.location.reload();
-      });
+      await checkForUpdate(true);
     } catch (e) {
       console.warn("Service worker registration failed:", e);
     }

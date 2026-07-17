@@ -697,6 +697,28 @@ body {
   opacity: 1;
 }
 
+#update-toast.deferred {
+  left: auto;
+  right: calc(16px + env(safe-area-inset-right));
+  top: auto;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 0;
+  transform: none;
+}
+
+#update-toast.deferred .update-text,
+#update-toast.deferred #update-reload {
+  display: none;
+}
+
+#update-toast.deferred #update-dismiss {
+  padding: 9px 14px;
+  opacity: 1;
+  color: #dbe4ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Rotation-curve overlay — a small physics chart, bottom-right, in the glass style.
    Toggled from the Dark matter halo group; off by default to keep the view clean. */
 #rotcurve {
