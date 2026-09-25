@@ -125,7 +125,7 @@
       <section>
         <h2><span class="num">01</span>How the sound is made</h2>
         <p>
-          Every sound you hear is <strong>synthesized on the fly</strong> - oscillators, a noise bed, a
+          Every sound you hear is <strong>synthesised on the fly</strong> - oscillators, a noise bed, a
           code-generated reverb, a feedback delay, a compressor. There are no audio files. Nothing is
           pre-recorded or looped; if you change the galaxy, the sound changes with it, because the sound
           <em>is</em> a reading of the galaxy.
@@ -150,23 +150,23 @@
       </section>
 
       <section>
-        <h2><span class="num">02</span>What we're aiming for - and the research behind it</h2>
+        <h2><span class="num">02</span>What it's aiming for, and the research behind it</h2>
         <p>
           The goal is narrow and worth stating plainly: a soundscape that is <strong>genuinely pleasant to
           leave on for a long time</strong>, that lends the galaxy a feeling of <strong>calm</strong> and a
           sense of <strong>scale</strong>, and that <strong>moves with the simulation</strong> so the two feel
-          like one thing. Some of those aims rest on solid findings; others are design judgments informed by
-          the research where it exists and honest where it runs out. Here is that line, drawn carefully:
+          like one thing. Some of those aims rest on solid findings; others are design judgements informed by
+          the research where it exists and honest where it runs out. Three principles run through all of it:
         </p>
         <ul>
           <li><strong>Consonance, mostly.</strong> In the classic psychoacoustic account, Plomp &amp; Levelt (1965) modelled <em>sensory</em> dissonance as the roughness of partials beating within a critical band - which consonant intervals tend to avoid <a href="#r1">[1]</a>. It is <em>one</em> factor among several: later work finds harmonicity and cultural familiarity matter at least as much <a href="#r2">[2]</a><a href="#r3">[3]</a>. The pad and starfield are tuned to octaves and fifths, which read as consonant on all of these accounts; the violent collisions deliberately let tension in.</li>
-          <li><strong>Keep clear of the ear's most sensitive band.</strong> Hearing is most acute in the low kHz, with the threshold reaching its minimum around <strong>3–4 kHz</strong> (an ear-canal resonance) <a href="#r4">[4]</a>; energy up there also drives perceived <em>sharpness</em>, a known contributor to acoustic annoyance <a href="#r5">[5]</a>. So the sparkle sits <em>below</em> that band, and twinkles rather than holds (§05).</li>
-          <li><strong>A slow, regular swell.</strong> Voluntary breathing near six breaths a minute (~0.1 Hz) is, for most people, close to a cardiovascular <em>resonance</em> where heart rate and breath reinforce each other, producing large heart-rate swings (high HRV) and strong cardiac-vagal activity <a href="#r6">[6]</a><a href="#r7">[7]</a>. The bed swells at 0.1 Hz as a gentle cue - an invitation, not a proven reflex (§04).</li>
-          <li><strong>Slow tempo.</strong> Faster musical tempo tends to <em>raise</em> arousal; slower or meditative music tends to lower it <a href="#r10">[10]</a><a href="#r11">[11]</a>. So the note grid stays slow (§06).</li>
           <li><strong>Soft onsets.</strong> The acoustic startle reflex is triggered by sudden, fast-rising onsets, and lengthening the rise time suppresses it <a href="#r12">[12]</a>. So every note fades in and the bed has no transients.</li>
-          <li><strong>A reach for scale.</strong> Awe is the response to perceived <em>vastness</em> that the mind must stretch to accommodate <a href="#r13">[13]</a>. The design reaches for sonic spaciousness - reverberant depth and width - to <em>suggest</em> that scale, though linking these textures to the emotion itself is a hypothesis, not a result (§07).</li>
           <li><strong>No melody to track.</strong> Ambient music, in Eno's framing, should be "as ignorable as it is interesting" <a href="#r16">[16]</a>; the melody is a low-surprise random walk over the scale, never a hook.</li>
         </ul>
+        <p>
+          The other aims each have a section below: a slow swell tied to resonant breathing (§04), keeping
+          clear of the ear's most sensitive band (§05), a slow tempo (§06) and a reach for scale (§07).
+        </p>
         <div class="note honesty">
           <span class="tag">Honest about the claim</span>
           <p>
@@ -531,8 +531,8 @@
 }</code></pre>
         </figure>
         <p>
-          Around that, the chain sums the very low end to mono (so the sub is solid on any system), trims sub-30 Hz
-          rumble again at the file level, applies raised-cosine fades, and writes a 24-bit WAV. The result is a
+          Around that, the chain sums the very low end to mono (so the sub is solid on any system), trims rumble below about
+          36 Hz again at the file level, applies raised-cosine fades, and writes a 24-bit WAV. The result is a
           finished audiovisual piece - the same arc on screen and in the speakers, rendered from a single seed.
         </p>
       </section>
@@ -591,7 +591,7 @@
       </section>
 
       <p style="text-align: center; margin-top: 24px;">
-        <a class="crosslink" href="/physics">The physics behind it →</a>
+        <a class="crosslink" href="/physics">← The physics behind it</a>
         &nbsp;
         <a class="crosslink" href="/engineering">How it's built →</a>
       </p>
