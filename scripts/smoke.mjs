@@ -96,6 +96,15 @@ const chrome = spawn(chromePath, [
   '--autoplay-policy=no-user-gesture-required',
   '--enable-unsafe-webgpu',
   '--ignore-gpu-blocklist',
+  // Headless Linux runners need a matching Vulkan compositor and WebGPU
+  // software adapter; the default GL compositor can lose the GPU device.
+  ...(process.platform === 'linux' ? [
+    '--enable-features=Vulkan',
+    '--use-angle=vulkan',
+    '--use-vulkan=swiftshader',
+    '--use-webgpu-adapter=swiftshader',
+    '--disable-vulkan-surface',
+  ] : []),
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--window-size=1280,720',
@@ -175,7 +184,18 @@ async function waitForJson(url, timeoutMs) {
 
 function readbackProbe(rejectMap) {
   return `(() => {
-    window.__galactoReadbackSmoke = { attempts: 0, failures: 0, successes: 0 };
+    window.__galactoReadbackSmoke = { attempts: 0, failures: 0, successes: 0, configured: false };
+    const raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = callback => raf.call(window, time => {
+      const probe = window.__galactoReadbackSmoke;
+      if (!probe.configured && window.galacto?.isReady()) {
+        // Configure before the first simulation frame: the normal 16k-body
+        // all-pairs workload can overwhelm a CI software GPU before this test.
+        window.galacto.setParticleCount(256);
+        probe.configured = true;
+      }
+      callback(time);
+    });
     if (!globalThis.GPUBuffer) return;
     const original = GPUBuffer.prototype.mapAsync;
     GPUBuffer.prototype.mapAsync = function (...args) {
