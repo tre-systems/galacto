@@ -32,7 +32,12 @@ impl Graphics {
             .await
             .map_err(|e| AppError::Graphics(format!("no appropriate WebGPU adapter: {e:?}")))?;
 
-        console_log!("Adapter: {:?}", adapter.get_info());
+        let info = adapter.get_info();
+        console_log!(
+            "WebGPU adapter: backend={:?}, type={:?}",
+            info.backend,
+            info.device_type
+        );
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())

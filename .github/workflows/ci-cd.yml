@@ -82,6 +82,9 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check:js
 
+      - name: Test GPU readback diagnostics
+        run: npm run test:gpu-telemetry
+
       - name: Audit npm dependencies
         run: npm run audit:npm
 
@@ -103,7 +106,7 @@ jobs:
         run: npm run build
 
       - name: Smoke-test built site
-        run: npm run smoke -- --require-browser
+        run: npm run smoke -- --require-browser --exercise-readback --reject-map
 
   deploy:
     name: Deploy

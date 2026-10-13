@@ -156,6 +156,27 @@ struct ReduceState {
     stats: CoreStats,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+impl ReduceState {
+    fn begin(&mut self) -> bool {
+        if self.in_flight {
+            return false;
+        }
+        self.in_flight = true;
+        true
+    }
+
+    fn complete(&mut self, stats: Option<CoreStats>, unmap: impl FnOnce()) {
+        // wgpu reserves its mapped range before the browser resolves mapAsync.
+        // Even a rejected map must release that range before another attempt.
+        unmap();
+        if let Some(stats) = stats {
+            self.stats = stats;
+        }
+        self.in_flight = false;
+    }
+}
+
 /// Inputs to [`Simulation::reseed`]: what to seed (scenario, disk temperature, body
 /// count) plus the live physics the fresh bodies must be balanced against (gravity
 /// and halo). Bundled so the call site reads as named fields rather than a long
@@ -878,17 +899,19 @@ impl Simulation {
     /// it is a no-op there.
     #[cfg(target_arch = "wasm32")]
     pub fn map_core_readback(&self) {
+        if !self.reduce_state.borrow_mut().begin() {
+            return;
+        }
         let staging = self.reduction_staging.clone();
         let state = self.reduce_state.clone();
         // Map only the active prefix — the count may have shrunk, leaving stale
         // data in the tail that must not be summed.
         let bytes = self.reduction_bytes();
-        self.reduce_state.borrow_mut().in_flight = true;
+        let count = self.count;
         self.reduction_staging
             .slice(0..bytes)
             .map_async(wgpu::MapMode::Read, move |res| {
-                let mut st = state.borrow_mut();
-                if res.is_ok() {
+                let stats = if res.is_ok() {
                     let (mut mass, mut flux, mut activity) = (0.0_f32, 0.0_f32, 0.0_f32);
                     {
                         let data = staging.slice(0..bytes).get_mapped_range();
@@ -898,14 +921,18 @@ impl Simulation {
                             activity += p[2];
                         }
                     }
-                    staging.unmap();
-                    st.stats = CoreStats {
+                    Some(CoreStats {
                         mass,
                         flux,
                         activity,
-                    };
+                    })
+                } else {
+                    None
+                };
+                state.borrow_mut().complete(stats, || staging.unmap());
+                if res.is_err() {
+                    crate::utils::report_gpu_readback_failure(count, bytes);
                 }
-                st.in_flight = false;
             });
     }
 
@@ -1002,6 +1029,54 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejected_readback_unmaps_before_retry_and_preserves_stats() {
+        let mut state = ReduceState {
+            stats: CoreStats {
+                mass: 42.0,
+                flux: 3.0,
+                activity: 2.0,
+            },
+            ..Default::default()
+        };
+        let mapped = std::cell::Cell::new(false);
+        for _ in 0..2 {
+            assert!(state.begin());
+            assert!(!state.begin(), "overlapping map must be skipped");
+            assert!(!mapped.replace(true), "Buffer is already mapped");
+            state.complete(None, || mapped.set(false));
+            assert!(!state.in_flight);
+            assert!(!mapped.get());
+            assert_eq!(state.stats.mass, 42.0);
+            assert_eq!(state.stats.flux, 3.0);
+            assert_eq!(state.stats.activity, 2.0);
+        }
+        assert!(state.begin());
+        assert!(!mapped.replace(true));
+        state.complete(
+            Some(CoreStats {
+                mass: 7.0,
+                ..Default::default()
+            }),
+            || mapped.set(false),
+        );
+        assert_eq!(state.stats.mass, 7.0);
+        assert!(!mapped.get());
+        assert!(!state.in_flight);
+    }
+
+    #[test]
+    fn cleanup_must_finish_before_readback_becomes_idle() {
+        let mut state = ReduceState::default();
+        assert!(state.begin());
+        let cleanup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            state.complete(None, || panic!("cleanup failed"));
+        }));
+        assert!(cleanup.is_err());
+        assert!(state.in_flight);
+        assert!(!state.begin());
+    }
 
     #[test]
     fn buffer_layout_matches_wgsl() {

@@ -1,4 +1,24 @@
 (() => {
+  let readbackFailure;
+  let reportReadbackFailure = () => {};
+  window.galactoReportGpuReadbackFailure = (particles, bytes) => {
+    if (
+      !Number.isInteger(particles) ||
+      particles < 256 ||
+      particles > 163840 ||
+      particles % 256 !== 0 ||
+      bytes !== (particles / 256) * 16
+    ) {
+      return;
+    }
+    readbackFailure ||= {
+      backend: "browser_webgpu",
+      phase: "map_async",
+      particles,
+      bytes,
+    };
+    reportReadbackFailure();
+  };
   const config = window.GALACTO_SENTRY_CONFIG;
   if (!config?.dsn) return;
 
@@ -118,6 +138,25 @@
         beforeSend: scrubEvent,
         beforeSendTransaction: scrubEvent,
       });
+
+      // One warning per page, including failures before the SDK finishes loading.
+      // No adapter name, raw GPU error, URL, or user input enters this context.
+      let readbackFailureReported = false;
+      reportReadbackFailure = () => {
+        if (!readbackFailure || readbackFailureReported) return;
+        readbackFailureReported = true;
+        try {
+          window.Sentry.captureMessage("GPU core-statistics readback mapping failed", {
+            level: "warning",
+            fingerprint: ["galacto", "gpu-core-readback-map-failed"],
+            tags: { gpu_failure: "readback_map" },
+            contexts: { gpu_readback: readbackFailure },
+          });
+        } catch {
+          // Telemetry failure must not stop the simulation.
+        }
+      };
+      reportReadbackFailure();
 
       // Reveal the control panel's feedback button and make it open the form. The
       // button stays hidden until this runs, so it never appears as a dead control

@@ -17,6 +17,7 @@
     "format": "cargo fmt",
     "check:js": "node scripts/check-js.mjs",
     "test:pwa": "node --test scripts/pwa-update.test.mjs",
+    "test:gpu-telemetry": "node --test scripts/gpu-readback-telemetry.test.mjs",
     "check:deploy-metadata": "node scripts/check-deploy-metadata.mjs",
     "diagrams": "node scripts/render-diagrams.mjs",
     "check:diagrams": "node scripts/check-diagrams.mjs",
@@ -53,6 +54,7 @@
     "node": ">=22"
   },
   "overrides": {
-    "undici@^7": "7.29.1"
+    "undici@^7": "7.29.1",
+    "sharp": "0.35.5"
   }
 }

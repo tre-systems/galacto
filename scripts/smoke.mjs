@@ -62,6 +62,11 @@ const targetUrl = take('--url');
 const timeoutMs = takeNumber('--timeout', 30_000);
 const chromePath = take('--chrome') || process.env.CHROME || findChrome();
 const requireBrowser = hasFlag('--require-browser');
+const exerciseReadback = hasFlag('--exercise-readback');
+const rejectMap = hasFlag('--reject-map');
+if (rejectMap && (!exerciseReadback || targetUrl)) {
+  throw new Error('smoke: map fault injection requires a local --exercise-readback build');
+}
 
 if (!chromePath) {
   const message = 'smoke: Chrome/Chromium not found; set CHROME=/path/to/browser';
@@ -94,7 +99,7 @@ const chrome = spawn(chromePath, [
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--window-size=1280,720',
-  url,
+  exerciseReadback ? 'about:blank' : url,
 ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
@@ -104,7 +109,7 @@ try {
   });
 
   const tabs = await waitForJson(`http://127.0.0.1:${debugPort}/json/list`, timeoutMs);
-  const tab = tabs.find((item) => item.url.startsWith(url)) ?? tabs[0];
+  const tab = tabs.find((item) => item.url.startsWith(exerciseReadback ? 'about:blank' : url)) ?? tabs[0];
   if (!tab?.webSocketDebuggerUrl) throw new Error('smoke: could not open Chrome tab');
 
   const page = new Cdp(tab.webSocketDebuggerUrl);
@@ -113,9 +118,17 @@ try {
   await page.send('Runtime.enable');
   await page.send('Log.enable');
 
+  if (exerciseReadback) {
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readbackProbe(rejectMap) });
+    await page.send('Page.navigate', { url });
+  }
+
   const result = await evaluatePageState(page, timeoutMs);
 
   const value = result.result.value;
+  if (value.status === 'ready' && exerciseReadback) {
+    await exerciseCoreReadback(page, rejectMap, timeoutMs);
+  }
   const hardErrors = page.exceptions.concat(
     page.console
       .filter((entry) => entry.type === 'error' && !/Failed to initialize application/i.test(entry.text))
@@ -158,6 +171,52 @@ async function waitForJson(url, timeoutMs) {
     await sleep(200);
   }
   throw new Error(`smoke: timed out waiting for ${url}`);
+}
+
+function readbackProbe(rejectMap) {
+  return `(() => {
+    window.__galactoReadbackSmoke = { attempts: 0, failures: 0, successes: 0 };
+    if (!globalThis.GPUBuffer) return;
+    const original = GPUBuffer.prototype.mapAsync;
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      const probe = window.__galactoReadbackSmoke;
+      probe.attempts++;
+      if (${rejectMap} && probe.failures < 2) {
+        probe.failures++;
+        return Promise.reject(new DOMException('Synthetic readback rejection', 'OperationError'));
+      }
+      return original.apply(this, args).then(value => {
+        probe.successes++;
+        return value;
+      });
+    };
+  })();`;
+}
+
+async function exerciseCoreReadback(page, rejectMap, timeoutMs) {
+  await page.send('Runtime.evaluate', { expression: 'window.galacto.setParticleCount(256)' });
+  // A real gesture enables Web Audio and therefore its core-statistics readback.
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 640, y: 360, button: 'left', clickCount: 1 });
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 640, y: 360, button: 'left', clickCount: 1 });
+  const result = await page.send('Runtime.evaluate', {
+    expression: `new Promise(resolve => {
+      const started = performance.now();
+      const poll = () => {
+        const probe = window.__galactoReadbackSmoke;
+        if (probe.successes >= 3 || performance.now() - started > ${timeoutMs}) {
+          resolve({ ...probe, fps: window.galacto.fps() });
+        } else setTimeout(poll, 50);
+      };
+      poll();
+    })`,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  const probe = result.result.value;
+  if (!probe || probe.successes < 3 || (rejectMap && probe.failures !== 2)) {
+    throw new Error(`smoke: readback did not recover: ${JSON.stringify(probe)}`);
+  }
+  console.log(`smoke: core readback passed (${probe.failures} injected rejections, ${probe.successes} successful maps)`);
 }
 
 async function evaluatePageState(page, timeoutMs) {

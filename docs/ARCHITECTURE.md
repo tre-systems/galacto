@@ -118,6 +118,18 @@ A single `requestAnimationFrame` callback (`animation_frame` in `src/lib.rs`) do
 
 Then it schedules the next frame. The simulation state lives only in GPU memory between frames — there is no CPU-side particle array after the initial upload.
 
+The core-statistics staging buffer is unmapped after both successful and rejected
+map requests, before the in-flight guard is released. A rejected map preserves the
+last audio statistics and permits a clean retry without interrupting rendering.
+Monitoring reports at most one readback warning per page with the WebGPU backend,
+map phase, particle count, and byte range; it does not collect adapter descriptions,
+raw GPU messages, or user input. Native lifecycle tests and browser fault injection
+cover rejection followed by recovery.
+`npm run smoke -- --exercise-readback --reject-map` injects two rejected maps into
+a local build and requires successful readbacks afterward. Fault injection is
+disabled for remote URLs; `npm run smoke:live -- --exercise-readback` checks real
+production readbacks without injecting failures.
+
 ## GPU Data Model
 
 `Simulation::new` (`src/simulation.rs`) creates the simulation buffers, uniforms, readback staging, and pipelines listed here:
