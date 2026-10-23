@@ -478,7 +478,7 @@ body {
 }
 
 /* Footer — feedback + support share one centred row (wrapping only if forced). */
-/* Two stacked rows: the doc links above, the Feedback / Support actions below. */
+/* Film link, doc links, and Feedback / Support actions in stacked rows. */
 .panel-footer {
   display: flex;
   flex-direction: column;
