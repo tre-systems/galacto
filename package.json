@@ -48,13 +48,12 @@
   "license": "AGPL-3.0-only",
   "devDependencies": {
     "husky": "^9.1.7",
-    "wrangler": "^4.149.0"
+    "wrangler": "^4.156.0"
   },
   "engines": {
     "node": ">=22"
   },
   "overrides": {
-    "undici@^7": "7.29.1",
     "sharp": "0.35.5"
   }
 }
