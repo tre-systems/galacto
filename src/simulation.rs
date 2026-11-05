@@ -915,7 +915,10 @@ impl Simulation {
                     let (mut mass, mut flux, mut activity) = (0.0_f32, 0.0_f32, 0.0_f32);
                     {
                         let data = staging.slice(0..bytes).get_mapped_range();
-                        for p in bytemuck::cast_slice::<u8, f32>(&data[..]).chunks_exact(4) {
+                        for p in bytemuck::cast_slice::<u8, f32>(&data[..])
+                            .as_chunks::<4>()
+                            .0
+                        {
                             mass += p[0];
                             flux += p[1];
                             activity += p[2];

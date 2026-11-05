@@ -1,6 +1,6 @@
 # Galacto instrument package
 
-`instrument.json` defines version 1.0.0 of the performance-host API 1 package.
+`instrument.json` defines version 1.0.1 of the performance-host API 1 package.
 The file list is the source boundary: the host imports a committed version and
 checks every file hash before building. Engine and adapter fixes belong here.
 Bump the package version before updating the host's pinned dependency.
