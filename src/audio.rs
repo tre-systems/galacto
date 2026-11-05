@@ -504,6 +504,7 @@ pub struct AudioEngine {
     /// Next grid-step time on the audio clock — the scheduler's cursor.
     next_note_time: f64,
     enabled: bool,
+    fade_until: Option<f64>,
     /// User volume in 0..1, scaling [`MASTER_LEVEL`]; driven by the volume slider.
     volume: f32,
     /// User mute, independent of `volume` and `enabled`; driven by the mute button.
@@ -525,6 +526,7 @@ impl AudioEngine {
             engine: MusicEngine::new(ENGINE_SEED),
             next_note_time,
             enabled: false,
+            fade_until: None,
             volume: 1.0,
             muted: false,
         })
@@ -552,6 +554,10 @@ impl AudioEngine {
 
     /// Turn sound on or off. Ramps the master level rather than cutting.
     pub fn set_enabled(&mut self, on: bool) {
+        if self.fade_until.is_some() && on {
+            return;
+        }
+        self.fade_until = None;
         self.enabled = on;
         let now = self.ctx.current_time();
         if on {
@@ -567,6 +573,9 @@ impl AudioEngine {
     /// Set the user volume (0..1), scaling the master level.
     pub fn set_volume(&mut self, volume: f32) {
         self.volume = volume.clamp(0.0, 1.0);
+        if self.fade_until.is_some() {
+            return;
+        }
         let now = self.ctx.current_time();
         let _ = self
             .graph
@@ -578,12 +587,45 @@ impl AudioEngine {
     /// Mute or unmute, independent of volume.
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
+        if self.fade_until.is_some() {
+            if muted {
+                let gain = self.graph.master_gain.gain();
+                let now = self.ctx.current_time();
+                let _ = gain.cancel_scheduled_values(now);
+                let _ = gain.set_target_at_time(0.0, now, 0.1);
+            }
+            return;
+        }
         let now = self.ctx.current_time();
         let _ = self
             .graph
             .master_gain
             .gain()
             .set_target_at_time(self.target_level(), now, 0.1);
+    }
+
+    /// Controller transport uses the existing master gain; it never changes the mix.
+    pub fn fade_out(&mut self) {
+        if !self.enabled || self.fade_until.is_some() {
+            return;
+        }
+        let now = self.ctx.current_time();
+        let gain = self.graph.master_gain.gain();
+        // Capture the current value before cancelling the existing smoothing.
+        let value = gain.value();
+        let _ = gain.cancel_scheduled_values(now);
+        let _ = gain.set_value_at_time(value, now);
+        let _ = gain.linear_ramp_to_value_at_time(0.0, now + 8.0);
+        self.fade_until = Some(now + 8.0);
+    }
+
+    pub fn transport(&self) -> [f64; 4] {
+        [
+            f64::from(self.enabled),
+            f64::from(self.fade_until.is_some()),
+            f64::from(self.is_running()),
+            f64::from(self.graph.master_gain.gain().value()),
+        ]
     }
 
     /// Whether the visual core-statistics readback is currently useful.
@@ -595,6 +637,13 @@ impl AudioEngine {
     /// engine's targets, then schedule any due notes ahead on the audio clock.
     pub fn update(&mut self, state: &GalaxyState) {
         let now = self.ctx.current_time();
+        if self.fade_until.is_some_and(|end| now >= end) {
+            self.fade_until = None;
+            self.enabled = false;
+            let gain = self.graph.master_gain.gain();
+            let _ = gain.cancel_scheduled_values(now);
+            let _ = gain.set_value_at_time(0.0, now);
+        }
         let t = now as f32;
         let lfo_a = lfo(t, 0.085, 0.0); // ~74 s period
         let lfo_b = lfo(t, 0.047, 1.7); // ~134 s period, offset

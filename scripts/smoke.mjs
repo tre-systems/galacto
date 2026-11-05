@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { hasFlag, take, takeNumber } from './cli.mjs';
 import { ensureChrome, findChrome, getFreePort } from './preflight.mjs';
+import { xl3Probe, exerciseXL3 } from './xl3-smoke-helpers.mjs';
 import { startStaticServer } from './serve-static.mjs';
 
 class Cdp {
@@ -64,6 +65,8 @@ const chromePath = take('--chrome') || process.env.CHROME || findChrome();
 const requireBrowser = hasFlag('--require-browser');
 const exerciseReadback = hasFlag('--exercise-readback');
 const rejectMap = hasFlag('--reject-map');
+const exerciseController = hasFlag('--exercise-xl3');
+if (exerciseController && targetUrl) throw new Error('XL3 injection is local-only');
 if (rejectMap && (!exerciseReadback || targetUrl)) {
   throw new Error('smoke: map fault injection requires a local --exercise-readback build');
 }
@@ -84,6 +87,8 @@ if (!url) {
   ({ server, url } = await startStaticServer({ dir, port: 0, cors: true }));
 }
 
+if (exerciseController) url += '?controller=1';
+const inject = exerciseReadback || exerciseController;
 const profileDir = mkdtempSync(join(tmpdir(), 'galacto-smoke-profile-'));
 const debugPort = await getFreePort();
 const chrome = spawn(chromePath, [
@@ -108,7 +113,7 @@ const chrome = spawn(chromePath, [
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--window-size=1280,720',
-  exerciseReadback ? 'about:blank' : url,
+  inject ? 'about:blank' : url,
 ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
@@ -118,7 +123,7 @@ try {
   });
 
   const tabs = await waitForJson(`http://127.0.0.1:${debugPort}/json/list`, timeoutMs);
-  const tab = tabs.find((item) => item.url.startsWith(exerciseReadback ? 'about:blank' : url)) ?? tabs[0];
+  const tab = tabs.find((item) => item.url.startsWith(inject ? 'about:blank' : url)) ?? tabs[0];
   if (!tab?.webSocketDebuggerUrl) throw new Error('smoke: could not open Chrome tab');
 
   const page = new Cdp(tab.webSocketDebuggerUrl);
@@ -127,14 +132,15 @@ try {
   await page.send('Runtime.enable');
   await page.send('Log.enable');
 
-  if (exerciseReadback) {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readbackProbe(rejectMap) });
+  if (inject) {
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readbackProbe(rejectMap) + (exerciseController ? xl3Probe() : '') });
     await page.send('Page.navigate', { url });
   }
 
   const result = await evaluatePageState(page, timeoutMs);
 
   const value = result.result.value;
+  if (value.status === 'ready' && exerciseController) await exerciseXL3(page);
   if (value.status === 'ready' && exerciseReadback) {
     await exerciseCoreReadback(page, rejectMap, timeoutMs);
   }
@@ -215,7 +221,8 @@ function readbackProbe(rejectMap) {
 
 async function exerciseCoreReadback(page, rejectMap, timeoutMs) {
   await page.send('Runtime.evaluate', { expression: 'window.galacto.setParticleCount(256)' });
-  // A real gesture enables Web Audio and therefore its core-statistics readback.
+  // The controller suite already exercises audio; a fresh standard visit uses
+  // the usual canvas gesture to enable the core-statistics readback.
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 640, y: 360, button: 'left', clickCount: 1 });
   await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 640, y: 360, button: 'left', clickCount: 1 });
   const result = await page.send('Runtime.evaluate', {

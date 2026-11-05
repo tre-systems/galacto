@@ -227,10 +227,18 @@ async function init() {
     setupMuteButton(mod);
     setupRestartButton(mod);
     setupRuntimeNotice();
-    setupAutoSound(mod);
+    let xl3;
+    setupAutoSound(mod, () => xl3?.managed || false);
     setupInfoButtons();
     setupAutopilot(mod);
     setupIdleHide();
+    const { createXL3Surface } = await import(`./xl3-surface.js${assetVersionSuffix}`);
+    xl3 = createXL3Surface({
+      root: document.getElementById('xl3-panel'), mod,
+      close: panel.collapse, standard: () => panel.choose('controls'),
+    });
+    panel.attach(xl3);
+
     // ?compose=SEED&dur=SECONDS auto-plays the deterministic cinematic
     // arrangement (drives camera + galaxy through the arc). The video-capture
     // script loads this so the captured picture matches the audio rendered from
@@ -271,6 +279,7 @@ async function init() {
       arrangementActive: () => mod.arrangement_active(),
       setParticleCount: (n) => mod.set_particle_count(n),
       fps: () => mod.fps(),
+      controllerState: () => Array.from(mod.controller_snapshot()),
       // Render a composed piece's audio and POST the WAV bytes to `postUrl`,
       // so the headless capture run can save it to disk. Returns the report.
       renderPieceTo: async (postUrl, dur, seed, lufs) => {
@@ -510,8 +519,12 @@ function setupControlPanel() {
   const panel = document.getElementById("controls");
   const handle = document.getElementById("controls-toggle");
 
+  let xl3, opened = false, layout = 'controls';
+  try { layout = localStorage.getItem('galacto-control-layout') === 'xl3' ? 'xl3' : 'controls'; } catch {}
   const setCollapsed = (collapsed) => {
-    panel.classList.toggle("collapsed", collapsed);
+    opened = !collapsed;
+    panel.classList.toggle("collapsed", collapsed || layout === 'xl3');
+    xl3?.panel.show(opened && layout === 'xl3');
     handle.setAttribute("aria-expanded", String(!collapsed));
     handle.title = collapsed
       ? "Show controls (drag to move)"
@@ -574,7 +587,7 @@ function setupControlPanel() {
       moved = false;
       return;
     }
-    setCollapsed(!panel.classList.contains("collapsed"));
+    setCollapsed(opened);
     clampIntoView();
   });
 
@@ -583,14 +596,38 @@ function setupControlPanel() {
   // A press anywhere outside the open panel tucks it away (clicks on the
   // canvas, etc.). Presses inside - toggle, sliders, links - are ignored.
   document.addEventListener("pointerdown", (e) => {
-    if (!panel.classList.contains("collapsed") && !panel.contains(e.target)) {
+    if (opened && !panel.contains(e.target) && !document.getElementById("xl3-panel").contains(e.target)) {
       setCollapsed(true);
     }
   });
 
   // Expose a collapse so other controls (e.g. switching simulation) can
   // tuck the panel away.
-  return { collapse: () => setCollapsed(true) };
+  const choose = (value) => {
+    layout = value === 'xl3' ? 'xl3' : 'controls';
+    try { localStorage.setItem('galacto-control-layout', layout); } catch {}
+    document.querySelectorAll('[data-interface]').forEach(button =>
+      button.setAttribute('aria-pressed', String(button.dataset.interface === layout)));
+    setCollapsed(false);
+    clampIntoView();
+  };
+  document.querySelectorAll('[data-interface]').forEach(button => {
+    button.addEventListener('click', () => choose(button.dataset.interface));
+    button.addEventListener('keydown', event => event.stopPropagation());
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') setCollapsed(true); });
+  return {
+    collapse: () => setCollapsed(true), choose,
+    attach(surface) {
+      xl3 = surface;
+      if (new URLSearchParams(location.search).get('controller') === '1') choose('xl3');
+      else {
+        document.querySelectorAll('[data-interface]').forEach(button =>
+          button.setAttribute('aria-pressed', String(button.dataset.interface === layout)));
+        setCollapsed(true);
+      }
+    },
+  };
 }
 
 // A small "?" after each control's label that reveals a plain-language
@@ -868,7 +905,7 @@ function setupRestartButton(mod) {
 // (pointer / key / touch / wheel) - which, with a galaxy there to be
 // dragged and zoomed, happens within moments - and boot the audio engine
 // inside that gesture so the AudioContext is allowed to start.
-function setupAutoSound(mod) {
+function setupAutoSound(mod, controllerManaged = () => false) {
   // iOS is fussy: the AudioContext often stays *suspended* after the first
   // touch (Safari tends to unlock audio on touchend/click, not touchstart). So
   // rather than a one-shot, re-assert the start on every interaction and only
@@ -901,8 +938,9 @@ function setupAutoSound(mod) {
       muteButton.setAttribute("aria-label", "Sound unavailable");
     }
   };
-  const tryStart = () => {
-    if (soundUnavailable) return;
+  const tryStart = (event) => {
+    if (soundUnavailable || controllerManaged() ||
+        event?.target?.closest?.('#xl3-panel, [data-interface]')) return;
     claimPlayback();
     const running = safeWasmCall(
       "Sound",

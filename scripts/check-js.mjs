@@ -9,6 +9,12 @@ const roots = ['scripts'];
 const files = [
   'static/_worker.js',
   'static/app.js',
+  'static/xl3.js',
+  'static/controller-panel.js',
+  'static/view-feedback.js',
+  'static/controller-bindings.js',
+  'static/xl3-surface.js',
+
   'static/pwa-update.js',
   'static/sentry-config.js',
   'static/sentry.js',

@@ -7,6 +7,11 @@ on:
     branches: [main]
 
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the checked main branch to the live site
+        type: boolean
+        default: false
 env:
   CARGO_TERM_COLOR: always
 
@@ -85,6 +90,9 @@ jobs:
       - name: Test GPU readback diagnostics
         run: npm run test:gpu-telemetry
 
+      - name: Test XL3 controller
+        run: npm run test:xl3
+
       - name: Audit npm dependencies
         run: npm run audit:npm
 
@@ -106,13 +114,13 @@ jobs:
         run: npm run build
 
       - name: Smoke-test built site
-        run: npm run smoke -- --require-browser --exercise-readback --reject-map
+        run: npm run smoke -- --require-browser --exercise-readback --reject-map --exercise-xl3
 
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
     needs: check
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 

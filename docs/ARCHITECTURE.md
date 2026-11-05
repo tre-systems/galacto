@@ -43,7 +43,7 @@ src/
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
     ├── halo.wgsl        # Dark-matter halo overlay billboard
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
-static/                  # Frontend: index.html (WebGPU check + bootstrap + controls), styles.css, favicon.svg, _headers
+static/                  # Frontend: index.html, app.js, styles.css, XL3 driver/panel/adapter, favicon.svg, _headers
 pkg/                     # raw wasm-pack output (git-ignored)
 dist/                    # verified deploy root assembled from static/ + pkg/ (git-ignored)
 scripts/                 # build assembly/checks, smoke test, diagrams, production capture
@@ -209,12 +209,36 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 
 **Composed pieces (for video).** Beyond recording a live take, the panel can render a *complete arranged piece* with no recording: `arrangement.rs` is a deterministic cinematic arc (`seed` + `duration`) shaped as the classic ambient A→B→C — a sparse, distant intro; a build where gravity rises so the galaxy gathers, the camera drifts in, and layers enter; a serene awe peak ~two-thirds through; then a dispersing resolution. The arc drives *both* sides from one source: `generate_piece` renders the audio from the arrangement's synthetic `GalaxyState` timeline (`audio::render_offline`, then mastered), while `start_arrangement` plays the *same* arc live — setting the camera pose and pushing the live physics each frame so the on-screen galaxy performs it. Because it's deterministic, a captured video (the page auto-plays the arrangement from a `?compose=SEED&dur=…` URL, loaded by the canvas-capture script) and the offline-mastered audio rendered from the same seed/duration stay locked, and are muxed into the final video (see [Video production](VIDEO_PRODUCTION.md)).
 
+## XL3 live control
+
+`static/xl3.js`, `controller-panel.js` and `view-feedback.js` share the same
+protocol, hardware layout and coalesced drawing code as Confluon. The driver
+handles relative encoders, fader pickup, volatile DAW ownership and button
+feedback. `controller-bindings.js` maps normalized positions to Galacto controls;
+`xl3-surface.js` owns browser MIDI connection, staged setup values and actions.
+Parameter writes reach the existing DOM/WASM handlers immediately. DOM feedback
+is coalesced to an animation frame; MIDI display feedback is batched separately.
+
+`src/controller.rs` exposes camera and transport operations without changing
+simulation presets or the composition engine. Live controller edits are disabled
+while an arrangement owns the state. The first Connect gesture builds the silent
+Web Audio graph; Play enables the existing engine. A second press schedules an
+eight-second ramp on the existing master gain. Level changes cannot cancel that
+ramp, and repeated Play presses cannot restart it. The offline graph and renderer
+are unchanged. Panel assets are versioned and included in the PWA shell cache.
+
+`npm run test:xl3` covers protocol channels, relative steps, soft pickup, button
+edges and mapping isolation. `npm run smoke -- --exercise-xl3` uses synthetic
+ports in an isolated browser to test actual WASM control writes, silent arming,
+fade completion, scenario selection, capture lock, hotplug and narrow layout.
+It never opens the owner's MIDI device.
+
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release --out-dir pkg --out-name galacto` (wasm-opt `-O2` is configured in `Cargo.toml`), then `scripts/assemble-dist.mjs` creates a clean `dist/` from `static/` plus `pkg/galacto.js` and `pkg/galacto_bg.wasm`. `scripts/cache-bust.mjs` stamps the JS/CSS/WASM/service-worker URLs with `?v=<git-sha>`, and `scripts/verify-build.mjs` fails the build if the deploy root is missing required files, still has placeholders, or contains raw `wasm-pack` package artifacts.
 - `npm run dev` serves `dist/` locally with `scripts/serve-static.mjs`, and `npm run deploy` ships `dist/` to Cloudflare Pages — see [README § Key Commands](../README.md#key-commands) for the full command table.
 - Deploy metadata is checked from source before the web build: `static/site.webmanifest` is the canonical PWA manifest, `static/manifest.json` is a byte-identical compatibility copy, and the committed PWA icons must match the SVG sources in `assets/` (`npm run icons` regenerates icons plus `static/og-card.png`; `npm run check:deploy-metadata` verifies manifest identity, icon drift, and the OG card's 1200×630 dimensions). `scripts/verify-build.mjs` repeats the manifest identity and OG-dimension checks inside `dist/`.
-- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR, including Naga WGSL parse/validation through `cargo test` (`tests/shaders.rs`), JavaScript syntax checks, deploy-metadata drift checks, npm/Rust advisory checks, a verified web build, and a headless browser smoke test. Pushes to `main` deploy `dist/` to Cloudflare Pages. The Pages project/output directory is captured in `wrangler.jsonc`, and the same smoke script can verify production with `npm run smoke:live`.
+- CI (`.github/workflows/ci-cd.yml`) runs the verification gate on every push/PR, including Naga WGSL parse/validation through `cargo test` (`tests/shaders.rs`), JavaScript syntax checks, deploy-metadata drift checks, npm/Rust advisory checks, a verified web build, and a headless browser smoke test. Pushes to `main` run checks without deploying. An approved manual workflow run with `deploy: true` deploys the checked main branch to Cloudflare Pages. The Pages project/output directory is captured in `wrangler.jsonc`, and the same smoke script can verify production with `npm run smoke:live`.
 
 ## What This Architecture Deliberately Does Not Include
 

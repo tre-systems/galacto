@@ -1,0 +1,385 @@
+/* Shared XL3 layout; Galacto owns only the theme below. */
+
+.xl3-panel,
+.interface-switch {
+  --line-strong: #455558;
+  --accent: #d7b281;
+  --accent-ink: #172124;
+  --accent-hi: #e8cda6;
+  --accent-glow: #d7b28166;
+  --ink-2: #d5ded9;
+  --teal-soft: #2c5049;
+  --teal: #b0d7c9;
+  --raised: #172124;
+  --hover: #304043;
+  color: var(--paper);
+}
+
+.xl3-panel {
+  position: fixed;
+  z-index: 20;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(920px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 14px;
+  background: rgba(7, 16, 19, 0.78);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 14px 60px #0006;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.xl3-panel[hidden] {
+  display: none;
+}
+
+.xl3-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.xl3-panel > header > div:not(.interface-switch) {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.xl3-panel strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.xl3-panel #xl3-connection {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #aab4ae;
+}
+
+.xl3-panel button,
+.interface-switch button {
+  background: rgba(22, 35, 38, 0.86);
+  cursor: pointer;
+}
+
+.xl3-panel button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.xl3-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.xl3-panel [data-close] {
+  min-width: 36px;
+}
+
+.interface-switch {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+  max-width: 100%;
+  padding: 3px;
+  margin-bottom: 12px;
+  background: var(--raised);
+  border-radius: 999px;
+}
+
+.interface-switch button,
+.xl3-panel .interface-switch button {
+  min-height: 30px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.interface-switch button[aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.xl3-panel .interface-switch {
+  flex-shrink: 0;
+  margin: 0;
+}
+.xl3-scroll {
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+.xl3-board {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 12px;
+  min-width: 580px;
+}
+
+.xl3-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.xl3-readout {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: rgba(7, 16, 19, 0.82);
+  font: 11px/1.5 var(--mono);
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.xl3-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.xl3-nav:empty {
+  display: none;
+}
+.xl3-left small {
+  padding: 4px 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #aab4ae;
+  text-align: center;
+}
+
+.xl3-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px 6px;
+  align-items: stretch;
+}
+
+.xl3-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(10, 20, 24, 0.3);
+  color: var(--row-colour);
+}
+
+.xl3-selected {
+  border-color: var(--row-colour);
+  background: #ffffff08;
+}
+.xl3-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.xl3-cell output {
+  min-height: 12px;
+  font: 10px/1.2 var(--mono);
+}
+.xl3-dial {
+  position: relative;
+  display: block;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: linear-gradient(140deg, #344346, #18282b);
+  transform: rotate(var(--turn));
+  box-shadow: 0 2px 7px #0005;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.xl3-dial::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: calc(50% - 1px);
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--row-colour);
+}
+
+/* The dial handles pointer input; the range keeps native keyboard access. */
+.xl3-knob input[type="range"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.xl3-knob:focus-within .xl3-dial {
+  outline: 1px solid var(--row-colour);
+  outline-offset: 3px;
+}
+.xl3-fader {
+  justify-content: space-between;
+}
+.xl3-fader .xl3-dial {
+  display: none;
+}
+.xl3-fader input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 44px;
+  height: 108px;
+  min-height: 108px;
+  padding: 0;
+  accent-color: var(--row-colour);
+  background: none;
+}
+
+.xl3-fader input[type="range"]::-webkit-slider-runnable-track {
+  width: 3px;
+  height: auto;
+  background: var(--line-strong);
+}
+.xl3-fader input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 10px;
+  margin: -1px -9.5px 0;
+  background: var(--row-colour);
+  border: 0;
+  box-shadow: none;
+}
+.xl3-fader input:focus-visible {
+  outline: 1px solid var(--row-colour);
+  outline-offset: 2px;
+}
+.xl3-cell.unavailable {
+  opacity: 0.4;
+  background: none;
+}
+.xl3-cell.unavailable .xl3-dial {
+  cursor: default;
+}
+.xl3-knob.unavailable {
+  padding-block: 4px;
+}
+.xl3-knob.unavailable .xl3-dial {
+  width: 24px;
+  height: 24px;
+}
+.xl3-knob.unavailable .xl3-label,
+.xl3-knob.unavailable output {
+  display: none;
+}
+.xl3-grid > button {
+  min-height: 36px;
+  padding: 6px 2px;
+  border-color: #455558;
+  font-size: 10px;
+}
+.xl3-grid > button[aria-pressed="true"],
+.xl3-left button[aria-pressed="true"] {
+  background: var(--teal-soft);
+  color: var(--teal);
+  border-color: var(--teal);
+}
+.xl3-left .xl3-shift {
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.xl3-board [data-cc] {
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.xl3-board [data-cc].xl3-key-down,
+.xl3-board button[data-cc]:active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent-hi);
+  box-shadow: 0 0 10px var(--accent-glow);
+  opacity: 1;
+  transition: none;
+}
+.xl3-note {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aab4ae;
+}
+
+@media (max-width: 760px) {
+  .xl3-panel {
+    bottom: 6px;
+    width: calc(100vw - 12px);
+    max-height: calc(100dvh - 12px);
+    padding: 12px;
+  }
+  .xl3-board {
+    grid-template-columns: 96px 1fr;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 600px) {
+  .xl3-panel > header {
+    flex-wrap: wrap;
+  }
+  .xl3-panel > header > div:not(.interface-switch) {
+    flex: 1 1 100%;
+  }
+  .xl3-panel .interface-switch {
+    margin-right: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .xl3-panel button {
+    min-height: 44px;
+  }
+  .xl3-knob:not(.unavailable) .xl3-dial {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .xl3-panel {
+    background: #0b1518;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+.xl3-panel, .interface-switch { --paper: #eee9da; --ink: #eee9da; --muted: #aab6bd; --mono: ui-monospace, monospace; }
+.xl3-panel button, .interface-switch button { color: var(--ink); font-family: inherit; cursor: pointer; }
+.xl3-panel input[type="range"] { accent-color: var(--row-colour); }
+#controls-body > .interface-switch { margin: 0 0 12px; }
+
+.xl3-fader input[type="range"],
+.xl3-fader input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; }

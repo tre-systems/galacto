@@ -34,7 +34,8 @@
     "produce": "node scripts/produce.mjs",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=galacto",
     "check": "cargo check --target wasm32-unknown-unknown",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:xl3": "node --test scripts/xl3.test.mjs"
   },
   "keywords": [
     "rust",

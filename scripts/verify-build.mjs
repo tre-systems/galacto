@@ -12,6 +12,13 @@ const requiredFiles = [
   '_headers',
   '_worker.js',
   'app.js',
+  'xl3.js',
+  'controller-panel.js',
+  'view-feedback.js',
+  'controller-bindings.js',
+  'xl3-surface.js',
+  'controller-panel.css',
+
   'audio.html',
   'engineering.html',
   'favicon.svg',

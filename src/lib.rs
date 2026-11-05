@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 mod arrangement;
 mod audio;
 mod camera;
+mod controller;
 mod error;
 mod graphics;
 mod input;

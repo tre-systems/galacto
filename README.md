@@ -27,6 +27,30 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 ## Controls
 
+### Launch Control XL 3
+
+Open the cog, choose **XL3**, then **Connect** in Chrome or Edge. Disconnect
+Cymion or Confluon from the controller first so one app owns the DAW port.
+Connecting arms audio silently. **Play** starts the current galaxy's music;
+pressing it again fades to silence over eight seconds. The galaxy keeps moving.
+The **Controls** and **XL3** layouts share the same live values and can be hidden
+while playing. The translucent XL3 panel shows physical button presses.
+
+| Physical controls, left to right | Parameters |
+| --- | --- |
+| Eight faders | Speed, Gravity, Halo strength, Halo size, Star size, Glow, Camera speed, Level |
+| Top knobs 1–4 | Next disk stability (Q), gas fraction, bulge fraction, body count |
+| Middle knobs 4–6 | Camera orbit, tilt, zoom |
+| Top button row | Auto camera, Show halo, Rotation curve, Mute, Pause simulation, Home camera, Apply, Shift + Restart |
+| Bottom button row | Disk, Merger, Head-on, Retrograde, Minor merger, Group, M51, Controls layout |
+
+Faders pick up after crossing the on-screen value. Encoders respond immediately;
+Shift gives finer adjustment. Manual camera knobs switch autopilot off. The four
+setup knobs stage values without changing the running galaxy or sound. **Apply**
+commits them with one rebuild; choosing a scenario discards pending values.
+Unused controls stay dimmed. The controller does not change stored custom modes,
+firmware or routing, and live edits are blocked during composed playback.
+
 ### Desktop
 
 | Input              | Action                              |
@@ -94,6 +118,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | `npm run build`         | Build WASM, assemble `dist/`, cache-bust, and verify the deploy artifact |
 | `npm run dev`           | Build and serve on port 8000                     |
 | `npm run deploy`        | Build, then deploy to Cloudflare Pages           |
+| `npm run test:xl3`      | Test MIDI protocol, pickup and the Galacto mapping |
 | `npm run test`          | Run Rust tests                                   |
 | `npm run lint`          | Run Clippy                                       |
 | `npm run format`        | Format with rustfmt                              |
@@ -105,7 +130,7 @@ See [ARCHITECTURE § Repo Layout](docs/ARCHITECTURE.md#repo-layout) for the per-
 | `npm run audit`         | Run npm and RustSec dependency advisory checks   |
 | `npm run diagrams`      | Render the architecture diagrams (needs Graphviz)|
 
-A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `check` — and CI adds JavaScript syntax, dependency advisory, verified-build, and browser-smoke checks before deploying on push to `main`. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
+A pre-commit hook runs the fast Rust gate — `fmt` / `clippy` / `test` / wasm `check` — and CI adds JavaScript syntax, dependency advisory, verified-build, and browser-smoke checks on every push to `main`. Deployment is separate: run the **CI/CD** workflow manually with **deploy** enabled after approval; ordinary pushes only check the build. See [AGENTS § Verification](AGENTS.md#verification) for the exact commands.
 
 Deploy metadata is intentionally checked: `static/site.webmanifest` is the canonical PWA manifest, `static/manifest.json` is a byte-identical compatibility copy, and the committed PWA icons / Open Graph card are generated from `assets/` by `npm run icons`. `npm run check:deploy-metadata` enforces manifest identity, byte-for-byte icon drift, and the OG card's required 1200×630 PNG dimensions. The card contains text, so exact pixels are not compared across operating systems.
 

@@ -33,6 +33,7 @@ console.log(`cache-bust: pinned HTML asset URLs to ?v=${version}`);
 // Stamp the same version into the service worker, so each deploy gets its own
 // cache (galacto-<version>) and its precache URLs match index.html's ?v=.
 replaceRequired(swPath, 'sw.js', version);
+replaceRequired(join(outDir, 'xl3-surface.js'), 'xl3-surface.js', version);
 console.log(`cache-bust: pinned service worker cache to galacto-${version}`);
 
 writeFileSync(
