@@ -39,7 +39,6 @@
     <meta name="twitter:image" content="https://galacto.org/og-card.png" />
 
     <link rel="stylesheet" href="styles.css?v=__CACHE_BUST__" />
-    <link rel="stylesheet" href="controller-panel.css?v=__CACHE_BUST__" />
 
     <!-- PWA: installable, offline-capable app shell -->
     <link rel="manifest" href="site.webmanifest?v=__CACHE_BUST__" />
@@ -112,7 +111,6 @@
         <span id="controls-label">Controls</span>
       </button>
       <div id="controls-body">
-        <nav class="interface-switch" aria-label="Control layout"><button type="button" data-interface="controls" aria-pressed="true">Controls</button><button type="button" data-interface="xl3" aria-pressed="false">XL3</button></nav>
         <div class="control">
           <label for="scenario-select">Scenario</label>
           <select id="scenario-select">
@@ -340,10 +338,6 @@
       <button id="update-reload" type="button">Reload</button>
       <button id="update-dismiss" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
     </div>
-
-    <section id="xl3-panel" class="xl3-panel" aria-label="Launch Control XL 3" hidden>
-      <nav class="interface-switch" aria-label="Control layout"><button type="button" data-interface="controls" aria-pressed="true">Controls</button><button type="button" data-interface="xl3" aria-pressed="false">XL3</button></nav>
-    </section>
     <script type="module" src="app.js?v=__CACHE_BUST__"></script>
     <!-- Cloudflare Web Analytics: anonymous visit counts, production origin
          only so local/dev/smoke runs never emit RUM requests. -->

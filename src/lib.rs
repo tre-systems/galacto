@@ -6,9 +6,13 @@ mod camera;
 mod controller;
 mod error;
 mod graphics;
+// Hosted input arrives through the controller API, not DOM event listeners.
+#[cfg_attr(feature = "performance-host", allow(dead_code, unused_imports))]
 mod input;
 mod mastering;
 mod music;
+#[cfg(feature = "performance-host")]
+mod performance;
 mod postprocess;
 mod scenarios;
 mod simulation;
@@ -26,6 +30,7 @@ use utils::{console_log, set_panic_hook};
 
 use std::cell::RefCell;
 use std::rc::Rc;
+#[cfg(not(feature = "performance-host"))]
 use wasm_bindgen_futures::spawn_local;
 
 /// Cap on simulation substeps run in a single default-count frame, bounding a
@@ -871,6 +876,7 @@ pub fn start() -> Result<(), JsValue> {
 
     console_log!("Starting Galaxy Simulation...");
 
+    #[cfg(not(feature = "performance-host"))]
     spawn_local(async {
         if let Err(e) = run().await {
             console_log!("Error running application: {:?}", e);
@@ -884,6 +890,7 @@ pub fn start() -> Result<(), JsValue> {
 /// Surface a fatal async init failure (e.g. WebGPU device creation failing *after*
 /// the page's adapter pre-check passed) in the existing `#error` panel, so the user
 /// sees a clear message instead of a silently black canvas.
+#[cfg(not(feature = "performance-host"))]
 fn show_init_error(err: &JsValue) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
@@ -1251,6 +1258,7 @@ fn build_export_result(wav: &[u8], report: &mastering::MasterReport, sr: u32) ->
 
 /// Physical (device-pixel) size to render the canvas at, derived from its CSS
 /// layout size and the device pixel ratio. Falls back to 1024x768 before layout.
+#[cfg(not(feature = "performance-host"))]
 fn canvas_physical_size(
     window: &web_sys::Window,
     canvas: &web_sys::HtmlCanvasElement,
@@ -1271,6 +1279,7 @@ fn canvas_physical_size(
     (w.max(1), h.max(1))
 }
 
+#[cfg(not(feature = "performance-host"))]
 async fn run() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window object"))?;
     let document = window
@@ -1324,6 +1333,7 @@ async fn run() -> Result<(), JsValue> {
     Ok(())
 }
 
+#[cfg(not(feature = "performance-host"))]
 fn request_animation_frame() {
     let closure = Closure::once_into_js(Box::new(|time: f64| {
         animation_frame(time as f32);
@@ -1335,6 +1345,7 @@ fn request_animation_frame() {
         .unwrap();
 }
 
+#[cfg(not(feature = "performance-host"))]
 fn animation_frame(time: f32) {
     with_app_mut((), |app| {
         app.update(time);

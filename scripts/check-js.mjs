@@ -13,6 +13,8 @@ const files = [
   'static/controller-panel.js',
   'static/view-feedback.js',
   'static/controller-bindings.js',
+  'performance/instrument.js',
+  'performance/galacto-parameters.js',
   'static/xl3-surface.js',
 
   'static/pwa-update.js',

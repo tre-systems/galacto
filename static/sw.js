@@ -14,12 +14,6 @@ const REQUIRED_PRECACHE_URLS = [
   `/galacto.js?v=${BUILD_HASH}`,
   `/galacto_bg.wasm?v=${BUILD_HASH}`,
   `/styles.css?v=${BUILD_HASH}`,
-  `/xl3.js?v=${BUILD_HASH}`,
-  `/controller-panel.js?v=${BUILD_HASH}`,
-  `/view-feedback.js?v=${BUILD_HASH}`,
-  `/controller-bindings.js?v=${BUILD_HASH}`,
-  `/xl3-surface.js?v=${BUILD_HASH}`,
-  `/controller-panel.css?v=${BUILD_HASH}`,
 
 ];
 

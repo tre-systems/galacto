@@ -27,29 +27,16 @@ A GPU-accelerated **self-gravitating N-body** galaxy sandbox: 16,384 bodies by d
 
 ## Controls
 
-### Launch Control XL 3
+### Performance host
 
-Open the cog, choose **XL3**, then **Connect** in Chrome or Edge. Disconnect
-Cymion or Confluon from the controller first so one app owns the DAW port.
-Connecting arms audio silently. **Play** starts the current galaxy's music;
-pressing it again fades to silence over eight seconds. The galaxy keeps moving.
-The **Controls** and **XL3** layouts share the same live values and can be hidden
-while playing. The translucent XL3 panel shows physical button presses.
+The standalone app keeps its compact draggable controls. XL3 performance uses the
+separate host, which owns the controller connection, translucent panel and fades.
+It can run Galacto alone or alongside Cymion and Confluon.
 
-| Physical controls, left to right | Parameters |
-| --- | --- |
-| Eight faders | Speed, Gravity, Halo strength, Halo size, Star size, Glow, Camera speed, Level |
-| Top knobs 1–4 | Next disk stability (Q), gas fraction, bulge fraction, body count |
-| Middle knobs 4–6 | Camera orbit, tilt, zoom |
-| Top button row | Auto camera, Show halo, Rotation curve, Mute, Pause simulation, Home camera, Apply, Shift + Restart |
-| Bottom button row | Disk, Merger, Head-on, Retrograde, Minor merger, Group, M51, Controls layout |
-
-Faders pick up after crossing the on-screen value. Encoders respond immediately;
-Shift gives finer adjustment. Manual camera knobs switch autopilot off. The four
-setup knobs stage values without changing the running galaxy or sound. **Apply**
-commits them with one rebuild; choosing a scenario discards pending values.
-Unused controls stay dimmed. The controller does not change stored custom modes,
-firmware or routing, and live edits are blocked during composed playback.
+[The instrument package](performance/README.md) owns the adapter and fader-first
+mapping. The optional `performance-host` Rust feature accepts a shared audio
+context, output bus and frame clock. Normal builds retain standalone boot, sound,
+visuals and scenario defaults. No controller assets enter the public PWA shell.
 
 ### Desktop
 

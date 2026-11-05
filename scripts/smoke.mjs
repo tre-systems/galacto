@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { hasFlag, take, takeNumber } from './cli.mjs';
 import { ensureChrome, findChrome, getFreePort } from './preflight.mjs';
-import { xl3Probe, exerciseXL3 } from './xl3-smoke-helpers.mjs';
+import { standaloneProbe, exerciseStandalone } from './standalone-smoke.mjs';
 import { startStaticServer } from './serve-static.mjs';
 
 class Cdp {
@@ -65,7 +65,7 @@ const chromePath = take('--chrome') || process.env.CHROME || findChrome();
 const requireBrowser = hasFlag('--require-browser');
 const exerciseReadback = hasFlag('--exercise-readback');
 const rejectMap = hasFlag('--reject-map');
-const exerciseController = hasFlag('--exercise-xl3');
+const exerciseController = hasFlag('--exercise-controls');
 if (exerciseController && targetUrl) throw new Error('XL3 injection is local-only');
 if (rejectMap && (!exerciseReadback || targetUrl)) {
   throw new Error('smoke: map fault injection requires a local --exercise-readback build');
@@ -133,14 +133,14 @@ try {
   await page.send('Log.enable');
 
   if (inject) {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readbackProbe(rejectMap) + (exerciseController ? xl3Probe() : '') });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readbackProbe(rejectMap) + (exerciseController ? standaloneProbe() : '') });
     await page.send('Page.navigate', { url });
   }
 
   const result = await evaluatePageState(page, timeoutMs);
 
   const value = result.result.value;
-  if (value.status === 'ready' && exerciseController) await exerciseXL3(page);
+  if (value.status === 'ready' && exerciseController) await exerciseStandalone(page);
   if (value.status === 'ready' && exerciseReadback) {
     await exerciseCoreReadback(page, rejectMap, timeoutMs);
   }

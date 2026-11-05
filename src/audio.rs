@@ -515,9 +515,21 @@ impl AudioEngine {
     /// Build the audio graph and start the (silent) drone. Returns `None` if the
     /// browser denies an AudioContext. Must be called from within a user gesture.
     pub fn new() -> Option<Self> {
-        let ctx = AudioContext::new().ok()?;
+        Self::with_context(AudioContext::new().ok()?, None)
+    }
+
+    #[cfg(feature = "performance-host")]
+    pub fn hosted(ctx: AudioContext, output: &web_sys::AudioNode) -> Option<Self> {
+        Self::with_context(ctx, Some(output))
+    }
+
+    fn with_context(ctx: AudioContext, output: Option<&web_sys::AudioNode>) -> Option<Self> {
         let _ = ctx.resume();
         let graph = Graph::build(&ctx)?;
+        if let Some(output) = output {
+            graph.breath_gain.disconnect().ok()?;
+            graph.breath_gain.connect_with_audio_node(output).ok()?;
+        }
         let next_note_time = ctx.current_time();
         console_log!("🔊 Audio engine ready.");
         Some(Self {

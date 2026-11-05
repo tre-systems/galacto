@@ -27,7 +27,8 @@ for (const file of wasmFiles) {
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
-cpSync(staticDir, outDir, { recursive: true });
+const hostFiles = new Set(["xl3.js", "controller-panel.js", "view-feedback.js", "controller-bindings.js", "xl3-surface.js", "controller-panel.css"]);
+cpSync(staticDir, outDir, { recursive: true, filter: source => !hostFiles.has(source.split("/").at(-1)) });
 
 for (const file of wasmFiles) {
   cpSync(join(pkgDir, file), join(outDir, file));

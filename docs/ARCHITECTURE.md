@@ -43,7 +43,7 @@ src/
     ├── render.wgsl      # Billboard vertex + radial-glow fragment (additive)
     ├── halo.wgsl        # Dark-matter halo overlay billboard
     └── post.wgsl        # Fullscreen bright-pass, separable blur, tonemap composite
-static/                  # Frontend: index.html, app.js, styles.css, XL3 driver/panel/adapter, favicon.svg, _headers
+static/                  # Frontend: index.html, app.js, styles.css, favicon.svg, _headers
 pkg/                     # raw wasm-pack output (git-ignored)
 dist/                    # verified deploy root assembled from static/ + pkg/ (git-ignored)
 scripts/                 # build assembly/checks, smoke test, diagrams, production capture
@@ -209,29 +209,23 @@ The optional soundscape is a **cosmic ambient** generator, entirely synthesized 
 
 **Composed pieces (for video).** Beyond recording a live take, the panel can render a *complete arranged piece* with no recording: `arrangement.rs` is a deterministic cinematic arc (`seed` + `duration`) shaped as the classic ambient A→B→C — a sparse, distant intro; a build where gravity rises so the galaxy gathers, the camera drifts in, and layers enter; a serene awe peak ~two-thirds through; then a dispersing resolution. The arc drives *both* sides from one source: `generate_piece` renders the audio from the arrangement's synthetic `GalaxyState` timeline (`audio::render_offline`, then mastered), while `start_arrangement` plays the *same* arc live — setting the camera pose and pushing the live physics each frame so the on-screen galaxy performs it. Because it's deterministic, a captured video (the page auto-plays the arrangement from a `?compose=SEED&dur=…` URL, loaded by the canvas-capture script) and the offline-mastered audio rendered from the same seed/duration stay locked, and are muxed into the final video (see [Video production](VIDEO_PRODUCTION.md)).
 
-## XL3 live control
+## Performance host integration
 
-`static/xl3.js`, `controller-panel.js` and `view-feedback.js` share the same
-protocol, hardware layout and coalesced drawing code as Confluon. The driver
-handles relative encoders, fader pickup, volatile DAW ownership and button
-feedback. `controller-bindings.js` maps normalized positions to Galacto controls;
-`xl3-surface.js` owns browser MIDI connection, staged setup values and actions.
-Parameter writes reach the existing DOM/WASM handlers immediately. DOM feedback
-is coalesced to an animation frame; MIDI display feedback is batched separately.
+`performance/instrument.json` defines API 1 of the versioned source package.
+The adapter and `static/controller-bindings.js` own Galacto's parameter mapping.
+The host owns the shared XL3 driver/panel, connection, output fades and frame clock.
 
-`src/controller.rs` exposes camera and transport operations without changing
-simulation presets or the composition engine. Live controller edits are disabled
-while an arrangement owns the state. The first Connect gesture builds the silent
-Web Audio graph; Play enables the existing engine. A second press schedules an
-eight-second ramp on the existing master gain. Level changes cannot cancel that
-ramp, and repeated Play presses cannot restart it. The offline graph and renderer
-are unchanged. Panel assets are versioned and included in the PWA shell cache.
+The optional `performance-host` Cargo feature exposes `src/performance.rs`.
+It skips standalone auto-boot and accepts a canvas, shared AudioContext and output
+bus. `AudioEngine::hosted` builds the same graph as normal playback and routes its
+final output to that bus. The host calls update, audio and rendering together;
+it parks the galaxy only when its output gain reaches zero. No source rewriting
+is needed at build time. Normal builds use the existing standalone lifecycle.
 
-`npm run test:xl3` covers protocol channels, relative steps, soft pickup, button
-edges and mapping isolation. `npm run smoke -- --exercise-xl3` uses synthetic
-ports in an isolated browser to test actual WASM control writes, silent arming,
-fade completion, scenario selection, capture lock, hotplug and narrow layout.
-It never opens the owner's MIDI device.
+`npm run smoke -- --exercise-controls` checks that obsolete saved XL3 layout
+preferences cannot hide the ordinary controls. The full host integration tests
+exercise MIDI, audio fades, staged changes, defaults and three-instrument handovers
+in isolated browsers without opening the owner's controller.
 
 ## Build & Deploy
 

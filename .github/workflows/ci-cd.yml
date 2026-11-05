@@ -76,7 +76,9 @@ jobs:
           cargo audit
 
       - name: Check WASM build
-        run: cargo check --target wasm32-unknown-unknown
+        run: |
+          cargo check --target wasm32-unknown-unknown
+          cargo clippy --target wasm32-unknown-unknown --features performance-host -- -D warnings
 
       - name: Install npm dependencies
         run: npm ci
@@ -114,7 +116,7 @@ jobs:
         run: npm run build
 
       - name: Smoke-test built site
-        run: npm run smoke -- --require-browser --exercise-readback --reject-map --exercise-xl3
+        run: npm run smoke -- --require-browser --exercise-readback --reject-map --exercise-controls
 
   deploy:
     name: Deploy
